@@ -20,9 +20,9 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
      * HashSlotMap. We can adjust this parameter to balance performance for typical objects versus
      * performance for huge objects with many collisions.
      */
-    private static final int LARGE_HASH_SIZE = 2000;
+    static final int LARGE_HASH_SIZE = 2000;
 
-    private static final int DEFAULT_SIZE = 10;
+    static final int DEFAULT_SIZE = 10;
 
     private static class EmptySlotMap implements SlotMap {
 
@@ -43,7 +43,9 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
 
         @Override
         public Slot modify(SlotMapOwner container, Object key, int index, int attributes) {
-            return null;
+            var map = new EmbeddedSlotMap();
+            container.replaceMap(map);
+            return map.modify(container, key, index, attributes);
         }
 
         @Override
@@ -53,13 +55,17 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
 
         @Override
         public void add(SlotMapOwner container, Slot newSlot) {
-            throw new IllegalStateException();
+            var map = new EmbeddedSlotMap();
+            container.replaceMap(map);
+            map.add(container, newSlot);
         }
 
         @Override
         public <S extends Slot> S compute(
                 SlotMapOwner container, Object key, int index, SlotComputer<S> compute) {
-            throw new IllegalStateException();
+            var map = new EmbeddedSlotMap();
+            container.replaceMap(map);
+            return map.compute(container, key, index, compute);
         }
     }
 
@@ -97,14 +103,12 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
 
     @Override
     public Slot modify(SlotMapOwner owner, Object key, int index, int attributes) {
-        checkMapSize();
         return map.modify(this, key, index, attributes);
     }
 
     @Override
     public <S extends Slot> S compute(
             SlotMapOwner owner, Object key, int index, SlotComputer<S> c) {
-        checkMapSize();
         return map.compute(this, key, index, c);
     }
 
@@ -115,7 +119,6 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
 
     @Override
     public void add(SlotMapOwner owner, Slot newSlot) {
-        checkMapSize();
         map.add(this, newSlot);
     }
 

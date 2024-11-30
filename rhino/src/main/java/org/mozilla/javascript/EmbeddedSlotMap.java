@@ -111,9 +111,14 @@ public class EmbeddedSlotMap implements SlotMap {
         }
 
         // A new slot has to be inserted.
-        Slot newSlot = new Slot(key, index, attributes);
-        createNewSlot(newSlot);
-        return newSlot;
+        if (slots != null && slots.length > SlotMapContainer.LARGE_HASH_SIZE) {
+            var map = copyToNewMap(container);
+            return map.modify(container, key, index, attributes);
+        } else {
+            Slot newSlot = new Slot(key, index, attributes);
+            createNewSlot(newSlot);
+            return newSlot;
+        }
     }
 
     private void createNewSlot(Slot newSlot) {
@@ -184,6 +189,10 @@ public class EmbeddedSlotMap implements SlotMap {
         }
 
         // If we get here, we know we are potentially adding a new slot
+        if (slots != null && slots.length > SlotMapContainer.LARGE_HASH_SIZE) {
+            var map = copyToNewMap(container);
+            return map.compute(container, key, index, c);
+        }
         S newSlot = c.compute(key, index, null);
         if (newSlot != null) {
             createNewSlot(newSlot);
@@ -191,10 +200,23 @@ public class EmbeddedSlotMap implements SlotMap {
         return newSlot;
     }
 
+    private HashSlotMap copyToNewMap(SlotMapOwner owner) {
+        var newMap = new HashSlotMap();
+        for (Slot n : this) {
+            newMap.add(owner, n);
+        }
+        owner.replaceMap(newMap);
+        return newMap;
+    }
+
     @Override
     public void add(SlotMapOwner container, Slot newSlot) {
         if (slots == null) {
             slots = new Slot[INITIAL_SLOT_SIZE];
+        } else if (slots.length > SlotMapContainer.LARGE_HASH_SIZE) {
+            var map = copyToNewMap(container);
+            map.add(container, newSlot);
+            return;
         }
         insertNewSlot(newSlot);
     }
