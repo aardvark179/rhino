@@ -94,7 +94,7 @@ public class EmbeddedSlotMap implements SlotMap {
      * @param index index or 0 if slot holds property name.
      */
     @Override
-    public Slot modify(Object key, int index, int attributes) {
+    public Slot modify(SlotMapOwner container, Object key, int index, int attributes) {
         final int indexOrHash = (key != null ? key.hashCode() : index);
         Slot slot;
 
@@ -134,7 +134,8 @@ public class EmbeddedSlotMap implements SlotMap {
     }
 
     @Override
-    public <S extends Slot> S compute(Object key, int index, SlotComputer<S> c) {
+    public <S extends Slot> S compute(
+            SlotMapOwner container, Object key, int index, SlotComputer<S> c) {
         final int indexOrHash = (key != null ? key.hashCode() : index);
 
         if (slots != null) {
@@ -191,7 +192,7 @@ public class EmbeddedSlotMap implements SlotMap {
     }
 
     @Override
-    public void add(Slot newSlot) {
+    public void add(SlotMapOwner container, Slot newSlot) {
         if (slots == null) {
             slots = new Slot[INITIAL_SLOT_SIZE];
         }

@@ -39,7 +39,7 @@ public interface SlotMap extends Iterable<Slot> {
      *     slots will not be modified.
      * @return a Slot, which will be created anew if no such slot exists.
      */
-    Slot modify(Object key, int index, int attributes);
+    Slot modify(SlotMapOwner container, Object key, int index, int attributes);
 
     /**
      * Retrieve the slot at EITHER key or index, or return null if the slot cannot be found.
@@ -58,11 +58,12 @@ public interface SlotMap extends Iterable<Slot> {
      * code and is more efficient than making multiple calls to this interface. In order to allow
      * use of multiple Slot subclasses, this function is templatized.
      */
-    <S extends Slot> S compute(Object key, int index, SlotComputer<S> compute);
+    <S extends Slot> S compute(
+            SlotMapOwner container, Object key, int index, SlotComputer<S> compute);
 
     /**
      * Insert a new slot to the map. Both "name" and "indexOrHash" must be populated. Note that
      * ScriptableObject generally adds slots via the "modify" method.
      */
-    void add(Slot newSlot);
+    void add(SlotMapOwner container, Slot newSlot);
 }

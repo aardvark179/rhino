@@ -13,7 +13,7 @@ import java.util.Iterator;
  * This class holds the various SlotMaps of various types, and knows how to atomically switch
  * between them when we need to so that we use the right data structure at the right time.
  */
-class SlotMapContainer implements SlotMap {
+class SlotMapContainer implements SlotMap, SlotMapOwner {
 
     /**
      * Once the object has this many properties in it, we will replace the EmbeddedSlotMap with
@@ -42,7 +42,7 @@ class SlotMapContainer implements SlotMap {
         }
 
         @Override
-        public Slot modify(Object key, int index, int attributes) {
+        public Slot modify(SlotMapOwner container, Object key, int index, int attributes) {
             return null;
         }
 
@@ -52,12 +52,13 @@ class SlotMapContainer implements SlotMap {
         }
 
         @Override
-        public void add(Slot newSlot) {
+        public void add(SlotMapOwner container, Slot newSlot) {
             throw new IllegalStateException();
         }
 
         @Override
-        public <S extends Slot> S compute(Object key, int index, SlotComputer<S> compute) {
+        public <S extends Slot> S compute(
+                SlotMapOwner container, Object key, int index, SlotComputer<S> compute) {
             throw new IllegalStateException();
         }
     }
@@ -95,15 +96,16 @@ class SlotMapContainer implements SlotMap {
     }
 
     @Override
-    public Slot modify(Object key, int index, int attributes) {
+    public Slot modify(SlotMapOwner owner, Object key, int index, int attributes) {
         checkMapSize();
-        return map.modify(key, index, attributes);
+        return map.modify(this, key, index, attributes);
     }
 
     @Override
-    public <S extends Slot> S compute(Object key, int index, SlotComputer<S> c) {
+    public <S extends Slot> S compute(
+            SlotMapOwner owner, Object key, int index, SlotComputer<S> c) {
         checkMapSize();
-        return map.compute(key, index, c);
+        return map.compute(this, key, index, c);
     }
 
     @Override
@@ -112,9 +114,9 @@ class SlotMapContainer implements SlotMap {
     }
 
     @Override
-    public void add(Slot newSlot) {
+    public void add(SlotMapOwner owner, Slot newSlot) {
         checkMapSize();
-        map.add(newSlot);
+        map.add(this, newSlot);
     }
 
     @Override
@@ -129,6 +131,11 @@ class SlotMapContainer implements SlotMap {
 
     public void unlockRead(long stamp) {
         // No locking in the default implementation
+    }
+
+    @Override
+    public void replaceMap(SlotMap newMap) {
+        map = newMap;
     }
 
     /**

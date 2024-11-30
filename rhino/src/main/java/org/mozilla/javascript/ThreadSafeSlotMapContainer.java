@@ -63,22 +63,23 @@ class ThreadSafeSlotMapContainer extends SlotMapContainer {
     }
 
     @Override
-    public Slot modify(Object key, int index, int attributes) {
+    public Slot modify(SlotMapOwner owner, Object key, int index, int attributes) {
         final long stamp = lock.writeLock();
         try {
             checkMapSize();
-            return map.modify(key, index, attributes);
+            return map.modify(this, key, index, attributes);
         } finally {
             lock.unlockWrite(stamp);
         }
     }
 
     @Override
-    public <S extends Slot> S compute(Object key, int index, SlotComputer<S> c) {
+    public <S extends Slot> S compute(
+            SlotMapOwner owner, Object key, int index, SlotComputer<S> c) {
         final long stamp = lock.writeLock();
         try {
             checkMapSize();
-            return map.compute(key, index, c);
+            return map.compute(this, key, index, c);
         } finally {
             lock.unlockWrite(stamp);
         }
@@ -101,11 +102,11 @@ class ThreadSafeSlotMapContainer extends SlotMapContainer {
     }
 
     @Override
-    public void add(Slot newSlot) {
+    public void add(SlotMapOwner owner, Slot newSlot) {
         final long stamp = lock.writeLock();
         try {
             checkMapSize();
-            map.add(newSlot);
+            map.add(this, newSlot);
         } finally {
             lock.unlockWrite(stamp);
         }

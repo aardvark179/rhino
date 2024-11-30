@@ -52,7 +52,12 @@ import org.mozilla.javascript.debug.DebuggableObject;
  * @author Norris Boyd
  */
 public abstract class ScriptableObject
-        implements Scriptable, SymbolScriptable, Serializable, DebuggableObject, ConstProperties {
+        implements Scriptable,
+                SymbolScriptable,
+                Serializable,
+                DebuggableObject,
+                ConstProperties,
+                SlotMapOwner {
 
     private static final long serialVersionUID = 2829861078851942586L;
 
@@ -351,7 +356,7 @@ public abstract class ScriptableObject
     @Override
     public void delete(String name) {
         checkNotSealed(name, 0);
-        slotMap.compute(name, 0, ScriptableObject::checkSlotRemoval);
+        slotMap.compute(this, name, 0, ScriptableObject::checkSlotRemoval);
     }
 
     /**
@@ -364,14 +369,14 @@ public abstract class ScriptableObject
     @Override
     public void delete(int index) {
         checkNotSealed(null, index);
-        slotMap.compute(null, index, ScriptableObject::checkSlotRemoval);
+        slotMap.compute(this, null, index, ScriptableObject::checkSlotRemoval);
     }
 
     /** Removes an object like the others, but using a Symbol as the key. */
     @Override
     public void delete(Symbol key) {
         checkNotSealed(key, 0);
-        slotMap.compute(key, 0, ScriptableObject::checkSlotRemoval);
+        slotMap.compute(this, key, 0, ScriptableObject::checkSlotRemoval);
     }
 
     private static Slot checkSlotRemoval(Object key, int index, Slot slot) {
@@ -528,7 +533,7 @@ public abstract class ScriptableObject
      */
     public void setAttributes(String name, int attributes) {
         checkNotSealed(name, 0);
-        Slot attrSlot = slotMap.modify(name, 0, 0);
+        Slot attrSlot = slotMap.modify(this, name, 0, 0);
         attrSlot.setAttributes(attributes);
     }
 
@@ -546,14 +551,14 @@ public abstract class ScriptableObject
      */
     public void setAttributes(int index, int attributes) {
         checkNotSealed(null, index);
-        Slot attrSlot = slotMap.modify(null, index, 0);
+        Slot attrSlot = slotMap.modify(this, null, index, 0);
         attrSlot.setAttributes(attributes);
     }
 
     /** Set attributes of a Symbol-keyed property. */
     public void setAttributes(Symbol key, int attributes) {
         checkNotSealed(key, 0);
-        Slot attrSlot = slotMap.modify(key, 0, 0);
+        Slot attrSlot = slotMap.modify(this, key, 0, 0);
         attrSlot.setAttributes(attributes);
     }
 
@@ -566,7 +571,7 @@ public abstract class ScriptableObject
         AccessorSlot aSlot;
         if (isExtensible()) {
             // Create a new AccessorSlot, or cast it if it's already set
-            aSlot = slotMap.compute(name, index, ScriptableObject::ensureAccessorSlot);
+            aSlot = slotMap.compute(this, name, index, ScriptableObject::ensureAccessorSlot);
         } else {
             Slot slot = slotMap.query(name, index);
             if (slot instanceof AccessorSlot) {
@@ -657,7 +662,7 @@ public abstract class ScriptableObject
     void addLazilyInitializedValue(String name, int index, LazilyLoadedCtor init, int attributes) {
         if (name != null && index != 0) throw new IllegalArgumentException(name);
         checkNotSealed(name, index);
-        LazyLoadSlot lslot = slotMap.compute(name, index, ScriptableObject::ensureLazySlot);
+        LazyLoadSlot lslot = slotMap.compute(this, name, index, ScriptableObject::ensureLazySlot);
         lslot.setAttributes(attributes);
         lslot.value = init;
     }
@@ -1549,7 +1554,8 @@ public abstract class ScriptableObject
             }
         }
 
-        AccessorSlot aSlot = slotMap.compute(propertyName, 0, ScriptableObject::ensureAccessorSlot);
+        AccessorSlot aSlot =
+                slotMap.compute(this, propertyName, 0, ScriptableObject::ensureAccessorSlot);
         aSlot.setAttributes(attributes);
         if (getterBox != null) {
             aSlot.getter = new AccessorSlot.MemberBoxGetter(getterBox);
@@ -1631,6 +1637,7 @@ public abstract class ScriptableObject
         // Do some complex stuff depending on whether or not the key
         // already exists in a single hash map operation
         slotMap.compute(
+                this,
                 key,
                 index,
                 (k, ix, existing) -> {
@@ -1711,7 +1718,7 @@ public abstract class ScriptableObject
      */
     public void defineProperty(
             String name, Supplier<Object> getter, Consumer<Object> setter, int attributes) {
-        LambdaSlot slot = slotMap.compute(name, 0, ScriptableObject::ensureLambdaSlot);
+        LambdaSlot slot = slotMap.compute(this, name, 0, ScriptableObject::ensureLambdaSlot);
         slot.setAttributes(attributes);
         slot.getter = getter;
         slot.setter = setter;
@@ -1748,6 +1755,7 @@ public abstract class ScriptableObject
         ScriptableObject newDesc = newSlot.buildPropertyDescriptor(cx);
         checkPropertyDefinition(newDesc);
         slotMap.compute(
+                this,
                 name,
                 0,
                 (id, index, existing) -> {
@@ -2686,7 +2694,7 @@ public abstract class ScriptableObject
             if (isSealed) {
                 checkNotSealed(key, index);
             }
-            slot = slotMap.modify(key, index, 0);
+            slot = slotMap.modify(this, key, index, 0);
         }
         return slot.setValue(value, this, start, isThrow);
     }
@@ -2724,7 +2732,7 @@ public abstract class ScriptableObject
         } else {
             checkNotSealed(name, index);
             // either const hoisted declaration or initialization
-            slot = slotMap.modify(name, index, CONST);
+            slot = slotMap.modify(this, name, index, CONST);
             int attr = slot.getAttributes();
             if ((attr & READONLY) == 0)
                 throw Context.reportRuntimeErrorById("msg.var.redecl", name);
@@ -2868,7 +2876,7 @@ public abstract class ScriptableObject
         slotMap = createSlotMap(tableSize);
         for (int i = 0; i < tableSize; i++) {
             Slot slot = (Slot) in.readObject();
-            slotMap.add(slot);
+            slotMap.add(this, slot);
         }
     }
 
@@ -2943,5 +2951,10 @@ public abstract class ScriptableObject
             }
             return 0;
         }
+    }
+
+    @Override
+    public void replaceMap(SlotMap newMap) {
+        throw new Error();
     }
 }
