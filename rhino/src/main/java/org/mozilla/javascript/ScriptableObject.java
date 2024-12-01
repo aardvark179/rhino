@@ -118,7 +118,7 @@ public abstract class ScriptableObject
      * This holds all the slots. It may or may not be thread-safe, and may expand itself to a
      * different data structure depending on the size of the object.
      */
-    private transient SlotMapContainer slotMap;
+    private transient SlotMap slotMap;
 
     // Where external array data is stored.
     private transient ExternalArrayData externalData;
@@ -162,12 +162,17 @@ public abstract class ScriptableObject
         }
     }
 
-    private static SlotMapContainer createSlotMap(int initialSize) {
+    private static SlotMap createSlotMap(int initialSize) {
         Context cx = Context.getCurrentContext();
         if ((cx != null) && cx.hasFeature(Context.FEATURE_THREAD_SAFE_OBJECTS)) {
             return new ThreadSafeSlotMapContainer(initialSize);
+        } else if (initialSize == 0) {
+            return SlotMapContainer.EMPTY_SLOT_MAP;
+        } else if (initialSize > SlotMapContainer.LARGE_HASH_SIZE) {
+            return new HashSlotMap();
+        } else {
+            return new EmbeddedSlotMap();
         }
-        return new SlotMapContainer(initialSize);
     }
 
     public ScriptableObject() {
@@ -2955,6 +2960,6 @@ public abstract class ScriptableObject
 
     @Override
     public void replaceMap(SlotMap newMap) {
-        throw new Error();
+        slotMap = newMap;
     }
 }

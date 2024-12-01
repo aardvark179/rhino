@@ -66,4 +66,17 @@ public interface SlotMap extends Iterable<Slot> {
      * ScriptableObject generally adds slots via the "modify" method.
      */
     void add(SlotMapOwner container, Slot newSlot);
+
+    default long readLock() {
+        // No locking in the default implementation
+        return 0L;
+    }
+
+    default void unlockRead(long stamp) {
+        // No locking in the default implementation
+    }
+
+    default int dirtySize() {
+        return size();
+    }
 }

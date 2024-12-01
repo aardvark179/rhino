@@ -69,7 +69,7 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
         }
     }
 
-    private static EmptySlotMap EMPTY_SLOT_MAP = new EmptySlotMap();
+    static SlotMap EMPTY_SLOT_MAP = new EmptySlotMap();
 
     protected SlotMap map;
 
@@ -92,6 +92,7 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
         return map.size();
     }
 
+    @Override
     public int dirtySize() {
         return map.size();
     }
@@ -127,11 +128,13 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
         return map.iterator();
     }
 
+    @Override
     public long readLock() {
         // No locking in the default implementation
         return 0L;
     }
 
+    @Override
     public void unlockRead(long stamp) {
         // No locking in the default implementation
     }
