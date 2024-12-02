@@ -8,6 +8,8 @@ package org.mozilla.javascript;
 
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.NoSuchElementException;
+import java.util.Objects;
 
 /**
  * This class holds the various SlotMaps of various types, and knows how to atomically switch
@@ -24,7 +26,7 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
 
     static final int DEFAULT_SIZE = 10;
 
-    private static class EmptySlotMap implements SlotMap {
+    private static final class EmptySlotMap implements SlotMap {
 
         @Override
         public Iterator<Slot> iterator() {
@@ -43,7 +45,7 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
 
         @Override
         public Slot modify(SlotMapOwner container, Object key, int index, int attributes) {
-            var map = new EmbeddedSlotMap();
+            var map = new SingleSlotMap();
             container.replaceMap(map);
             return map.modify(container, key, index, attributes);
         }
@@ -55,7 +57,7 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
 
         @Override
         public void add(SlotMapOwner container, Slot newSlot) {
-            var map = new EmbeddedSlotMap();
+            var map = new SingleSlotMap();
             container.replaceMap(map);
             map.add(container, newSlot);
         }
@@ -63,9 +65,119 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
         @Override
         public <S extends Slot> S compute(
                 SlotMapOwner container, Object key, int index, SlotComputer<S> compute) {
-            var map = new EmbeddedSlotMap();
+            var map = new SingleSlotMap();
             container.replaceMap(map);
             return map.compute(container, key, index, compute);
+        }
+    }
+
+    private static final class Iter implements Iterator<Slot> {
+        private Slot next;
+
+        Iter(Slot slot) {
+            next = slot;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return next != null;
+        }
+
+        @Override
+        public Slot next() {
+            Slot ret = next;
+            if (ret == null) {
+                throw new NoSuchElementException();
+            }
+            next = next.orderedNext;
+            return ret;
+        }
+    }
+
+    static final class SingleSlotMap implements SlotMap {
+
+        SingleSlotMap() {}
+
+        private Slot slot;
+
+        @Override
+        public Iterator<Slot> iterator() {
+            if (slot == null) {
+                return Collections.emptyIterator();
+            } else {
+                return new Iter(slot);
+            }
+        }
+
+        @Override
+        public int size() {
+            return slot == null ? 0 : 1;
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return slot == null;
+        }
+
+        @Override
+        public Slot modify(SlotMapOwner owner, Object key, int index, int attributes) {
+            final int indexOrHash = (key != null ? key.hashCode() : index);
+
+            if (slot != null) {
+                if (indexOrHash == slot.indexOrHash && Objects.equals(slot.name, key)) {
+                    return slot;
+                }
+            }
+            Slot newSlot = new Slot(key, index, attributes);
+            add(owner, newSlot);
+            return newSlot;
+        }
+
+        @Override
+        public Slot query(Object key, int index) {
+            final int indexOrHash = (key != null ? key.hashCode() : index);
+
+            if (slot != null) {
+                if (indexOrHash == slot.indexOrHash && Objects.equals(slot.name, key)) {
+                    return slot;
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public void add(SlotMapOwner owner, Slot newSlot) {
+            if (slot == null) {
+                slot = newSlot;
+            } else if (owner == null) {
+                throw new IllegalStateException();
+            } else {
+                var newMap = new EmbeddedSlotMap();
+                owner.replaceMap(newMap);
+                newMap.add(owner, slot);
+                newMap.add(owner, newSlot);
+            }
+        }
+
+        @Override
+        public <S extends Slot> S compute(
+                SlotMapOwner owner, Object key, int index, SlotComputer<S> c) {
+            final int indexOrHash = (key != null ? key.hashCode() : index);
+
+            if (slot != null) {
+                if (indexOrHash == slot.indexOrHash && Objects.equals(slot.name, key)) {
+                    S newSlot = c.compute(key, index, slot);
+                    slot = newSlot;
+                    return newSlot;
+                }
+                var newMap = new EmbeddedSlotMap();
+                owner.replaceMap(newMap);
+                newMap.add(owner, slot);
+                return newMap.compute(owner, key, index, c);
+            }
+            S newSlot = c.compute(key, index, slot);
+            slot = newSlot;
+            return newSlot;
         }
     }
 
