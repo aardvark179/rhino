@@ -45,9 +45,10 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
 
         @Override
         public Slot modify(SlotMapOwner container, Object key, int index, int attributes) {
-            var map = new SingleSlotMap();
+            var newSlot = new Slot(key, index, attributes);
+            var map = new SingleSlotMap(newSlot);
             container.replaceMap(map);
-            return map.modify(container, key, index, attributes);
+            return newSlot;
         }
 
         @Override
@@ -57,17 +58,21 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
 
         @Override
         public void add(SlotMapOwner container, Slot newSlot) {
-            var map = new SingleSlotMap();
-            container.replaceMap(map);
-            map.add(container, newSlot);
+            if (newSlot != null) {
+                var map = new SingleSlotMap(newSlot);
+                container.replaceMap(map);
+            }
         }
 
         @Override
         public <S extends Slot> S compute(
-                SlotMapOwner container, Object key, int index, SlotComputer<S> compute) {
-            var map = new SingleSlotMap();
-            container.replaceMap(map);
-            return map.compute(container, key, index, compute);
+                SlotMapOwner container, Object key, int index, SlotComputer<S> c) {
+            var newSlot = c.compute(key, index, null);
+            if (newSlot != null) {
+                var map = new SingleSlotMap(newSlot);
+                container.replaceMap(map);
+            }
+            return newSlot;
         }
     }
 
@@ -96,37 +101,34 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
 
     static final class SingleSlotMap implements SlotMap {
 
-        SingleSlotMap() {}
+        SingleSlotMap(Slot slot) {
+            assert (slot != null);
+            this.slot = slot;
+        }
 
-        private Slot slot;
+        private final Slot slot;
 
         @Override
         public Iterator<Slot> iterator() {
-            if (slot == null) {
-                return Collections.emptyIterator();
-            } else {
-                return new Iter(slot);
-            }
+            return new Iter(slot);
         }
 
         @Override
         public int size() {
-            return slot == null ? 0 : 1;
+            return 1;
         }
 
         @Override
         public boolean isEmpty() {
-            return slot == null;
+            return false;
         }
 
         @Override
         public Slot modify(SlotMapOwner owner, Object key, int index, int attributes) {
             final int indexOrHash = (key != null ? key.hashCode() : index);
 
-            if (slot != null) {
-                if (indexOrHash == slot.indexOrHash && Objects.equals(slot.name, key)) {
-                    return slot;
-                }
+            if (indexOrHash == slot.indexOrHash && Objects.equals(slot.name, key)) {
+                return slot;
             }
             Slot newSlot = new Slot(key, index, attributes);
             add(owner, newSlot);
@@ -137,19 +139,15 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
         public Slot query(Object key, int index) {
             final int indexOrHash = (key != null ? key.hashCode() : index);
 
-            if (slot != null) {
-                if (indexOrHash == slot.indexOrHash && Objects.equals(slot.name, key)) {
-                    return slot;
-                }
+            if (indexOrHash == slot.indexOrHash && Objects.equals(slot.name, key)) {
+                return slot;
             }
             return null;
         }
 
         @Override
         public void add(SlotMapOwner owner, Slot newSlot) {
-            if (slot == null) {
-                slot = newSlot;
-            } else if (owner == null) {
+            if (owner == null) {
                 throw new IllegalStateException();
             } else {
                 var newMap = new EmbeddedSlotMap();
@@ -162,22 +160,10 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
         @Override
         public <S extends Slot> S compute(
                 SlotMapOwner owner, Object key, int index, SlotComputer<S> c) {
-            final int indexOrHash = (key != null ? key.hashCode() : index);
-
-            if (slot != null) {
-                if (indexOrHash == slot.indexOrHash && Objects.equals(slot.name, key)) {
-                    S newSlot = c.compute(key, index, slot);
-                    slot = newSlot;
-                    return newSlot;
-                }
-                var newMap = new EmbeddedSlotMap();
-                owner.replaceMap(newMap);
-                newMap.add(owner, slot);
-                return newMap.compute(owner, key, index, c);
-            }
-            S newSlot = c.compute(key, index, slot);
-            slot = newSlot;
-            return newSlot;
+            var newMap = new EmbeddedSlotMap();
+            owner.replaceMap(newMap);
+            newMap.add(owner, slot);
+            return newMap.compute(owner, key, index, c);
         }
     }
 
