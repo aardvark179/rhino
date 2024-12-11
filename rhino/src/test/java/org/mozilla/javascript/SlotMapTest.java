@@ -120,7 +120,7 @@ public class SlotMapTest {
         assertEquals(newSlot.value, "bar");
         slot = obj.slotMap.query("one", 0);
         assertEquals(slot.value, "bar");
-        assertEquals(obj.slotMap.size(), 1);
+        assertEquals(1, obj.slotMap.size());
     }
 
     @Test
@@ -143,7 +143,7 @@ public class SlotMapTest {
         Slot slot = obj.slotMap.query("one", 0);
         assertNotNull(slot);
         assertEquals(slot.value, "bar");
-        assertEquals(obj.slotMap.size(), 1);
+        assertEquals(1, obj.slotMap.size());
     }
 
     @Test
@@ -165,7 +165,7 @@ public class SlotMapTest {
         assertNull(newSlot);
         slot = obj.slotMap.query("one", 0);
         assertNull(slot);
-        assertEquals(obj.slotMap.size(), 0);
+        assertEquals(0, obj.slotMap.size());
     }
 
     private static final int NUM_INDICES = 67;
