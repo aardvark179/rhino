@@ -118,7 +118,7 @@ public abstract class ScriptableObject
      * This holds all the slots. It may or may not be thread-safe, and may expand itself to a
      * different data structure depending on the size of the object.
      */
-    private transient SlotMap slotMap;
+    transient SlotMap slotMap;
 
     // Where external array data is stored.
     private transient ExternalArrayData externalData;
