@@ -126,7 +126,7 @@ public class EmbeddedSlotMap implements SlotMap {
             // table size must be a power of 2 -- always grow by x2!
             if (count > SlotMapContainer.LARGE_HASH_SIZE) {
                 var newMap = new HashSlotMap(this, newSlot);
-                owner.replaceMap(newMap);
+                owner.setMap(newMap);
                 return;
             }
             Slot[] newSlots = new Slot[slots.length * 2];

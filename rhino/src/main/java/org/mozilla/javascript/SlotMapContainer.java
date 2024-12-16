@@ -15,7 +15,7 @@ import java.util.Objects;
  * This class holds the various SlotMaps of various types, and knows how to atomically switch
  * between them when we need to so that we use the right data structure at the right time.
  */
-class SlotMapContainer implements SlotMap, SlotMapOwner {
+class SlotMapContainer extends SlotMapOwner implements SlotMap {
 
     /**
      * Once the object has this many properties in it, we will replace the EmbeddedSlotMap with
@@ -47,7 +47,7 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
         public Slot modify(SlotMapOwner container, Object key, int index, int attributes) {
             var newSlot = new Slot(key, index, attributes);
             var map = new SingleSlotMap(newSlot);
-            container.replaceMap(map);
+            container.setMap(map);
             return newSlot;
         }
 
@@ -60,7 +60,7 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
         public void add(SlotMapOwner container, Slot newSlot) {
             if (newSlot != null) {
                 var map = new SingleSlotMap(newSlot);
-                container.replaceMap(map);
+                container.setMap(map);
             }
         }
 
@@ -70,7 +70,7 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
             var newSlot = c.compute(key, index, null);
             if (newSlot != null) {
                 var map = new SingleSlotMap(newSlot);
-                container.replaceMap(map);
+                container.setMap(map);
             }
             return newSlot;
         }
@@ -151,7 +151,7 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
                 throw new IllegalStateException();
             } else {
                 var newMap = new EmbeddedSlotMap();
-                owner.replaceMap(newMap);
+                owner.setMap(newMap);
                 newMap.add(owner, slot);
                 newMap.add(owner, newSlot);
             }
@@ -161,7 +161,7 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
         public <S extends Slot> S compute(
                 SlotMapOwner owner, Object key, int index, SlotComputer<S> c) {
             var newMap = new EmbeddedSlotMap();
-            owner.replaceMap(newMap);
+            owner.setMap(newMap);
             newMap.add(owner, slot);
             return newMap.compute(owner, key, index, c);
         }
@@ -169,61 +169,63 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
 
     static SlotMap EMPTY_SLOT_MAP = new EmptySlotMap();
 
-    protected SlotMap map;
-
     SlotMapContainer() {
         this(DEFAULT_SIZE);
     }
 
     SlotMapContainer(int initialSize) {
+        super(initialMap(initialSize));
+    }
+
+    private static SlotMap initialMap(int initialSize) {
         if (initialSize == 0) {
-            map = EMPTY_SLOT_MAP;
+            return EMPTY_SLOT_MAP;
         } else if (initialSize > LARGE_HASH_SIZE) {
-            map = new HashSlotMap();
+            return new HashSlotMap();
         } else {
-            map = new EmbeddedSlotMap();
+            return new EmbeddedSlotMap();
         }
     }
 
     @Override
     public int size() {
-        return map.size();
+        return getMap().size();
     }
 
     @Override
     public int dirtySize() {
-        return map.size();
+        return getMap().size();
     }
 
     @Override
     public boolean isEmpty() {
-        return map.isEmpty();
+        return getMap().isEmpty();
     }
 
     @Override
     public Slot modify(SlotMapOwner owner, Object key, int index, int attributes) {
-        return map.modify(this, key, index, attributes);
+        return getMap().modify(this, key, index, attributes);
     }
 
     @Override
     public <S extends Slot> S compute(
             SlotMapOwner owner, Object key, int index, SlotComputer<S> c) {
-        return map.compute(this, key, index, c);
+        return getMap().compute(this, key, index, c);
     }
 
     @Override
     public Slot query(Object key, int index) {
-        return map.query(key, index);
+        return getMap().query(key, index);
     }
 
     @Override
     public void add(SlotMapOwner owner, Slot newSlot) {
-        map.add(this, newSlot);
+        getMap().add(this, newSlot);
     }
 
     @Override
     public Iterator<Slot> iterator() {
-        return map.iterator();
+        return getMap().iterator();
     }
 
     @Override
@@ -235,23 +237,5 @@ class SlotMapContainer implements SlotMap, SlotMapOwner {
     @Override
     public void unlockRead(long stamp) {
         // No locking in the default implementation
-    }
-
-    @Override
-    public void replaceMap(SlotMap newMap) {
-        map = newMap;
-    }
-
-    /**
-     * Before inserting a new item in the map, check and see if we need to expand from the embedded
-     * map to a HashMap that is more robust against large numbers of hash collisions.
-     */
-    protected void checkMapSize() {
-        if (map == EMPTY_SLOT_MAP) {
-            map = new EmbeddedSlotMap();
-        } else if ((map instanceof EmbeddedSlotMap) && map.size() >= LARGE_HASH_SIZE) {
-            SlotMap newMap = new HashSlotMap(map);
-            map = newMap;
-        }
     }
 }
