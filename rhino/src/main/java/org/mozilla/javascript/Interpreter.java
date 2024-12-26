@@ -1214,6 +1214,8 @@ public final class Interpreter extends Icode implements Evaluator {
     // arbitrary exception cost for instruction counting
     private static final int EXCEPTION_COST = 100;
 
+    private static final Object DBL_MRK = DOUBLE_MARK;
+
     private static final Object undefined = Undefined.instance;
 
     private static class NewState {}
@@ -1250,8 +1252,6 @@ public final class Interpreter extends Icode implements Evaluator {
         // throwable holds exception object to rethrow or catch
         // It is also used for continuation restart in which case
         // it holds ContinuationJump
-
-        final Object DBL_MRK = DOUBLE_MARK;
 
         final boolean instructionCounting = cx.instructionThreshold != 0;
 
@@ -1991,60 +1991,33 @@ public final class Interpreter extends Icode implements Evaluator {
                                 }
                             case Token.NEW:
                                 {
-                                    if (instructionCounting) {
-                                        cx.instructionCount += INVOCATION_COST;
-                                    }
-                                    // stack change: function arg0 .. argN -> newResult
-                                    // indexReg: number of arguments
-                                    stackTop -= indexReg;
-
-                                    Object lhs = stack[stackTop];
-                                    if (lhs instanceof InterpretedFunction) {
-                                        InterpretedFunction f = (InterpretedFunction) lhs;
-                                        if (frame.fnOrScript.securityDomain == f.securityDomain) {
-                                            Scriptable newInstance =
-                                                    f.createObject(cx, frame.scope);
-                                            CallFrame calleeFrame =
-                                                    initFrame(
-                                                            cx,
-                                                            frame.scope,
-                                                            newInstance,
-                                                            newInstance,
-                                                            stack,
-                                                            sDbl,
-                                                            stackTop + 1,
-                                                            indexReg,
-                                                            f,
-                                                            frame);
-
-                                            stack[stackTop] = newInstance;
-                                            frame.savedStackTop = stackTop;
-                                            frame.savedCallOp = op;
-                                            frame = calleeFrame;
-                                            continue StateLoop;
-                                        }
-                                    }
-                                    if (!(lhs instanceof Constructable)) {
-                                        if (lhs == DBL_MRK)
-                                            lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                        throw ScriptRuntime.notFunctionError(lhs);
-                                    }
-                                    Constructable ctor = (Constructable) lhs;
-
-                                    if (ctor instanceof IdFunctionObject) {
-                                        IdFunctionObject ifun = (IdFunctionObject) ctor;
-                                        if (NativeContinuation.isContinuationConstructor(ifun)) {
-                                            frame.stack[stackTop] =
-                                                    captureContinuation(
-                                                            cx, frame.parentFrame, false);
-                                            continue Loop;
-                                        }
+                                    NewState newState;
+                                    try {
+                                        newState =
+                                                doNewByteCode(
+                                                        cx,
+                                                        frame,
+                                                        instructionCounting,
+                                                        op,
+                                                        stackTop,
+                                                        indexReg);
+                                    } catch (RuntimeException e) {
+                                        stackTop -= indexReg;
+                                        throw e;
                                     }
 
-                                    Object[] outArgs =
-                                            getArgsArray(stack, sDbl, stackTop + 1, indexReg);
-                                    stack[stackTop] = ctor.construct(cx, frame.scope, outArgs);
-                                    continue Loop;
+                                    if (newState instanceof ContinueLoop) {
+                                        frame = ((ContinueLoop) newState).frame;
+                                        stackTop = ((ContinueLoop) newState).stackTop;
+                                        indexReg = ((ContinueLoop) newState).indexReg;
+                                        continue Loop;
+                                    } else if (newState instanceof StateContinue) {
+                                        frame = ((StateContinue) newState).frame;
+                                        continue StateLoop;
+                                    } else {
+                                        Kit.codeBug();
+                                        break;
+                                    }
                                 }
                             case Token.TYPEOF:
                                 {
@@ -2782,6 +2755,67 @@ public final class Interpreter extends Icode implements Evaluator {
         return (interpreterResult != DBL_MRK)
                 ? interpreterResult
                 : ScriptRuntime.wrapNumber(interpreterResultDbl);
+    }
+
+    private static final NewState doNewByteCode(
+            Context cx,
+            CallFrame frame,
+            boolean instructionCounting,
+            int op,
+            int stackTop,
+            int indexReg) {
+        Object[] stack = frame.stack;
+        double[] sDbl = frame.sDbl;
+
+        if (instructionCounting) {
+            cx.instructionCount += INVOCATION_COST;
+        }
+        // stack change: function arg0 .. argN -> newResult
+        // indexReg: number of arguments
+        stackTop -= indexReg;
+
+        Object lhs = stack[stackTop];
+        if (lhs instanceof InterpretedFunction) {
+            InterpretedFunction f = (InterpretedFunction) lhs;
+            if (frame.fnOrScript.securityDomain == f.securityDomain) {
+                Scriptable newInstance = f.createObject(cx, frame.scope);
+                CallFrame calleeFrame =
+                        initFrame(
+                                cx,
+                                frame.scope,
+                                newInstance,
+                                newInstance,
+                                stack,
+                                sDbl,
+                                stackTop + 1,
+                                indexReg,
+                                f,
+                                frame);
+
+                stack[stackTop] = newInstance;
+                frame.savedStackTop = stackTop;
+                frame.savedCallOp = op;
+                frame = calleeFrame;
+                return new StateContinue(frame);
+            }
+        }
+        if (!(lhs instanceof Constructable)) {
+            if (lhs == DBL_MRK) lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+            throw ScriptRuntime.notFunctionError(lhs);
+        }
+        Constructable ctor = (Constructable) lhs;
+
+        if (ctor instanceof IdFunctionObject) {
+            IdFunctionObject ifun = (IdFunctionObject) ctor;
+            if (NativeContinuation.isContinuationConstructor(ifun)) {
+                frame.stack[stackTop] = captureContinuation(cx, frame.parentFrame, false);
+                return new ContinueLoop(frame, stackTop, indexReg);
+            }
+        }
+
+        Object[] outArgs = getArgsArray(stack, sDbl, stackTop + 1, indexReg);
+        stack[stackTop] = ctor.construct(cx, frame.scope, outArgs);
+        return new ContinueLoop(frame, stackTop, indexReg);
     }
 
     private static final NewState doCallByteCode(
