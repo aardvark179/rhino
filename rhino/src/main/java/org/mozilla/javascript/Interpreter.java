@@ -44,9 +44,9 @@ public final class Interpreter extends Icode implements Evaluator {
         // fields marked "final" in a comment are effectively final except when they're modified
         // immediately after cloning.
 
-        /*final*/ CallFrame parentFrame;
+        final CallFrame parentFrame;
         // amount of stack frames before this one on the interpretation stack
-        /*final*/ int frameIndex;
+        final int frameIndex;
         // If true indicates read-only frame that is a part of continuation
         boolean frozen;
 
@@ -114,6 +114,48 @@ public final class Interpreter extends Icode implements Evaluator {
             pcSourceLineStart = idata.firstLinePC;
 
             savedStackTop = emptyStackTop;
+        }
+
+        private CallFrame(CallFrame original, boolean makeOrphan) {
+            if (!original.frozen) Kit.codeBug();
+
+            stack = Arrays.copyOf(original.stack, original.stack.length);
+            stackAttributes =
+                    Arrays.copyOf(original.stackAttributes, original.stackAttributes.length);
+            sDbl = Arrays.copyOf(original.sDbl, original.sDbl.length);
+
+            frozen = false;
+            if (makeOrphan) {
+                parentFrame = null;
+                frameIndex = 0;
+            } else {
+                parentFrame = original.parentFrame;
+                frameIndex = original.frameIndex;
+            }
+
+            fnOrScript = original.fnOrScript;
+            idata = original.idata;
+
+            varSource = original.varSource;
+            localShift = original.localShift;
+            emptyStackTop = original.emptyStackTop;
+
+            debuggerFrame = original.debuggerFrame;
+            useActivation = original.useActivation;
+            isContinuationsTopFrame = original.isContinuationsTopFrame;
+
+            thisObj = original.thisObj;
+
+            result = original.result;
+            resultDbl = original.resultDbl;
+            pc = original.pc;
+            pcPrevBranch = original.pcPrevBranch;
+            pcSourceLineStart = original.pcSourceLineStart;
+            scope = original.scope;
+
+            savedStackTop = original.savedStackTop;
+            savedCallOp = original.savedCallOp;
+            throwable = original.throwable;
         }
 
         void initializeArgs(
@@ -243,24 +285,7 @@ public final class Interpreter extends Icode implements Evaluator {
         }
 
         CallFrame cloneFrozen() {
-            if (!frozen) Kit.codeBug();
-
-            CallFrame copy;
-            try {
-                copy = (CallFrame) clone();
-            } catch (CloneNotSupportedException ex) {
-                throw new IllegalStateException();
-            }
-
-            // clone stack but keep varSource to point to values
-            // from this frame to share variables.
-
-            copy.stack = stack.clone();
-            copy.stackAttributes = stackAttributes.clone();
-            copy.sDbl = sDbl.clone();
-
-            copy.frozen = false;
-            return copy;
+            return new CallFrame(this, false);
         }
 
         @Override
@@ -352,6 +377,10 @@ public final class Interpreter extends Icode implements Evaluator {
                     && equal.equalGraphs(fnOrScript, other.fnOrScript)
                     && equal.equalGraphs(scope, other.scope);
         }
+
+        CallFrame captureForGenerator() {
+            return new CallFrame(this, true);
+        }
     }
 
     private static boolean compareIdata(InterpreterData i1, InterpreterData i2) {
@@ -411,12 +440,8 @@ public final class Interpreter extends Icode implements Evaluator {
 
     private static CallFrame captureFrameForGenerator(CallFrame frame) {
         frame.frozen = true;
-        CallFrame result = frame.cloneFrozen();
+        CallFrame result = frame.captureForGenerator();
         frame.frozen = false;
-
-        // now isolate this frame from its previous context
-        result.parentFrame = null;
-        result.frameIndex = 0;
 
         return result;
     }
