@@ -60,7 +60,7 @@ public final class Interpreter extends Icode implements Evaluator {
         // sDbl[i]: if stack[i] is UniqueTag.DOUBLE_MARK, sDbl[i] holds the number value
 
         final Object[] stack;
-        final int[] stackAttributes;
+        final byte[] stackAttributes;
         final double[] sDbl;
 
         final CallFrame varSource; // defaults to this unless continuation frame
@@ -100,7 +100,7 @@ public final class Interpreter extends Icode implements Evaluator {
             if (maxFrameArray != emptyStackTop + idata.itsMaxStack + 1) Kit.codeBug();
 
             stack = new Object[maxFrameArray];
-            stackAttributes = new int[maxFrameArray];
+            stackAttributes = new byte[maxFrameArray];
             sDbl = new double[maxFrameArray];
 
             this.fnOrScript = fnOrScript;
@@ -1343,7 +1343,7 @@ public final class Interpreter extends Icode implements Evaluator {
                 double[] sDbl = frame.sDbl;
                 Object[] vars = frame.varSource.stack;
                 double[] varDbls = frame.varSource.sDbl;
-                int[] varAttributes = frame.varSource.stackAttributes;
+                byte[] varAttributes = frame.varSource.stackAttributes;
                 byte[] iCode = frame.idata.itsICode;
                 String[] strings = frame.idata.itsStringTable;
                 BigInteger[] bigInts = frame.idata.itsBigIntTable;
@@ -3310,7 +3310,7 @@ public final class Interpreter extends Icode implements Evaluator {
             int stackTop,
             Object[] vars,
             double[] varDbls,
-            int[] varAttributes,
+            byte[] varAttributes,
             int indexReg) {
         if (!frame.useActivation) {
             if ((varAttributes[indexReg] & ScriptableObject.READONLY) == 0) {
@@ -3341,7 +3341,7 @@ public final class Interpreter extends Icode implements Evaluator {
             int stackTop,
             Object[] vars,
             double[] varDbls,
-            int[] varAttributes,
+            byte[] varAttributes,
             int indexReg) {
         if (!frame.useActivation) {
             if ((varAttributes[indexReg] & ScriptableObject.READONLY) == 0) {
@@ -3384,7 +3384,7 @@ public final class Interpreter extends Icode implements Evaluator {
             int stackTop,
             Object[] vars,
             double[] varDbls,
-            int[] varAttributes,
+            byte[] varAttributes,
             int indexReg) {
         // indexReg : varindex
         ++stackTop;
