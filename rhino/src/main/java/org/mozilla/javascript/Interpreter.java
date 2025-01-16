@@ -59,9 +59,9 @@ public final class Interpreter extends Icode implements Evaluator {
         // stack[emptyStackTop < i < stack.length]: stack data
         // sDbl[i]: if stack[i] is UniqueTag.DOUBLE_MARK, sDbl[i] holds the number value
 
-        /*final*/ Object[] stack;
-        /*final*/ int[] stackAttributes;
-        /*final*/ double[] sDbl;
+        final Object[] stack;
+        final int[] stackAttributes;
+        final double[] sDbl;
 
         final CallFrame varSource; // defaults to this unless continuation frame
         final int localShift;
@@ -92,11 +92,17 @@ public final class Interpreter extends Icode implements Evaluator {
                 InterpretedFunction fnOrScript,
                 CallFrame parentFrame) {
             idata = fnOrScript.idata;
-
             debuggerFrame = cx.debugger != null ? cx.debugger.getFrame(cx, idata) : null;
             useActivation = debuggerFrame != null || idata.itsNeedsActivation;
 
             emptyStackTop = idata.itsMaxVars + idata.itsMaxLocals - 1;
+            int maxFrameArray = idata.itsMaxFrameArray;
+            if (maxFrameArray != emptyStackTop + idata.itsMaxStack + 1) Kit.codeBug();
+
+            stack = new Object[maxFrameArray];
+            stackAttributes = new int[maxFrameArray];
+            sDbl = new double[maxFrameArray];
+
             this.fnOrScript = fnOrScript;
             varSource = this;
             localShift = idata.itsMaxVars;
@@ -163,17 +169,20 @@ public final class Interpreter extends Icode implements Evaluator {
                 Scriptable callerScope,
                 Object[] args,
                 double[] argsDbl,
+                Object[] boundArgs,
                 int argShift,
                 int argCount,
                 Scriptable homeObject) {
             if (useActivation) {
                 // Copy args to new array to pass to enterActivationFunction
                 // or debuggerFrame.onEnter
-                if (argsDbl != null) {
-                    args = getArgsArray(args, argsDbl, argShift, argCount);
+                if (argsDbl != null || boundArgs != null) {
+                    int blen = boundArgs == null ? 0 : boundArgs.length;
+                    args = getArgsArray(args, argsDbl, boundArgs, blen, argShift, argCount);
                 }
                 argShift = 0;
                 argsDbl = null;
+                boundArgs = null;
             }
 
             if (idata.itsFunctionType != 0) {
@@ -219,14 +228,6 @@ public final class Interpreter extends Icode implements Evaluator {
             }
 
             final int maxFrameArray = idata.itsMaxFrameArray;
-            // TODO: move this check into InterpreterData construction
-            if (maxFrameArray != emptyStackTop + idata.itsMaxStack + 1) Kit.codeBug();
-
-            // Initialize args, vars, locals and stack
-
-            stack = new Object[maxFrameArray];
-            stackAttributes = new int[maxFrameArray];
-            sDbl = new double[maxFrameArray];
 
             int varCount = idata.getParamAndVarCount();
             for (int i = 0; i < varCount; i++) {
@@ -239,9 +240,18 @@ public final class Interpreter extends Icode implements Evaluator {
 
             // Fill the frame structure
 
-            System.arraycopy(args, argShift, stack, 0, definedArgs);
+            int blen = 0;
+            if (boundArgs != null) {
+                blen = boundArgs.length;
+                if (blen > definedArgs) {
+                    blen = definedArgs;
+                }
+                System.arraycopy(boundArgs, 0, stack, 0, blen);
+            }
+
+            System.arraycopy(args, argShift, stack, blen, definedArgs - blen);
             if (argsDbl != null) {
-                System.arraycopy(argsDbl, argShift, sDbl, 0, definedArgs);
+                System.arraycopy(argsDbl, argShift, sDbl, blen, definedArgs - blen);
             }
             for (int i = definedArgs; i != idata.itsMaxVars; ++i) {
                 stack[i] = Undefined.instance;
@@ -266,19 +276,6 @@ public final class Interpreter extends Icode implements Evaluator {
                 }
                 stack[offset] = cx.newArray(scope, vals);
             }
-        }
-
-        // While maximum stack sizes are normally statically calculated by the compiler, in some
-        // situations we can dynamically need a larger stack, specifically when we're peeling bound
-        // functions, Function.apply, and no-such-method handlers for invocation.
-        Object[] ensureStackLength(int length) {
-            if (length > stack.length) {
-                stack = Arrays.copyOf(stack, length);
-                sDbl = Arrays.copyOf(sDbl, length);
-                // TODO: adjust idata idata.itsMaxFrameArray & idata.itsMaxStack so they start with
-                // larger stacks next time? Not clear this is always a good idea.
-            }
-            return stack;
         }
 
         CallFrame cloneFrozen() {
@@ -1173,6 +1170,7 @@ public final class Interpreter extends Icode implements Evaluator {
                         ifun.getHomeObject(),
                         args,
                         null,
+                        null,
                         0,
                         args.length,
                         ifun,
@@ -2049,6 +2047,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                                             newInstance,
                                                             stack,
                                                             sDbl,
+                                                            null,
                                                             stackTop + 1,
                                                             indexReg,
                                                             f,
@@ -2830,6 +2829,8 @@ public final class Interpreter extends Icode implements Evaluator {
             int indexReg) {
         Object[] stack = frame.stack;
         double[] sDbl = frame.sDbl;
+        Object[] boundArgs = null;
+        int blen = 0;
 
         if (instructionCounting) {
             cx.instructionCount += INVOCATION_COST;
@@ -2885,16 +2886,10 @@ public final class Interpreter extends Icode implements Evaluator {
                 BoundFunction bfun = (BoundFunction) fun;
                 fun = bfun.getTargetFunction();
                 funThisObj = bfun.getCallThis(cx, calleeScope);
-                Object[] boundArgs = bfun.getBoundArgs();
-                int blen = boundArgs.length;
-                if (blen > 0) {
-                    stack = frame.ensureStackLength(blen + stackTop + 2 + indexReg);
-                    sDbl = frame.sDbl;
-                    System.arraycopy(stack, stackTop + 2, stack, stackTop + 2 + blen, indexReg);
-                    System.arraycopy(sDbl, stackTop + 2, sDbl, stackTop + 2 + blen, indexReg);
-                    System.arraycopy(boundArgs, 0, stack, stackTop + 2, blen);
-                    indexReg += blen;
-                }
+                Object[] bArgs = bfun.getBoundArgs();
+                boundArgs = appendBoundArgs(boundArgs, bArgs);
+                blen = blen + bArgs.length;
+                indexReg += blen;
             } else if (fun instanceof IdFunctionObject) {
                 IdFunctionObject ifun = (IdFunctionObject) fun;
                 // Bug 405654 -- make the best effort to keep
@@ -2914,9 +2909,8 @@ public final class Interpreter extends Icode implements Evaluator {
                                         ? ScriptRuntime.emptyArgs
                                         : ScriptRuntime.getApplyArguments(cx, stack[stackTop + 3]);
                         int alen = callArgs.length;
-                        stack = frame.ensureStackLength(alen + stackTop + 2);
-                        sDbl = frame.sDbl;
-                        System.arraycopy(callArgs, 0, stack, stackTop + 2, alen);
+                        boundArgs = appendBoundArgs(boundArgs, callArgs);
+                        blen = blen + alen;
                         indexReg = alen;
                     } else {
                         // Call: shift args left, starting from 2nd
@@ -2940,12 +2934,13 @@ public final class Interpreter extends Icode implements Evaluator {
                 // Bug 447697 -- make best effort to keep
                 // __noSuchMethod__ within this interpreter loop
                 // invocation.
-                stack = frame.ensureStackLength(stackTop + 4);
-                sDbl = frame.sDbl;
-                Object[] elements = getArgsArray(stack, sDbl, stackTop + 2, indexReg);
+                Object[] elements =
+                        getArgsArray(stack, sDbl, boundArgs, blen, stackTop + 2, indexReg);
                 fun = nsmfun.noSuchMethodMethod;
-                stack[stackTop + 2] = nsmfun.methodName;
-                stack[stackTop + 3] = cx.newArray(calleeScope, elements);
+                boundArgs = new Object[2];
+                blen = 2;
+                boundArgs[0] = nsmfun.methodName;
+                boundArgs[1] = cx.newArray(calleeScope, elements);
                 indexReg = 2;
             } else if (fun == null) {
                 throw ScriptRuntime.notFunctionError(null, null);
@@ -2992,6 +2987,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                 funHomeObj,
                                 stack,
                                 sDbl,
+                                boundArgs,
                                 stackTop + 2,
                                 indexReg,
                                 ifun,
@@ -3038,9 +3034,21 @@ public final class Interpreter extends Icode implements Evaluator {
                         cx,
                         calleeScope,
                         funThisObj,
-                        getArgsArray(stack, sDbl, stackTop + 2, indexReg));
+                        getArgsArray(stack, sDbl, boundArgs, blen, stackTop + 2, indexReg));
 
         return new ContinueLoop(frame, stackTop, indexReg);
+    }
+
+    private static Object[] appendBoundArgs(Object[] boundArgs, Object[] newArgs) {
+        if (newArgs.length == 0) {
+            return boundArgs;
+        } else if (boundArgs == null) {
+            return newArgs;
+        } else {
+            Object[] result = Arrays.copyOf(boundArgs, boundArgs.length + newArgs.length);
+            System.arraycopy(newArgs, 0, result, boundArgs.length, newArgs.length);
+            return result;
+        }
     }
 
     private static Scriptable getCurrentFrameHomeObject(CallFrame frame) {
@@ -3717,12 +3725,14 @@ public final class Interpreter extends Icode implements Evaluator {
             Scriptable homeObj,
             Object[] args,
             double[] argsDbl,
+            Object[] boundArgs,
             int argShift,
             int argCount,
             InterpretedFunction fnOrScript,
             CallFrame parentFrame) {
         CallFrame frame = new CallFrame(cx, thisObj, fnOrScript, parentFrame);
-        frame.initializeArgs(cx, callerScope, args, argsDbl, argShift, argCount, homeObj);
+        frame.initializeArgs(
+                cx, callerScope, args, argsDbl, boundArgs, argShift, argCount, homeObj);
         enterFrame(cx, frame, args, false);
         return frame;
     }
@@ -4036,11 +4046,20 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static Object[] getArgsArray(Object[] stack, double[] sDbl, int shift, int count) {
+        return getArgsArray(stack, sDbl, new Object[0], 0, shift, count);
+    }
+
+    private static Object[] getArgsArray(
+            Object[] stack, double[] sDbl, Object[] bound, int bCount, int shift, int count) {
         if (count == 0) {
             return ScriptRuntime.emptyArgs;
         }
         Object[] args = new Object[count];
-        for (int i = 0; i != count; ++i, ++shift) {
+        for (int i = 0; i < bCount; i++) {
+            args[i] = bound[i];
+        }
+
+        for (int i = bCount; i != count; ++i, ++shift) {
             Object val = stack[shift];
             if (val == UniqueTag.DOUBLE_MARK) {
                 val = ScriptRuntime.wrapNumber(sDbl[shift]);
