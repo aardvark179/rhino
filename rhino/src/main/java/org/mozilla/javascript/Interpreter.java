@@ -46,7 +46,7 @@ public final class Interpreter extends Icode implements Evaluator {
 
         final CallFrame parentFrame;
         // amount of stack frames before this one on the interpretation stack
-        final int frameIndex;
+        final short frameIndex;
         // If true indicates read-only frame that is a part of continuation
         boolean frozen;
 
@@ -63,7 +63,7 @@ public final class Interpreter extends Icode implements Evaluator {
         final double[] sDbl;
 
         final CallFrame varSource; // defaults to this unless continuation frame
-        final int emptyStackTop;
+        final short emptyStackTop;
 
         final DebugFrame debuggerFrame;
         final boolean useActivation;
@@ -93,7 +93,7 @@ public final class Interpreter extends Icode implements Evaluator {
             debuggerFrame = cx.debugger != null ? cx.debugger.getFrame(cx, idata) : null;
             useActivation = debuggerFrame != null || idata.itsNeedsActivation;
 
-            emptyStackTop = idata.itsMaxVars + idata.itsMaxLocals - 1;
+            emptyStackTop = (short) (idata.itsMaxVars + idata.itsMaxLocals - 1);
             int maxFrameArray = idata.itsMaxFrameArray;
             if (maxFrameArray != emptyStackTop + idata.itsMaxStack + 1) Kit.codeBug();
 
@@ -106,7 +106,7 @@ public final class Interpreter extends Icode implements Evaluator {
             this.thisObj = thisObj;
 
             this.parentFrame = parentFrame;
-            frameIndex = (parentFrame == null) ? 0 : parentFrame.frameIndex + 1;
+            frameIndex = (short) ((parentFrame == null) ? 0 : parentFrame.frameIndex + 1);
             if (frameIndex > cx.getMaximumInterpreterStackDepth()) {
                 throw Context.reportRuntimeError("Exceeded maximum stack depth");
             }
