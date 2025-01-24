@@ -11,10 +11,8 @@ import static org.mozilla.javascript.UniqueTag.DOUBLE_MARK;
 import java.io.PrintStream;
 import java.io.Serializable;
 import java.math.BigInteger;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -47,6 +45,9 @@ public final class Interpreter extends Icode implements Evaluator {
         final CallFrame parentFrame;
         // amount of stack frames before this one on the interpretation stack
         final short frameIndex;
+        // The frame that the iterator was executing.
+        final CallFrame previousInterpreterFrame;
+        final int parentPC;
         // If true indicates read-only frame that is a part of continuation
         boolean frozen;
 
@@ -88,7 +89,8 @@ public final class Interpreter extends Icode implements Evaluator {
                 Context cx,
                 Scriptable thisObj,
                 InterpretedFunction fnOrScript,
-                CallFrame parentFrame) {
+                CallFrame parentFrame,
+                CallFrame previousInterpreterFrame) {
             InterpreterData idata = fnOrScript.idata;
             debuggerFrame = cx.debugger != null ? cx.debugger.getFrame(cx, idata) : null;
             useActivation = debuggerFrame != null || idata.itsNeedsActivation;
@@ -106,6 +108,8 @@ public final class Interpreter extends Icode implements Evaluator {
             this.thisObj = thisObj;
 
             this.parentFrame = parentFrame;
+            this.parentPC = parentFrame == null ? -1 : parentFrame.pcSourceLineStart;
+            this.previousInterpreterFrame = previousInterpreterFrame;
             frameIndex = (short) ((parentFrame == null) ? 0 : parentFrame.frameIndex + 1);
             if (frameIndex > cx.getMaximumInterpreterStackDepth()) {
                 throw Context.reportRuntimeError("Exceeded maximum stack depth");
@@ -120,6 +124,14 @@ public final class Interpreter extends Icode implements Evaluator {
         }
 
         private CallFrame(CallFrame original, boolean makeOrphan) {
+            this(
+                    original,
+                    makeOrphan ? null : original.parentFrame,
+                    makeOrphan ? null : original.previousInterpreterFrame);
+        }
+
+        private CallFrame(
+                CallFrame original, CallFrame parentFrame, CallFrame previousInterpreterFrame) {
             if (!original.frozen) Kit.codeBug();
 
             stack = Arrays.copyOf(original.stack, original.stack.length);
@@ -128,12 +140,14 @@ public final class Interpreter extends Icode implements Evaluator {
             sDbl = Arrays.copyOf(original.sDbl, original.sDbl.length);
 
             frozen = false;
-            if (makeOrphan) {
-                parentFrame = null;
+            this.parentFrame = parentFrame;
+            this.previousInterpreterFrame = previousInterpreterFrame;
+            if (parentFrame == null) {
                 frameIndex = 0;
+                parentPC = -1;
             } else {
-                parentFrame = original.parentFrame;
                 frameIndex = original.frameIndex;
+                parentPC = parentFrame.pcSourceLineStart;
             }
 
             fnOrScript = original.fnOrScript;
@@ -279,6 +293,10 @@ public final class Interpreter extends Icode implements Evaluator {
 
         CallFrame cloneFrozen() {
             return new CallFrame(this, false);
+        }
+
+        CallFrame cloneFrozen(CallFrame newParent, CallFrame newPreviousInterpreeterFrame) {
+            return new CallFrame(this, newParent, newPreviousInterpreeterFrame);
         }
 
         @Override
@@ -955,53 +973,9 @@ public final class Interpreter extends Icode implements Evaluator {
         if (cx == null || cx.lastInterpreterFrame == null) {
             // No interpreter invocations
             ex.interpreterStackInfo = null;
-            ex.interpreterLineData = null;
-            return;
-        }
-        // has interpreter frame on the stack
-        CallFrame[] array;
-        if (cx.previousInterpreterInvocations == null
-                || cx.previousInterpreterInvocations.size() == 0) {
-            array = new CallFrame[1];
         } else {
-            int previousCount = cx.previousInterpreterInvocations.size();
-            if (cx.previousInterpreterInvocations.peek() == cx.lastInterpreterFrame) {
-                // It can happen if exception was generated after
-                // frame was pushed to cx.previousInterpreterInvocations
-                // but before assignment to cx.lastInterpreterFrame.
-                // In this case frames has to be ignored.
-                --previousCount;
-            }
-            array = new CallFrame[previousCount + 1];
-
-            ArrayList<Object> tempList = new ArrayList<>(cx.previousInterpreterInvocations);
-            Collections.reverse(tempList);
-            tempList.toArray(array);
+            ex.interpreterStackInfo = cx.lastInterpreterFrame;
         }
-        array[array.length - 1] = (CallFrame) cx.lastInterpreterFrame;
-
-        int interpreterFrameCount = 0;
-        for (int i = 0; i != array.length; ++i) {
-            interpreterFrameCount += 1 + array[i].frameIndex;
-        }
-
-        int[] linePC = new int[interpreterFrameCount];
-        // Fill linePC with pc positions from all interpreter frames.
-        // Start from the most nested frame
-        int linePCIndex = interpreterFrameCount;
-        for (int i = array.length; i != 0; ) {
-            --i;
-            CallFrame frame = array[i];
-            while (frame != null) {
-                --linePCIndex;
-                linePC[linePCIndex] = frame.pcSourceLineStart;
-                frame = frame.parentFrame;
-            }
-        }
-        if (linePCIndex != 0) Kit.codeBug();
-
-        ex.interpreterStackInfo = array;
-        ex.interpreterLineData = linePC;
     }
 
     @Override
@@ -1022,13 +996,11 @@ public final class Interpreter extends Icode implements Evaluator {
         StringBuilder sb = new StringBuilder(nativeStackTrace.length() + 1000);
         String lineSeparator = SecurityUtilities.getSystemProperty("line.separator");
 
-        CallFrame[] array = (CallFrame[]) ex.interpreterStackInfo;
-        int[] linePC = ex.interpreterLineData;
-        int arrayIndex = array.length;
-        int linePCIndex = linePC.length;
+        CallFrame calleeFrame = null;
+        CallFrame frame = (CallFrame) ex.interpreterStackInfo;
         int offset = 0;
-        while (arrayIndex != 0) {
-            --arrayIndex;
+        while (frame != null) {
+            CallFrame callerFrame = frame;
             int pos = nativeStackTrace.indexOf(tag, offset);
             if (pos < 0) {
                 break;
@@ -1046,28 +1018,27 @@ public final class Interpreter extends Icode implements Evaluator {
             sb.append(nativeStackTrace, offset, pos);
             offset = pos;
 
-            CallFrame frame = array[arrayIndex];
-            while (frame != null) {
-                if (linePCIndex == 0) Kit.codeBug();
-                --linePCIndex;
-                InterpreterData idata = frame.fnOrScript.idata;
+            while (callerFrame != null) {
+                InterpreterData idata = callerFrame.fnOrScript.idata;
                 sb.append(lineSeparator);
                 sb.append("\tat script");
                 if (idata.itsName != null && idata.itsName.length() != 0) {
                     sb.append('.');
-                    sb.append(idata.itsName);
+                    sb.append("flibble");
                 }
                 sb.append('(');
-                sb.append(idata.itsSourceFile);
-                int pc = linePC[linePCIndex];
+                sb.append("flibble");
+                int pc = calleeFrame == null ? callerFrame.pcSourceLineStart : calleeFrame.parentPC;
                 if (pc >= 0) {
                     // Include line info only if available
                     sb.append(':');
                     sb.append(getIndex(idata.itsICode, pc));
                 }
                 sb.append(')');
-                frame = frame.parentFrame;
+                calleeFrame = callerFrame;
+                callerFrame = callerFrame.parentFrame;
             }
+            frame = calleeFrame.previousInterpreterFrame;
         }
         sb.append(nativeStackTrace.substring(offset));
 
@@ -1097,32 +1068,29 @@ public final class Interpreter extends Icode implements Evaluator {
 
         List<ScriptStackElement[]> list = new ArrayList<>();
 
-        CallFrame[] array = (CallFrame[]) ex.interpreterStackInfo;
-        int[] linePC = ex.interpreterLineData;
-        int arrayIndex = array.length;
-        int linePCIndex = linePC.length;
-        while (arrayIndex != 0) {
-            --arrayIndex;
-            CallFrame frame = array[arrayIndex];
+        CallFrame calleeFrame = null;
+        CallFrame frame = (CallFrame) ex.interpreterStackInfo;
+        while (frame != null) {
+            CallFrame callerFrame = frame;
             List<ScriptStackElement> group = new ArrayList<>();
-            while (frame != null) {
-                if (linePCIndex == 0) Kit.codeBug();
-                --linePCIndex;
-                InterpreterData idata = frame.fnOrScript.idata;
+            while (callerFrame != null) {
+                InterpreterData idata = callerFrame.fnOrScript.idata;
                 String fileName = idata.itsSourceFile;
                 String functionName = null;
                 int lineNumber = -1;
-                int pc = linePC[linePCIndex];
+                int pc = calleeFrame == null ? callerFrame.pcSourceLineStart : calleeFrame.parentPC;
                 if (pc >= 0) {
                     lineNumber = getIndex(idata.itsICode, pc);
                 }
                 if (idata.itsName != null && idata.itsName.length() != 0) {
                     functionName = idata.itsName;
                 }
-                frame = frame.parentFrame;
+                calleeFrame = callerFrame;
+                callerFrame = callerFrame.parentFrame;
                 group.add(new ScriptStackElement(fileName, functionName, lineNumber));
             }
             list.add(group.toArray(new ScriptStackElement[0]));
+            frame = calleeFrame.previousInterpreterFrame;
         }
         return list.toArray(new ScriptStackElement[list.size()][]);
     }
@@ -1285,15 +1253,6 @@ public final class Interpreter extends Icode implements Evaluator {
         BigInteger bigIntReg = null;
         int indexReg = -1;
 
-        if (cx.lastInterpreterFrame != null) {
-            // save the top frame from the previous interpretLoop
-            // invocation on the stack
-            if (cx.previousInterpreterInvocations == null) {
-                cx.previousInterpreterInvocations = new ArrayDeque<>();
-            }
-            cx.previousInterpreterInvocations.push(cx.lastInterpreterFrame);
-        }
-
         // When restarting continuation throwable is not null and to jump
         // to the code that rewind continuation state indexReg should be set
         // to -1.
@@ -1396,6 +1355,9 @@ public final class Interpreter extends Icode implements Evaluator {
                             case Token.YIELD:
                             case Icode_YIELD_STAR:
                                 {
+                                    /* This is both where we yield
+                                     * from and re-enter the
+                                     * generator. */
                                     if (!frame.frozen) {
                                         return freezeGenerator(
                                                 cx,
@@ -2785,14 +2747,11 @@ public final class Interpreter extends Icode implements Evaluator {
 
         // Do cleanups/restorations before the final return or throw
 
-        if (cx.previousInterpreterInvocations != null
-                && cx.previousInterpreterInvocations.size() != 0) {
-            cx.lastInterpreterFrame = cx.previousInterpreterInvocations.pop();
+        if (frame != null) {
+            cx.lastInterpreterFrame =
+                    frame.parentFrame == null ? frame.previousInterpreterFrame : frame.parentFrame;
         } else {
-            // It was the last interpreter frame on the stack
             cx.lastInterpreterFrame = null;
-            // Force GC of the value cx.previousInterpreterInvocations
-            cx.previousInterpreterInvocations = null;
         }
 
         if (throwable != null) {
@@ -3700,7 +3659,15 @@ public final class Interpreter extends Icode implements Evaluator {
             int argCount,
             InterpretedFunction fnOrScript,
             CallFrame parentFrame) {
-        CallFrame frame = new CallFrame(cx, thisObj, fnOrScript, parentFrame);
+        CallFrame frame =
+                new CallFrame(
+                        cx,
+                        thisObj,
+                        fnOrScript,
+                        parentFrame,
+                        parentFrame == null
+                                ? (CallFrame) cx.lastInterpreterFrame
+                                : parentFrame.previousInterpreterFrame);
         frame.initializeArgs(
                 cx, callerScope, args, argsDbl, boundArgs, argShift, argCount, homeObj);
         enterFrame(cx, frame, args, false);
