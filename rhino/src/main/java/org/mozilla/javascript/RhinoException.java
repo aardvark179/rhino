@@ -383,7 +383,6 @@ public abstract class RhinoException extends RuntimeException {
     private int columnNumber;
 
     Object interpreterStackInfo;
-    int[] interpreterLineData;
 
     // Allow us to override default stack style for debugging.
     static {
