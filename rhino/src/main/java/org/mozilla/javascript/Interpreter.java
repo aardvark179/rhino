@@ -1237,6 +1237,44 @@ public final class Interpreter extends Icode implements Evaluator {
         }
     }
 
+    private abstract static class InterpreterResult {}
+
+    private static class YieldResult extends InterpreterResult {
+        private final Object yielding;
+
+        private YieldResult(Object yielding) {
+            this.yielding = yielding;
+        }
+    }
+
+    private static class StateBreakResult extends InterpreterResult {
+        private final CallFrame frame;
+
+        private StateBreakResult(CallFrame frame) {
+            this.frame = frame;
+        }
+    }
+
+    private static class StateContinueResult extends InterpreterResult {
+        private final CallFrame frame;
+        private final int indexReg;
+
+        private StateContinueResult(CallFrame frame, int indexReg) {
+            this.frame = frame;
+            this.indexReg = indexReg;
+        }
+    }
+
+    private static class ThrowableResult extends InterpreterResult {
+        private final CallFrame frame;
+        private final Object throwable;
+
+        private ThrowableResult(CallFrame frame, Object throwable) {
+            this.frame = frame;
+            this.throwable = throwable;
+        }
+    }
+
     private static Object interpretLoop(Context cx, CallFrame frame, Object throwable) {
         // throwable holds exception object to rethrow or catch
         // It is also used for continuation restart in which case
@@ -1276,7 +1314,8 @@ public final class Interpreter extends Icode implements Evaluator {
 
         StateLoop:
         for (; ; ) {
-            withoutExceptions:
+
+            Withoutexceptions:
             try {
 
                 if (throwable != null) {
@@ -1290,1324 +1329,35 @@ public final class Interpreter extends Icode implements Evaluator {
                     if (generatorState == null && frame.frozen) Kit.codeBug();
                 }
 
-                // Use local variables for constant values in frame
-                // for faster access
-                Object[] stack = frame.stack;
-                double[] sDbl = frame.sDbl;
-                Object[] vars = frame.varSource.stack;
-                double[] varDbls = frame.varSource.sDbl;
-                byte[] varAttributes = frame.varSource.stackAttributes;
-                byte[] iCode = frame.idata.itsICode;
-                String[] strings = frame.idata.itsStringTable;
-                BigInteger[] bigInts = frame.idata.itsBigIntTable;
-
-                // Use local for stackTop as well. Since execption handlers
-                // can only exist at statement level where stack is empty,
-                // it is necessary to save/restore stackTop only across
-                // function calls and normal returns.
-                int stackTop = frame.savedStackTop;
-
-                // Store new frame in cx which is used for error reporting etc.
-                cx.lastInterpreterFrame = frame;
-
-                Loop:
-                for (; ; ) {
-
-                    // Exception handler assumes that PC is already incremented
-                    // pass the instruction start when it searches the
-                    // exception handler
-                    int op = iCode[frame.pc++];
-                    jumplessRun:
-                    {
-
-                        // Back indent to ease implementation reading
-                        switch (op) {
-                            case Icode_GENERATOR:
-                                {
-                                    if (!frame.frozen) {
-                                        // First time encountering this opcode: create new generator
-                                        // object and return
-                                        frame.pc--; // we want to come back here when we resume
-                                        CallFrame generatorFrame = captureFrameForGenerator(frame);
-                                        generatorFrame.frozen = true;
-                                        if (cx.getLanguageVersion() >= Context.VERSION_ES6) {
-                                            frame.result =
-                                                    new ES6Generator(
-                                                            frame.scope,
-                                                            generatorFrame.fnOrScript,
-                                                            generatorFrame);
-                                        } else {
-                                            frame.result =
-                                                    new NativeGenerator(
-                                                            frame.scope,
-                                                            generatorFrame.fnOrScript,
-                                                            generatorFrame);
-                                        }
-                                        break Loop;
-                                    }
-                                    // We are now resuming execution. Fall through to YIELD case.
-                                }
-                            // fall through...
-                            case Token.YIELD:
-                            case Icode_YIELD_STAR:
-                                {
-                                    /* This is both where we yield
-                                     * from and re-enter the
-                                     * generator. */
-                                    if (!frame.frozen) {
-                                        return freezeGenerator(
-                                                cx,
-                                                frame,
-                                                stackTop,
-                                                generatorState,
-                                                op == Icode_YIELD_STAR);
-                                    }
-                                    Object obj = thawGenerator(frame, stackTop, generatorState, op);
-                                    if (obj != Scriptable.NOT_FOUND) {
-                                        throwable = obj;
-                                        break withoutExceptions;
-                                    }
-                                    continue Loop;
-                                }
-                            case Icode_GENERATOR_END:
-                                {
-                                    // throw StopIteration
-                                    frame.frozen = true;
-                                    int sourceLine = getIndex(iCode, frame.pc);
-                                    generatorState.returnedException =
-                                            new JavaScriptException(
-                                                    NativeIterator.getStopIterationObject(
-                                                            frame.scope),
-                                                    frame.idata.itsSourceFile,
-                                                    sourceLine);
-                                    break Loop;
-                                }
-                            case Icode_GENERATOR_RETURN:
-                                {
-                                    // throw StopIteration with the value of "return"
-                                    frame.frozen = true;
-                                    frame.result = stack[stackTop];
-                                    frame.resultDbl = sDbl[stackTop];
-                                    --stackTop;
-
-                                    NativeIterator.StopIteration si =
-                                            new NativeIterator.StopIteration(
-                                                    (frame.result == DOUBLE_MARK)
-                                                            ? Double.valueOf(frame.resultDbl)
-                                                            : frame.result);
-
-                                    int sourceLine = getIndex(iCode, frame.pc);
-                                    generatorState.returnedException =
-                                            new JavaScriptException(
-                                                    si, frame.idata.itsSourceFile, sourceLine);
-                                    break Loop;
-                                }
-                            case Token.THROW:
-                                {
-                                    Object value = stack[stackTop];
-                                    if (value == DBL_MRK)
-                                        value = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    --stackTop;
-
-                                    int sourceLine = getIndex(iCode, frame.pc);
-                                    throwable =
-                                            new JavaScriptException(
-                                                    value, frame.idata.itsSourceFile, sourceLine);
-                                    break withoutExceptions;
-                                }
-                            case Token.RETHROW:
-                                {
-                                    indexReg += frame.idata.itsMaxVars;
-                                    throwable = stack[indexReg];
-                                    break withoutExceptions;
-                                }
-                            case Token.GE:
-                            case Token.LE:
-                            case Token.GT:
-                            case Token.LT:
-                                {
-                                    stackTop = doCompare(frame, op, stack, sDbl, stackTop);
-                                    continue Loop;
-                                }
-                            case Token.IN:
-                            case Token.INSTANCEOF:
-                                {
-                                    stackTop = doInOrInstanceof(cx, op, stack, sDbl, stackTop);
-                                    continue Loop;
-                                }
-                            case Token.EQ:
-                            case Token.NE:
-                                {
-                                    --stackTop;
-                                    boolean valBln = doEquals(stack, sDbl, stackTop);
-                                    valBln ^= (op == Token.NE);
-                                    stack[stackTop] = ScriptRuntime.wrapBoolean(valBln);
-                                    continue Loop;
-                                }
-                            case Token.SHEQ:
-                            case Token.SHNE:
-                                {
-                                    --stackTop;
-                                    boolean valBln = doShallowEquals(stack, sDbl, stackTop);
-                                    valBln ^= (op == Token.SHNE);
-                                    stack[stackTop] = ScriptRuntime.wrapBoolean(valBln);
-                                    continue Loop;
-                                }
-                            case Token.IFNE:
-                                if (stack_boolean(frame, stackTop--)) {
-                                    frame.pc += 2;
-                                    continue Loop;
-                                }
-                                break jumplessRun;
-                            case Token.IFEQ:
-                                if (!stack_boolean(frame, stackTop--)) {
-                                    frame.pc += 2;
-                                    continue Loop;
-                                }
-                                break jumplessRun;
-                            case Icode_IFEQ_POP:
-                                if (!stack_boolean(frame, stackTop--)) {
-                                    frame.pc += 2;
-                                    continue Loop;
-                                }
-                                stack[stackTop--] = null;
-                                break jumplessRun;
-                            case Icode_IF_NULL_UNDEF:
-                                {
-                                    Object val = frame.stack[stackTop];
-                                    --stackTop;
-                                    if (val != null && !Undefined.isUndefined(val)) {
-                                        frame.pc += 2;
-                                        continue Loop;
-                                    }
-                                    break jumplessRun;
-                                }
-                            case Icode_IF_NOT_NULL_UNDEF:
-                                {
-                                    Object val = frame.stack[stackTop];
-                                    --stackTop;
-                                    if (val == null || Undefined.isUndefined(val)) {
-                                        frame.pc += 2;
-                                        continue Loop;
-                                    }
-                                    break jumplessRun;
-                                }
-                            case Token.GOTO:
-                                break jumplessRun;
-                            case Icode_GOSUB:
-                                ++stackTop;
-                                stack[stackTop] = DBL_MRK;
-                                sDbl[stackTop] = frame.pc + 2;
-                                break jumplessRun;
-                            case Icode_STARTSUB:
-                                if (stackTop == frame.emptyStackTop + 1) {
-                                    // Call from Icode_GOSUB: store return PC address in the local
-                                    indexReg += frame.idata.itsMaxVars;
-                                    stack[indexReg] = stack[stackTop];
-                                    sDbl[indexReg] = sDbl[stackTop];
-                                    --stackTop;
-                                } else {
-                                    // Call from exception handler: exception object is already
-                                    // stored
-                                    // in the local
-                                    if (stackTop != frame.emptyStackTop) Kit.codeBug();
-                                }
-                                continue Loop;
-                            case Icode_RETSUB:
-                                {
-                                    // indexReg: local to store return address
-                                    if (instructionCounting) {
-                                        addInstructionCount(cx, frame, 0);
-                                    }
-                                    indexReg += frame.idata.itsMaxVars;
-                                    Object value = stack[indexReg];
-                                    if (value != DBL_MRK) {
-                                        // Invocation from exception handler, restore object to
-                                        // rethrow
-                                        throwable = value;
-                                        break withoutExceptions;
-                                    }
-                                    // Normal return from GOSUB
-                                    frame.pc = (int) sDbl[indexReg];
-                                    if (instructionCounting) {
-                                        frame.pcPrevBranch = frame.pc;
-                                    }
-                                    continue Loop;
-                                }
-                            case Icode_POP:
-                                stack[stackTop] = null;
-                                stackTop--;
-                                continue Loop;
-                            case Icode_POP_RESULT:
-                                frame.result = stack[stackTop];
-                                frame.resultDbl = sDbl[stackTop];
-                                stack[stackTop] = null;
-                                --stackTop;
-                                continue Loop;
-                            case Icode_DUP:
-                                stack[stackTop + 1] = stack[stackTop];
-                                sDbl[stackTop + 1] = sDbl[stackTop];
-                                stackTop++;
-                                continue Loop;
-                            case Icode_DUP2:
-                                stack[stackTop + 1] = stack[stackTop - 1];
-                                sDbl[stackTop + 1] = sDbl[stackTop - 1];
-                                stack[stackTop + 2] = stack[stackTop];
-                                sDbl[stackTop + 2] = sDbl[stackTop];
-                                stackTop += 2;
-                                continue Loop;
-                            case Icode_SWAP:
-                                {
-                                    Object o = stack[stackTop];
-                                    stack[stackTop] = stack[stackTop - 1];
-                                    stack[stackTop - 1] = o;
-                                    double d = sDbl[stackTop];
-                                    sDbl[stackTop] = sDbl[stackTop - 1];
-                                    sDbl[stackTop - 1] = d;
-                                    continue Loop;
-                                }
-                            case Token.RETURN:
-                                frame.result = stack[stackTop];
-                                frame.resultDbl = sDbl[stackTop];
-                                --stackTop;
-                                break Loop;
-                            case Token.RETURN_RESULT:
-                                break Loop;
-                            case Icode_RETUNDEF:
-                                frame.result = undefined;
-                                break Loop;
-                            case Token.BITNOT:
-                                {
-                                    stackTop = doBitNOT(frame, stack, sDbl, stackTop);
-                                    continue Loop;
-                                }
-                            case Token.BITAND:
-                            case Token.BITOR:
-                            case Token.BITXOR:
-                            case Token.LSH:
-                            case Token.RSH:
-                                {
-                                    stackTop = doBitOp(frame, op, stack, sDbl, stackTop);
-                                    continue Loop;
-                                }
-                            case Token.URSH:
-                                {
-                                    double lDbl = stack_double(frame, stackTop - 1);
-                                    int rIntValue = stack_int32(frame, stackTop) & 0x1F;
-                                    stack[--stackTop] = DBL_MRK;
-                                    sDbl[stackTop] = ScriptRuntime.toUint32(lDbl) >>> rIntValue;
-                                    continue Loop;
-                                }
-                            case Token.POS:
-                                {
-                                    double rDbl = stack_double(frame, stackTop);
-                                    stack[stackTop] = DBL_MRK;
-                                    sDbl[stackTop] = rDbl;
-                                    continue Loop;
-                                }
-                            case Token.NEG:
-                                {
-                                    Number rNum = stack_numeric(frame, stackTop);
-                                    Number rNegNum = ScriptRuntime.negate(rNum);
-                                    if (rNegNum instanceof BigInteger) {
-                                        stack[stackTop] = rNegNum;
-                                    } else {
-                                        stack[stackTop] = DBL_MRK;
-                                        sDbl[stackTop] = rNegNum.doubleValue();
-                                    }
-                                    continue Loop;
-                                }
-                            case Token.ADD:
-                                --stackTop;
-                                doAdd(stack, sDbl, stackTop, cx);
-                                continue Loop;
-                            case Token.SUB:
-                            case Token.MUL:
-                            case Token.DIV:
-                            case Token.MOD:
-                            case Token.EXP:
-                                {
-                                    stackTop = doArithmetic(frame, op, stack, sDbl, stackTop);
-                                    continue Loop;
-                                }
-                            case Token.NOT:
-                                stack[stackTop] =
-                                        ScriptRuntime.wrapBoolean(!stack_boolean(frame, stackTop));
-                                continue Loop;
-                            case Token.BINDNAME:
-                                stack[++stackTop] = ScriptRuntime.bind(cx, frame.scope, stringReg);
-                                continue Loop;
-                            case Token.STRICT_SETNAME:
-                            case Token.SETNAME:
-                                {
-                                    Object rhs = stack[stackTop];
-                                    if (rhs == DBL_MRK)
-                                        rhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    --stackTop;
-                                    Scriptable lhs = (Scriptable) stack[stackTop];
-                                    stack[stackTop] =
-                                            op == Token.SETNAME
-                                                    ? ScriptRuntime.setName(
-                                                            lhs, rhs, cx, frame.scope, stringReg)
-                                                    : ScriptRuntime.strictSetName(
-                                                            lhs, rhs, cx, frame.scope, stringReg);
-                                    continue Loop;
-                                }
-                            case Icode_SETCONST:
-                                {
-                                    Object rhs = stack[stackTop];
-                                    if (rhs == DBL_MRK)
-                                        rhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    --stackTop;
-                                    Scriptable lhs = (Scriptable) stack[stackTop];
-                                    stack[stackTop] =
-                                            ScriptRuntime.setConst(lhs, rhs, cx, stringReg);
-                                    continue Loop;
-                                }
-                            case Token.DELPROP:
-                            case Icode_DELNAME:
-                                {
-                                    stackTop = doDelName(cx, frame, op, stack, sDbl, stackTop);
-                                    continue Loop;
-                                }
-                            case Icode_DELPROP_SUPER:
-                                stackTop -= 1;
-                                stack[stackTop] = Boolean.FALSE;
-                                ScriptRuntime.throwDeleteOnSuperPropertyNotAllowed();
-                                continue Loop;
-                            case Token.GETPROPNOWARN:
-                                {
-                                    Object lhs = stack[stackTop];
-                                    if (lhs == DBL_MRK)
-                                        lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    stack[stackTop] =
-                                            ScriptRuntime.getObjectPropNoWarn(
-                                                    lhs, stringReg, cx, frame.scope);
-                                    continue Loop;
-                                }
-                            case Token.GETPROP:
-                                {
-                                    Object lhs = stack[stackTop];
-                                    if (lhs == DBL_MRK)
-                                        lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    stack[stackTop] =
-                                            ScriptRuntime.getObjectProp(
-                                                    lhs, stringReg, cx, frame.scope);
-                                    continue Loop;
-                                }
-                            case Token.GETPROP_SUPER:
-                            case Token.GETPROPNOWARN_SUPER:
-                                {
-                                    Object superObject = stack[stackTop];
-                                    if (superObject == DBL_MRK) Kit.codeBug();
-                                    stack[stackTop] =
-                                            ScriptRuntime.getSuperProp(
-                                                    superObject,
-                                                    stringReg,
-                                                    cx,
-                                                    frame.scope,
-                                                    frame.thisObj,
-                                                    op == Token.GETPROPNOWARN_SUPER);
-                                    continue Loop;
-                                }
-                            case Token.SETPROP:
-                                {
-                                    Object rhs = stack[stackTop];
-                                    if (rhs == DBL_MRK)
-                                        rhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    --stackTop;
-                                    Object lhs = stack[stackTop];
-                                    if (lhs == DBL_MRK)
-                                        lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    stack[stackTop] =
-                                            ScriptRuntime.setObjectProp(
-                                                    lhs, stringReg, rhs, cx, frame.scope);
-                                    continue Loop;
-                                }
-                            case Token.SETPROP_SUPER:
-                                {
-                                    Object rhs = stack[stackTop];
-                                    if (rhs == DBL_MRK)
-                                        rhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    --stackTop;
-                                    Object superObject = stack[stackTop];
-                                    if (superObject == DBL_MRK) Kit.codeBug();
-                                    stack[stackTop] =
-                                            ScriptRuntime.setSuperProp(
-                                                    superObject,
-                                                    stringReg,
-                                                    rhs,
-                                                    cx,
-                                                    frame.scope,
-                                                    frame.thisObj);
-                                    continue Loop;
-                                }
-                            case Icode_PROP_INC_DEC:
-                                {
-                                    Object lhs = stack[stackTop];
-                                    if (lhs == DBL_MRK)
-                                        lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    stack[stackTop] =
-                                            ScriptRuntime.propIncrDecr(
-                                                    lhs,
-                                                    stringReg,
-                                                    cx,
-                                                    frame.scope,
-                                                    iCode[frame.pc]);
-                                    ++frame.pc;
-                                    continue Loop;
-                                }
-                            case Token.GETELEM:
-                                {
-                                    stackTop = doGetElem(cx, frame, stack, sDbl, stackTop);
-                                    continue Loop;
-                                }
-                            case Token.GETELEM_SUPER:
-                                {
-                                    stackTop = doGetElemSuper(cx, frame, stack, sDbl, stackTop);
-                                    continue Loop;
-                                }
-                            case Token.SETELEM:
-                                {
-                                    stackTop = doSetElem(cx, frame, stack, sDbl, stackTop);
-                                    continue Loop;
-                                }
-                            case Token.SETELEM_SUPER:
-                                {
-                                    stackTop = doSetElemSuper(cx, frame, stack, sDbl, stackTop);
-                                    continue Loop;
-                                }
-                            case Icode_ELEM_INC_DEC:
-                                {
-                                    stackTop =
-                                            doElemIncDec(cx, frame, iCode, stack, sDbl, stackTop);
-                                    continue Loop;
-                                }
-                            case Token.GET_REF:
-                                {
-                                    Ref ref = (Ref) stack[stackTop];
-                                    stack[stackTop] = ScriptRuntime.refGet(ref, cx);
-                                    continue Loop;
-                                }
-                            case Token.SET_REF:
-                                {
-                                    Object value = stack[stackTop];
-                                    if (value == DBL_MRK)
-                                        value = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    --stackTop;
-                                    Ref ref = (Ref) stack[stackTop];
-                                    stack[stackTop] =
-                                            ScriptRuntime.refSet(ref, value, cx, frame.scope);
-                                    continue Loop;
-                                }
-                            case Token.DEL_REF:
-                                {
-                                    Ref ref = (Ref) stack[stackTop];
-                                    stack[stackTop] = ScriptRuntime.refDel(ref, cx);
-                                    continue Loop;
-                                }
-                            case Icode_REF_INC_DEC:
-                                {
-                                    Ref ref = (Ref) stack[stackTop];
-                                    stack[stackTop] =
-                                            ScriptRuntime.refIncrDecr(
-                                                    ref, cx, frame.scope, iCode[frame.pc]);
-                                    ++frame.pc;
-                                    continue Loop;
-                                }
-                            case Token.LOCAL_LOAD:
-                                ++stackTop;
-                                indexReg += frame.idata.itsMaxVars;
-                                stack[stackTop] = stack[indexReg];
-                                sDbl[stackTop] = sDbl[indexReg];
-                                continue Loop;
-                            case Icode_LOCAL_CLEAR:
-                                indexReg += frame.idata.itsMaxVars;
-                                stack[indexReg] = null;
-                                continue Loop;
-                            case Icode_NAME_AND_THIS:
-                                // stringReg: name
-                                ++stackTop;
-                                stack[stackTop] =
-                                        ScriptRuntime.getNameAndThis(stringReg, cx, frame.scope);
-                                continue Loop;
-                            case Icode_NAME_AND_THIS_OPTIONAL:
-                                // stringReg: name
-                                ++stackTop;
-                                stack[stackTop] =
-                                        ScriptRuntime.getNameAndThisOptional(
-                                                stringReg, cx, frame.scope);
-                                continue Loop;
-                            case Icode_PROP_AND_THIS:
-                                {
-                                    Object obj = stack[stackTop];
-                                    if (obj == DBL_MRK)
-                                        obj = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    // stringReg: property
-                                    stack[stackTop] =
-                                            ScriptRuntime.getPropAndThis(
-                                                    obj, stringReg, cx, frame.scope);
-                                    continue Loop;
-                                }
-                            case Icode_PROP_AND_THIS_OPTIONAL:
-                                {
-                                    Object obj = stack[stackTop];
-                                    if (obj == DBL_MRK)
-                                        obj = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    // stringReg: property
-                                    stack[stackTop] =
-                                            ScriptRuntime.getPropAndThisOptional(
-                                                    obj, stringReg, cx, frame.scope);
-                                    continue Loop;
-                                }
-                            case Icode_ELEM_AND_THIS:
-                                {
-                                    Object obj = stack[stackTop - 1];
-                                    if (obj == DBL_MRK)
-                                        obj = ScriptRuntime.wrapNumber(sDbl[stackTop - 1]);
-                                    Object id = stack[stackTop];
-                                    if (id == DBL_MRK)
-                                        id = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    stackTop--;
-                                    stack[stackTop] =
-                                            ScriptRuntime.getElemAndThis(obj, id, cx, frame.scope);
-                                    continue Loop;
-                                }
-                            case Icode_ELEM_AND_THIS_OPTIONAL:
-                                {
-                                    Object obj = stack[stackTop - 1];
-                                    if (obj == DBL_MRK)
-                                        obj = ScriptRuntime.wrapNumber(sDbl[stackTop - 1]);
-                                    Object id = stack[stackTop];
-                                    if (id == DBL_MRK)
-                                        id = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    stackTop--;
-                                    stack[stackTop] =
-                                            ScriptRuntime.getElemAndThisOptional(
-                                                    obj, id, cx, frame.scope);
-                                    continue Loop;
-                                }
-                            case Icode_VALUE_AND_THIS:
-                                {
-                                    Object value = stack[stackTop];
-                                    if (value == DBL_MRK)
-                                        value = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    stack[stackTop] = ScriptRuntime.getValueAndThis(value, cx);
-                                    continue Loop;
-                                }
-                            case Icode_VALUE_AND_THIS_OPTIONAL:
-                                {
-                                    Object value = stack[stackTop];
-                                    if (value == DBL_MRK)
-                                        value = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    stack[stackTop] =
-                                            ScriptRuntime.getValueAndThisOptional(value, cx);
-                                    continue Loop;
-                                }
-                            case Icode_CALLSPECIAL:
-                                {
-                                    if (instructionCounting) {
-                                        cx.instructionCount += INVOCATION_COST;
-                                    }
-                                    stackTop =
-                                            doCallSpecial(
-                                                    cx, frame, stack, sDbl, stackTop, iCode,
-                                                    indexReg, false);
-                                    continue Loop;
-                                }
-                            case Icode_CALLSPECIAL_OPTIONAL:
-                                {
-                                    if (instructionCounting) {
-                                        cx.instructionCount += INVOCATION_COST;
-                                    }
-                                    stackTop =
-                                            doCallSpecial(
-                                                    cx, frame, stack, sDbl, stackTop, iCode,
-                                                    indexReg, true);
-                                    continue Loop;
-                                }
-                            case Token.CALL:
-                            case Icode_CALL_ON_SUPER:
-                            case Icode_TAIL_CALL:
-                            case Token.REF_CALL:
-                                {
-                                    var callState =
-                                            doCallByteCode(
-                                                    cx,
-                                                    frame,
-                                                    instructionCounting,
-                                                    op,
-                                                    stackTop,
-                                                    indexReg);
-                                    if (callState instanceof ContinueLoop) {
-                                        var contLoop = (ContinueLoop) callState;
-                                        stack = frame.stack;
-                                        sDbl = frame.sDbl;
-                                        stackTop = contLoop.stackTop;
-                                        indexReg = contLoop.indexReg;
-                                        continue Loop;
-                                    } else if (callState instanceof StateContinue) {
-                                        frame = ((StateContinue) callState).frame;
-                                        continue StateLoop;
-                                    } else if (callState instanceof NewThrowable) {
-                                        throwable = ((NewThrowable) callState).throwable;
-                                        break withoutExceptions;
-                                    } else {
-                                        Kit.codeBug();
-                                        break;
-                                    }
-                                }
-                            case Token.NEW:
-                                {
-                                    if (instructionCounting) {
-                                        cx.instructionCount += INVOCATION_COST;
-                                    }
-                                    // stack change: function arg0 .. argN -> newResult
-                                    // indexReg: number of arguments
-                                    stackTop -= indexReg;
-
-                                    Object lhs = stack[stackTop];
-                                    if (lhs instanceof InterpretedFunction) {
-                                        InterpretedFunction f = (InterpretedFunction) lhs;
-                                        if (frame.fnOrScript.securityDomain == f.securityDomain) {
-                                            if (cx.getLanguageVersion() >= Context.VERSION_ES6
-                                                    && f.getHomeObject() != null) {
-                                                // Only methods have home objects associated with
-                                                // them
-                                                throw ScriptRuntime.typeErrorById(
-                                                        "msg.not.ctor", f.getFunctionName());
-                                            }
-
-                                            Scriptable newInstance =
-                                                    f.createObject(cx, frame.scope);
-                                            CallFrame calleeFrame =
-                                                    initFrame(
-                                                            cx,
-                                                            frame.scope,
-                                                            newInstance,
-                                                            newInstance,
-                                                            stack,
-                                                            sDbl,
-                                                            null,
-                                                            stackTop + 1,
-                                                            indexReg,
-                                                            f,
-                                                            frame);
-
-                                            stack[stackTop] = newInstance;
-                                            frame.savedStackTop = stackTop;
-                                            frame.savedCallOp = op;
-                                            frame = calleeFrame;
-                                            continue StateLoop;
-                                        }
-                                    }
-                                    if (!(lhs instanceof Constructable)) {
-                                        if (lhs == DBL_MRK)
-                                            lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                        throw ScriptRuntime.notFunctionError(lhs);
-                                    }
-                                    Constructable ctor = (Constructable) lhs;
-
-                                    if (ctor instanceof IdFunctionObject) {
-                                        IdFunctionObject ifun = (IdFunctionObject) ctor;
-                                        if (NativeContinuation.isContinuationConstructor(ifun)) {
-                                            frame.stack[stackTop] =
-                                                    captureContinuation(
-                                                            cx, frame.parentFrame, false);
-                                            continue Loop;
-                                        }
-                                    }
-
-                                    Object[] outArgs =
-                                            getArgsArray(stack, sDbl, stackTop + 1, indexReg);
-                                    stack[stackTop] = ctor.construct(cx, frame.scope, outArgs);
-                                    continue Loop;
-                                }
-                            case Token.TYPEOF:
-                                {
-                                    Object lhs = stack[stackTop];
-                                    if (lhs == DBL_MRK)
-                                        lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    stack[stackTop] = ScriptRuntime.typeof(lhs);
-                                    continue Loop;
-                                }
-                            case Icode_TYPEOFNAME:
-                                stack[++stackTop] =
-                                        ScriptRuntime.typeofName(frame.scope, stringReg);
-                                continue Loop;
-                            case Token.STRING:
-                                stack[++stackTop] = stringReg;
-                                continue Loop;
-                            case Icode_SHORTNUMBER:
-                                ++stackTop;
-                                stack[stackTop] = DBL_MRK;
-                                sDbl[stackTop] = getShort(iCode, frame.pc);
-                                frame.pc += 2;
-                                continue Loop;
-                            case Icode_INTNUMBER:
-                                ++stackTop;
-                                stack[stackTop] = DBL_MRK;
-                                sDbl[stackTop] = getInt(iCode, frame.pc);
-                                frame.pc += 4;
-                                continue Loop;
-                            case Token.NUMBER:
-                                ++stackTop;
-                                stack[stackTop] = DBL_MRK;
-                                sDbl[stackTop] = frame.idata.itsDoubleTable[indexReg];
-                                continue Loop;
-                            case Token.BIGINT:
-                                stack[++stackTop] = bigIntReg;
-                                continue Loop;
-                            case Token.NAME:
-                                stack[++stackTop] = ScriptRuntime.name(cx, frame.scope, stringReg);
-                                continue Loop;
-                            case Icode_NAME_INC_DEC:
-                                stack[++stackTop] =
-                                        ScriptRuntime.nameIncrDecr(
-                                                frame.scope, stringReg, cx, iCode[frame.pc]);
-                                ++frame.pc;
-                                continue Loop;
-                            case Icode_SETCONSTVAR1:
-                                indexReg = iCode[frame.pc++];
-                            // fallthrough
-                            case Token.SETCONSTVAR:
-                                stackTop =
-                                        doSetConstVar(
-                                                frame,
-                                                stack,
-                                                sDbl,
-                                                stackTop,
-                                                vars,
-                                                varDbls,
-                                                varAttributes,
-                                                indexReg);
-                                continue Loop;
-                            case Icode_SETVAR1:
-                                indexReg = iCode[frame.pc++];
-                            // fallthrough
-                            case Token.SETVAR:
-                                stackTop =
-                                        doSetVar(
-                                                frame,
-                                                stack,
-                                                sDbl,
-                                                stackTop,
-                                                vars,
-                                                varDbls,
-                                                varAttributes,
-                                                indexReg);
-                                continue Loop;
-                            case Icode_GETVAR1:
-                                indexReg = iCode[frame.pc++];
-                            // fallthrough
-                            case Token.GETVAR:
-                                stackTop =
-                                        doGetVar(
-                                                frame, stack, sDbl, stackTop, vars, varDbls,
-                                                indexReg);
-                                continue Loop;
-                            case Icode_VAR_INC_DEC:
-                                {
-                                    stackTop =
-                                            doVarIncDec(
-                                                    cx,
-                                                    frame,
-                                                    stack,
-                                                    sDbl,
-                                                    stackTop,
-                                                    vars,
-                                                    varDbls,
-                                                    varAttributes,
-                                                    indexReg);
-                                    continue Loop;
-                                }
-                            case Icode_ZERO:
-                                ++stackTop;
-                                stack[stackTop] = Integer.valueOf(0);
-                                continue Loop;
-                            case Icode_ONE:
-                                ++stackTop;
-                                stack[stackTop] = Integer.valueOf(1);
-                                continue Loop;
-                            case Token.NULL:
-                                stack[++stackTop] = null;
-                                continue Loop;
-                            case Token.THIS:
-                                stack[++stackTop] = frame.thisObj;
-                                continue Loop;
-                            case Token.SUPER:
-                                {
-                                    // See 9.1.1.3.5 GetSuperBase
-
-                                    // If we are referring to "super", then we always have an
-                                    // activation
-                                    // (this is done in IrFactory). The home object is stored as
-                                    // part of the
-                                    // activation frame to propagate it correctly for nested
-                                    // functions.
-                                    Scriptable homeObject = getCurrentFrameHomeObject(frame);
-                                    if (homeObject == null) {
-                                        // This if is specified in the spec, but I cannot imagine
-                                        // how the home object will ever be null since `super` is
-                                        // legal _only_ in method definitions, where we do have a
-                                        // home object!
-                                        stack[++stackTop] = Undefined.instance;
-                                    } else {
-                                        stack[++stackTop] = homeObject.getPrototype();
-                                    }
-                                    continue Loop;
-                                }
-                            case Token.THISFN:
-                                stack[++stackTop] = frame.fnOrScript;
-                                continue Loop;
-                            case Token.FALSE:
-                                stack[++stackTop] = Boolean.FALSE;
-                                continue Loop;
-                            case Token.TRUE:
-                                stack[++stackTop] = Boolean.TRUE;
-                                continue Loop;
-                            case Icode_UNDEF:
-                                stack[++stackTop] = undefined;
-                                continue Loop;
-                            case Token.ENTERWITH:
-                                {
-                                    Object lhs = stack[stackTop];
-                                    if (lhs == DBL_MRK)
-                                        lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    --stackTop;
-                                    frame.scope = ScriptRuntime.enterWith(lhs, cx, frame.scope);
-                                    continue Loop;
-                                }
-                            case Token.LEAVEWITH:
-                                frame.scope = ScriptRuntime.leaveWith(frame.scope);
-                                continue Loop;
-                            case Token.CATCH_SCOPE:
-                                {
-                                    // stack top: exception object
-                                    // stringReg: name of exception variable
-                                    // indexReg: local for exception scope
-                                    --stackTop;
-                                    indexReg += frame.idata.itsMaxVars;
-
-                                    boolean afterFirstScope = (frame.idata.itsICode[frame.pc] != 0);
-                                    Throwable caughtException = (Throwable) stack[stackTop + 1];
-                                    Scriptable lastCatchScope;
-                                    if (!afterFirstScope) {
-                                        lastCatchScope = null;
-                                    } else {
-                                        lastCatchScope = (Scriptable) stack[indexReg];
-                                    }
-                                    stack[indexReg] =
-                                            ScriptRuntime.newCatchScope(
-                                                    caughtException,
-                                                    lastCatchScope,
-                                                    stringReg,
-                                                    cx,
-                                                    frame.scope);
-                                    ++frame.pc;
-                                    continue Loop;
-                                }
-                            case Token.ENUM_INIT_KEYS:
-                            case Token.ENUM_INIT_VALUES:
-                            case Token.ENUM_INIT_ARRAY:
-                            case Token.ENUM_INIT_VALUES_IN_ORDER:
-                                {
-                                    Object lhs = stack[stackTop];
-                                    if (lhs == DBL_MRK)
-                                        lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    --stackTop;
-                                    indexReg += frame.idata.itsMaxVars;
-                                    int enumType =
-                                            op == Token.ENUM_INIT_KEYS
-                                                    ? ScriptRuntime.ENUMERATE_KEYS
-                                                    : op == Token.ENUM_INIT_VALUES
-                                                            ? ScriptRuntime.ENUMERATE_VALUES
-                                                            : op == Token.ENUM_INIT_VALUES_IN_ORDER
-                                                                    ? ScriptRuntime
-                                                                            .ENUMERATE_VALUES_IN_ORDER
-                                                                    : ScriptRuntime.ENUMERATE_ARRAY;
-                                    stack[indexReg] =
-                                            ScriptRuntime.enumInit(lhs, cx, frame.scope, enumType);
-                                    continue Loop;
-                                }
-                            case Token.ENUM_NEXT:
-                            case Token.ENUM_ID:
-                                {
-                                    indexReg += frame.idata.itsMaxVars;
-                                    Object val = stack[indexReg];
-                                    ++stackTop;
-                                    stack[stackTop] =
-                                            (op == Token.ENUM_NEXT)
-                                                    ? ScriptRuntime.enumNext(val, cx)
-                                                    : ScriptRuntime.enumId(val, cx);
-                                    continue Loop;
-                                }
-                            case Token.REF_SPECIAL:
-                                {
-                                    // stringReg: name of special property
-                                    Object obj = stack[stackTop];
-                                    if (obj == DBL_MRK)
-                                        obj = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    stack[stackTop] =
-                                            ScriptRuntime.specialRef(
-                                                    obj, stringReg, cx, frame.scope);
-                                    continue Loop;
-                                }
-                            case Token.REF_MEMBER:
-                                {
-                                    // indexReg: flags
-                                    stackTop = doRefMember(cx, stack, sDbl, stackTop, indexReg);
-                                    continue Loop;
-                                }
-                            case Token.REF_NS_MEMBER:
-                                {
-                                    // indexReg: flags
-                                    stackTop = doRefNsMember(cx, stack, sDbl, stackTop, indexReg);
-                                    continue Loop;
-                                }
-                            case Token.REF_NAME:
-                                {
-                                    // indexReg: flags
-                                    Object name = stack[stackTop];
-                                    if (name == DBL_MRK)
-                                        name = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    stack[stackTop] =
-                                            ScriptRuntime.nameRef(name, cx, frame.scope, indexReg);
-                                    continue Loop;
-                                }
-                            case Token.REF_NS_NAME:
-                                {
-                                    // indexReg: flags
-                                    stackTop =
-                                            doRefNsName(cx, frame, stack, sDbl, stackTop, indexReg);
-                                    continue Loop;
-                                }
-                            case Icode_SCOPE_LOAD:
-                                indexReg += frame.idata.itsMaxVars;
-                                frame.scope = (Scriptable) stack[indexReg];
-                                continue Loop;
-                            case Icode_SCOPE_SAVE:
-                                indexReg += frame.idata.itsMaxVars;
-                                stack[indexReg] = frame.scope;
-                                continue Loop;
-                            case Icode_CLOSURE_EXPR:
-                                InterpretedFunction fn =
-                                        InterpretedFunction.createFunction(
-                                                cx, frame.scope, frame.fnOrScript, indexReg);
-                                if (fn.idata.itsFunctionType == FunctionNode.ARROW_FUNCTION) {
-                                    Scriptable homeObject = getCurrentFrameHomeObject(frame);
-                                    if (fn.idata.itsNeedsActivation) {
-                                        fn.setHomeObject(homeObject);
-                                    }
-
-                                    stack[++stackTop] =
-                                            new ArrowFunction(
-                                                    cx, frame.scope, fn, frame.thisObj, homeObject);
-                                } else {
-                                    stack[++stackTop] = fn;
-                                }
-                                continue Loop;
-                            case ICode_FN_STORE_HOME_OBJECT:
-                                {
-                                    // Stack contains: [object, keysArray, flagsArray, valuesArray,
-                                    // function]
-                                    InterpretedFunction fun = (InterpretedFunction) stack[stackTop];
-                                    Scriptable homeObject = (Scriptable) stack[stackTop - 4];
-                                    fun.setHomeObject(homeObject);
-                                    continue Loop;
-                                }
-                            case Icode_CLOSURE_STMT:
-                                initFunction(cx, frame.scope, frame.fnOrScript, indexReg);
-                                continue Loop;
-                            case Token.REGEXP:
-                                Object re = frame.idata.itsRegExpLiterals[indexReg];
-                                stack[++stackTop] = ScriptRuntime.wrapRegExp(cx, frame.scope, re);
-                                continue Loop;
-                            case Icode_TEMPLATE_LITERAL_CALLSITE:
-                                Object[] templateLiterals = frame.idata.itsTemplateLiterals;
-                                stack[++stackTop] =
-                                        ScriptRuntime.getTemplateLiteralCallSite(
-                                                cx, frame.scope, templateLiterals, indexReg);
-                                continue Loop;
-                            case Icode_LITERAL_NEW_OBJECT:
-                                {
-                                    // indexReg: index of constant with the keys
-                                    Object[] ids = (Object[]) frame.idata.literalIds[indexReg];
-                                    boolean copyArray = iCode[frame.pc] != 0;
-                                    ++frame.pc;
-                                    ++stackTop;
-                                    stack[stackTop] = cx.newObject(frame.scope);
-                                    ++stackTop;
-                                    stack[stackTop] =
-                                            copyArray ? Arrays.copyOf(ids, ids.length) : ids;
-                                    ++stackTop;
-                                    stack[stackTop] = new int[ids.length];
-                                    ++stackTop;
-                                    stack[stackTop] = new Object[ids.length];
-                                    sDbl[stackTop] = 0;
-                                    continue Loop;
-                                }
-                            case Icode_LITERAL_NEW_ARRAY:
-                                // indexReg: number of values in the literal
-                                ++stackTop;
-                                stack[stackTop] = new int[indexReg];
-                                ++stackTop;
-                                stack[stackTop] = new Object[indexReg];
-                                sDbl[stackTop] = 0;
-                                continue Loop;
-                            case Icode_LITERAL_SET:
-                                {
-                                    Object value = stack[stackTop];
-                                    if (value == DBL_MRK)
-                                        value = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    --stackTop;
-                                    int i = (int) sDbl[stackTop];
-                                    ((Object[]) stack[stackTop])[i] = value;
-                                    sDbl[stackTop] = i + 1;
-                                    continue Loop;
-                                }
-                            case Icode_LITERAL_GETTER:
-                                {
-                                    Object value = stack[stackTop];
-                                    --stackTop;
-                                    int i = (int) sDbl[stackTop];
-                                    ((Object[]) stack[stackTop])[i] = value;
-                                    ((int[]) stack[stackTop - 1])[i] = -1;
-                                    sDbl[stackTop] = i + 1;
-                                    continue Loop;
-                                }
-                            case Icode_LITERAL_SETTER:
-                                {
-                                    Object value = stack[stackTop];
-                                    --stackTop;
-                                    int i = (int) sDbl[stackTop];
-                                    ((Object[]) stack[stackTop])[i] = value;
-                                    ((int[]) stack[stackTop - 1])[i] = 1;
-                                    sDbl[stackTop] = i + 1;
-                                    continue Loop;
-                                }
-
-                            case Icode_LITERAL_KEY_SET:
-                                {
-                                    Object key = stack[stackTop];
-                                    if (key == DBL_MRK)
-                                        key = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    --stackTop;
-                                    Object[] ids = (Object[]) stack[stackTop - 2];
-                                    int i = (int) sDbl[stackTop];
-                                    ids[i] = key;
-                                    continue Loop;
-                                }
-                            case Token.OBJECTLIT:
-                                {
-                                    Object[] values = (Object[]) stack[stackTop];
-                                    --stackTop;
-                                    int[] getterSetters = (int[]) stack[stackTop];
-                                    --stackTop;
-                                    Object[] keys = (Object[]) stack[stackTop];
-                                    --stackTop;
-                                    Scriptable object = (Scriptable) stack[stackTop];
-                                    ScriptRuntime.fillObjectLiteral(
-                                            object, keys, values, getterSetters, cx, frame.scope);
-                                    continue Loop;
-                                }
-                            case Token.ARRAYLIT:
-                            case Icode_SPARE_ARRAYLIT:
-                                {
-                                    Object[] data = (Object[]) stack[stackTop];
-                                    --stackTop;
-                                    int[] getterSetters = (int[]) stack[stackTop];
-                                    Object val;
-
-                                    int[] skipIndexces = null;
-                                    if (op == Icode_SPARE_ARRAYLIT) {
-                                        skipIndexces = (int[]) frame.idata.literalIds[indexReg];
-                                    }
-                                    val =
-                                            ScriptRuntime.newArrayLiteral(
-                                                    data, skipIndexces, cx, frame.scope);
-
-                                    stack[stackTop] = val;
-                                    continue Loop;
-                                }
-                            case Icode_ENTERDQ:
-                                {
-                                    Object lhs = stack[stackTop];
-                                    if (lhs == DBL_MRK)
-                                        lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    --stackTop;
-                                    frame.scope = ScriptRuntime.enterDotQuery(lhs, frame.scope);
-                                    continue Loop;
-                                }
-                            case Icode_LEAVEDQ:
-                                {
-                                    boolean valBln = stack_boolean(frame, stackTop);
-                                    Object x = ScriptRuntime.updateDotQuery(valBln, frame.scope);
-                                    if (x != null) {
-                                        stack[stackTop] = x;
-                                        frame.scope = ScriptRuntime.leaveDotQuery(frame.scope);
-                                        frame.pc += 2;
-                                        continue Loop;
-                                    }
-                                    // reset stack and PC to code after ENTERDQ
-                                    --stackTop;
-                                    break jumplessRun;
-                                }
-                            case Token.DEFAULTNAMESPACE:
-                                {
-                                    Object value = stack[stackTop];
-                                    if (value == DBL_MRK)
-                                        value = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-                                    stack[stackTop] = ScriptRuntime.setDefaultNamespace(value, cx);
-                                    continue Loop;
-                                }
-                            case Token.ESCXMLATTR:
-                                {
-                                    Object value = stack[stackTop];
-                                    if (value != DBL_MRK) {
-                                        stack[stackTop] =
-                                                ScriptRuntime.escapeAttributeValue(value, cx);
-                                    }
-                                    continue Loop;
-                                }
-                            case Token.ESCXMLTEXT:
-                                {
-                                    Object value = stack[stackTop];
-                                    if (value != DBL_MRK) {
-                                        stack[stackTop] = ScriptRuntime.escapeTextValue(value, cx);
-                                    }
-                                    continue Loop;
-                                }
-                            case Icode_DEBUGGER:
-                                if (frame.debuggerFrame != null) {
-                                    frame.debuggerFrame.onDebuggerStatement(cx);
-                                }
-                                continue Loop;
-                            case Icode_LINE:
-                                frame.pcSourceLineStart = frame.pc;
-                                if (frame.debuggerFrame != null) {
-                                    int line = getIndex(iCode, frame.pc);
-                                    frame.debuggerFrame.onLineChange(cx, line);
-                                }
-                                frame.pc += 2;
-                                continue Loop;
-                            case Icode_REG_IND_C0:
-                                indexReg = 0;
-                                continue Loop;
-                            case Icode_REG_IND_C1:
-                                indexReg = 1;
-                                continue Loop;
-                            case Icode_REG_IND_C2:
-                                indexReg = 2;
-                                continue Loop;
-                            case Icode_REG_IND_C3:
-                                indexReg = 3;
-                                continue Loop;
-                            case Icode_REG_IND_C4:
-                                indexReg = 4;
-                                continue Loop;
-                            case Icode_REG_IND_C5:
-                                indexReg = 5;
-                                continue Loop;
-                            case Icode_REG_IND1:
-                                indexReg = 0xFF & iCode[frame.pc];
-                                ++frame.pc;
-                                continue Loop;
-                            case Icode_REG_IND2:
-                                indexReg = getIndex(iCode, frame.pc);
-                                frame.pc += 2;
-                                continue Loop;
-                            case Icode_REG_IND4:
-                                indexReg = getInt(iCode, frame.pc);
-                                frame.pc += 4;
-                                continue Loop;
-                            case Icode_REG_STR_C0:
-                                stringReg = strings[0];
-                                continue Loop;
-                            case Icode_REG_STR_C1:
-                                stringReg = strings[1];
-                                continue Loop;
-                            case Icode_REG_STR_C2:
-                                stringReg = strings[2];
-                                continue Loop;
-                            case Icode_REG_STR_C3:
-                                stringReg = strings[3];
-                                continue Loop;
-                            case Icode_REG_STR1:
-                                stringReg = strings[0xFF & iCode[frame.pc]];
-                                ++frame.pc;
-                                continue Loop;
-                            case Icode_REG_STR2:
-                                stringReg = strings[getIndex(iCode, frame.pc)];
-                                frame.pc += 2;
-                                continue Loop;
-                            case Icode_REG_STR4:
-                                stringReg = strings[getInt(iCode, frame.pc)];
-                                frame.pc += 4;
-                                continue Loop;
-                            case Icode_REG_BIGINT_C0:
-                                bigIntReg = bigInts[0];
-                                continue Loop;
-                            case Icode_REG_BIGINT_C1:
-                                bigIntReg = bigInts[1];
-                                continue Loop;
-                            case Icode_REG_BIGINT_C2:
-                                bigIntReg = bigInts[2];
-                                continue Loop;
-                            case Icode_REG_BIGINT_C3:
-                                bigIntReg = bigInts[3];
-                                continue Loop;
-                            case Icode_REG_BIGINT1:
-                                bigIntReg = bigInts[0xFF & iCode[frame.pc]];
-                                ++frame.pc;
-                                continue Loop;
-                            case Icode_REG_BIGINT2:
-                                bigIntReg = bigInts[getIndex(iCode, frame.pc)];
-                                frame.pc += 2;
-                                continue Loop;
-                            case Icode_REG_BIGINT4:
-                                bigIntReg = bigInts[getInt(iCode, frame.pc)];
-                                frame.pc += 4;
-                                continue Loop;
-                            default:
-                                dumpICode(frame.idata);
-                                throw new RuntimeException(
-                                        "Unknown icode : " + op + " @ pc : " + (frame.pc - 1));
-                        } // end of interpreter switch
-                    } // end of jumplessRun label block
-
-                    // This should be reachable only for jump implementation
-                    // when pc points to encoded target offset
-                    if (instructionCounting) {
-                        addInstructionCount(cx, frame, 2);
-                    }
-                    int offset = getShort(iCode, frame.pc);
-                    if (offset != 0) {
-                        // -1 accounts for pc pointing to jump opcode + 1
-                        frame.pc += offset - 1;
-                    } else {
-                        frame.pc = frame.idata.longJumps.get(frame.pc);
-                    }
-                    if (instructionCounting) {
-                        frame.pcPrevBranch = frame.pc;
-                    }
-                    continue Loop;
-                } // end of Loop: for
-
-                exitFrame(cx, frame, null);
-                interpreterResult = frame.result;
-                interpreterResultDbl = frame.resultDbl;
-                if (frame.parentFrame != null) {
-                    frame = frame.parentFrame;
-                    if (frame.frozen) {
-                        frame = frame.cloneFrozen();
-                    }
-                    setCallResult(frame, interpreterResult, interpreterResultDbl);
-                    interpreterResult = null; // Help GC
+                InterpreterResult result =
+                        interpretFunction(
+                                cx,
+                                frame,
+                                throwable,
+                                generatorState,
+                                indexReg,
+                                instructionCounting);
+                if (result instanceof StateContinueResult) {
+                    StateContinueResult scr = (StateContinueResult) result;
+                    frame = scr.frame;
+                    indexReg = scr.indexReg;
                     continue StateLoop;
+                } else if (result instanceof StateBreakResult) {
+                    StateBreakResult sbr = (StateBreakResult) result;
+                    frame = sbr.frame;
+                    interpreterResult = frame.result;
+                    interpreterResultDbl = frame.resultDbl;
+                    break StateLoop;
+                } else if (result instanceof YieldResult) {
+                    return ((YieldResult) result).yielding;
+                } else if (result instanceof ThrowableResult) {
+                    ThrowableResult tr = (ThrowableResult) result;
+                    frame = tr.frame;
+                    throwable = tr.throwable;
+                    break Withoutexceptions;
+                } else {
+                    Kit.codeBug();
                 }
-                break StateLoop;
-
             } // end of interpreter withoutExceptions: try
             catch (Throwable ex) {
                 if (throwable != null) {
@@ -2760,6 +1510,1310 @@ public final class Interpreter extends Icode implements Evaluator {
         return (interpreterResult != DBL_MRK)
                 ? interpreterResult
                 : ScriptRuntime.wrapNumber(interpreterResultDbl);
+    }
+
+    private static final Object DBL_MRK = DOUBLE_MARK;
+
+    private static InterpreterResult interpretFunction(
+            Context cx,
+            CallFrame frame,
+            Object throwable,
+            GeneratorState generatorState,
+            int indexReg,
+            boolean instructionCounting) {
+
+        withoutExceptions:
+        try {
+
+            // Use local variables for constant values in frame
+            // for faster access
+            final Object[] stack = frame.stack;
+            final double[] sDbl = frame.sDbl;
+            final Object[] vars = frame.varSource.stack;
+            final double[] varDbls = frame.varSource.sDbl;
+            final byte[] varAttributes = frame.varSource.stackAttributes;
+            final byte[] iCode = frame.idata.itsICode;
+            final String[] strings = frame.idata.itsStringTable;
+            final BigInteger[] bigInts = frame.idata.itsBigIntTable;
+            String stringReg = null;
+            BigInteger bigIntReg = null;
+
+            // Use local for stackTop as well. Since execption handlers
+            // can only exist at statement level where stack is empty,
+            // it is necessary to save/restore stackTop only across
+            // function calls and normal returns.
+            int stackTop = frame.savedStackTop;
+
+            // Store new frame in cx which is used for error reporting etc.
+            cx.lastInterpreterFrame = frame;
+
+            Loop:
+            for (; ; ) {
+
+                // Exception handler assumes that PC is already incremented
+                // pass the instruction start when it searches the
+                // exception handler
+                int op = iCode[frame.pc++];
+                jumplessRun:
+                {
+
+                    // Back indent to ease implementation reading
+                    switch (op) {
+                        case Icode_GENERATOR:
+                            {
+                                if (!frame.frozen) {
+                                    // First time encountering this opcode: create new generator
+                                    // object and return
+                                    frame.pc--; // we want to come back here when we resume
+                                    CallFrame generatorFrame = captureFrameForGenerator(frame);
+                                    generatorFrame.frozen = true;
+                                    if (cx.getLanguageVersion() >= Context.VERSION_ES6) {
+                                        frame.result =
+                                                new ES6Generator(
+                                                        frame.scope,
+                                                        generatorFrame.fnOrScript,
+                                                        generatorFrame);
+                                    } else {
+                                        frame.result =
+                                                new NativeGenerator(
+                                                        frame.scope,
+                                                        generatorFrame.fnOrScript,
+                                                        generatorFrame);
+                                    }
+                                    break Loop;
+                                }
+                                // We are now resuming execution. Fall through to YIELD case.
+                            }
+                        // fall through...
+                        case Token.YIELD:
+                        case Icode_YIELD_STAR:
+                            {
+                                /* This is both where we yield
+                                 * from and re-enter the
+                                 * generator. */
+                                if (!frame.frozen) {
+                                    return new YieldResult(
+                                            freezeGenerator(
+                                                    cx,
+                                                    frame,
+                                                    stackTop,
+                                                    generatorState,
+                                                    op == Icode_YIELD_STAR));
+                                }
+                                Object obj = thawGenerator(frame, stackTop, generatorState, op);
+                                if (obj != Scriptable.NOT_FOUND) {
+                                    throwable = obj;
+                                    break withoutExceptions;
+                                }
+                                continue Loop;
+                            }
+                        case Icode_GENERATOR_END:
+                            {
+                                // throw StopIteration
+                                frame.frozen = true;
+                                int sourceLine = getIndex(iCode, frame.pc);
+                                generatorState.returnedException =
+                                        new JavaScriptException(
+                                                NativeIterator.getStopIterationObject(frame.scope),
+                                                frame.idata.itsSourceFile,
+                                                sourceLine);
+                                break Loop;
+                            }
+                        case Icode_GENERATOR_RETURN:
+                            {
+                                // throw StopIteration with the value of "return"
+                                frame.frozen = true;
+                                frame.result = stack[stackTop];
+                                frame.resultDbl = sDbl[stackTop];
+                                --stackTop;
+
+                                NativeIterator.StopIteration si =
+                                        new NativeIterator.StopIteration(
+                                                (frame.result == DOUBLE_MARK)
+                                                        ? Double.valueOf(frame.resultDbl)
+                                                        : frame.result);
+
+                                int sourceLine = getIndex(iCode, frame.pc);
+                                generatorState.returnedException =
+                                        new JavaScriptException(
+                                                si, frame.idata.itsSourceFile, sourceLine);
+                                break Loop;
+                            }
+                        case Token.THROW:
+                            {
+                                Object value = stack[stackTop];
+                                if (value == DBL_MRK)
+                                    value = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                --stackTop;
+
+                                int sourceLine = getIndex(iCode, frame.pc);
+                                throwable =
+                                        new JavaScriptException(
+                                                value, frame.idata.itsSourceFile, sourceLine);
+                                break withoutExceptions;
+                            }
+                        case Token.RETHROW:
+                            {
+                                indexReg += frame.idata.itsMaxVars;
+                                throwable = stack[indexReg];
+                                break withoutExceptions;
+                            }
+                        case Token.GE:
+                        case Token.LE:
+                        case Token.GT:
+                        case Token.LT:
+                            {
+                                stackTop = doCompare(frame, op, stack, sDbl, stackTop);
+                                continue Loop;
+                            }
+                        case Token.IN:
+                        case Token.INSTANCEOF:
+                            {
+                                stackTop = doInOrInstanceof(cx, op, stack, sDbl, stackTop);
+                                continue Loop;
+                            }
+                        case Token.EQ:
+                        case Token.NE:
+                            {
+                                --stackTop;
+                                boolean valBln = doEquals(stack, sDbl, stackTop);
+                                valBln ^= (op == Token.NE);
+                                stack[stackTop] = ScriptRuntime.wrapBoolean(valBln);
+                                continue Loop;
+                            }
+                        case Token.SHEQ:
+                        case Token.SHNE:
+                            {
+                                --stackTop;
+                                boolean valBln = doShallowEquals(stack, sDbl, stackTop);
+                                valBln ^= (op == Token.SHNE);
+                                stack[stackTop] = ScriptRuntime.wrapBoolean(valBln);
+                                continue Loop;
+                            }
+                        case Token.IFNE:
+                            if (stack_boolean(frame, stackTop--)) {
+                                frame.pc += 2;
+                                continue Loop;
+                            }
+                            break jumplessRun;
+                        case Token.IFEQ:
+                            if (!stack_boolean(frame, stackTop--)) {
+                                frame.pc += 2;
+                                continue Loop;
+                            }
+                            break jumplessRun;
+                        case Icode_IFEQ_POP:
+                            if (!stack_boolean(frame, stackTop--)) {
+                                frame.pc += 2;
+                                continue Loop;
+                            }
+                            stack[stackTop--] = null;
+                            break jumplessRun;
+                        case Icode_IF_NULL_UNDEF:
+                            {
+                                Object val = frame.stack[stackTop];
+                                --stackTop;
+                                if (val != null && !Undefined.isUndefined(val)) {
+                                    frame.pc += 2;
+                                    continue Loop;
+                                }
+                                break jumplessRun;
+                            }
+                        case Icode_IF_NOT_NULL_UNDEF:
+                            {
+                                Object val = frame.stack[stackTop];
+                                --stackTop;
+                                if (val == null || Undefined.isUndefined(val)) {
+                                    frame.pc += 2;
+                                    continue Loop;
+                                }
+                                break jumplessRun;
+                            }
+                        case Token.GOTO:
+                            break jumplessRun;
+                        case Icode_GOSUB:
+                            ++stackTop;
+                            stack[stackTop] = DBL_MRK;
+                            sDbl[stackTop] = frame.pc + 2;
+                            break jumplessRun;
+                        case Icode_STARTSUB:
+                            if (stackTop == frame.emptyStackTop + 1) {
+                                // Call from Icode_GOSUB: store return PC address in the local
+                                indexReg += frame.idata.itsMaxVars;
+                                stack[indexReg] = stack[stackTop];
+                                sDbl[indexReg] = sDbl[stackTop];
+                                --stackTop;
+                            } else {
+                                // Call from exception handler: exception object is already
+                                // stored
+                                // in the local
+                                if (stackTop != frame.emptyStackTop) Kit.codeBug();
+                            }
+                            continue Loop;
+                        case Icode_RETSUB:
+                            {
+                                // indexReg: local to store return address
+                                if (instructionCounting) {
+                                    addInstructionCount(cx, frame, 0);
+                                }
+                                indexReg += frame.idata.itsMaxVars;
+                                Object value = stack[indexReg];
+                                if (value != DBL_MRK) {
+                                    // Invocation from exception handler, restore object to
+                                    // rethrow
+                                    throwable = value;
+                                    break withoutExceptions;
+                                }
+                                // Normal return from GOSUB
+                                frame.pc = (int) sDbl[indexReg];
+                                if (instructionCounting) {
+                                    frame.pcPrevBranch = frame.pc;
+                                }
+                                continue Loop;
+                            }
+                        case Icode_POP:
+                            stack[stackTop] = null;
+                            stackTop--;
+                            continue Loop;
+                        case Icode_POP_RESULT:
+                            frame.result = stack[stackTop];
+                            frame.resultDbl = sDbl[stackTop];
+                            stack[stackTop] = null;
+                            --stackTop;
+                            continue Loop;
+                        case Icode_DUP:
+                            stack[stackTop + 1] = stack[stackTop];
+                            sDbl[stackTop + 1] = sDbl[stackTop];
+                            stackTop++;
+                            continue Loop;
+                        case Icode_DUP2:
+                            stack[stackTop + 1] = stack[stackTop - 1];
+                            sDbl[stackTop + 1] = sDbl[stackTop - 1];
+                            stack[stackTop + 2] = stack[stackTop];
+                            sDbl[stackTop + 2] = sDbl[stackTop];
+                            stackTop += 2;
+                            continue Loop;
+                        case Icode_SWAP:
+                            {
+                                Object o = stack[stackTop];
+                                stack[stackTop] = stack[stackTop - 1];
+                                stack[stackTop - 1] = o;
+                                double d = sDbl[stackTop];
+                                sDbl[stackTop] = sDbl[stackTop - 1];
+                                sDbl[stackTop - 1] = d;
+                                continue Loop;
+                            }
+                        case Token.RETURN:
+                            frame.result = stack[stackTop];
+                            frame.resultDbl = sDbl[stackTop];
+                            --stackTop;
+                            break Loop;
+                        case Token.RETURN_RESULT:
+                            break Loop;
+                        case Icode_RETUNDEF:
+                            frame.result = undefined;
+                            break Loop;
+                        case Token.BITNOT:
+                            {
+                                stackTop = doBitNOT(frame, stack, sDbl, stackTop);
+                                continue Loop;
+                            }
+                        case Token.BITAND:
+                        case Token.BITOR:
+                        case Token.BITXOR:
+                        case Token.LSH:
+                        case Token.RSH:
+                            {
+                                stackTop = doBitOp(frame, op, stack, sDbl, stackTop);
+                                continue Loop;
+                            }
+                        case Token.URSH:
+                            {
+                                double lDbl = stack_double(frame, stackTop - 1);
+                                int rIntValue = stack_int32(frame, stackTop) & 0x1F;
+                                stack[--stackTop] = DBL_MRK;
+                                sDbl[stackTop] = ScriptRuntime.toUint32(lDbl) >>> rIntValue;
+                                continue Loop;
+                            }
+                        case Token.POS:
+                            {
+                                double rDbl = stack_double(frame, stackTop);
+                                stack[stackTop] = DBL_MRK;
+                                sDbl[stackTop] = rDbl;
+                                continue Loop;
+                            }
+                        case Token.NEG:
+                            {
+                                Number rNum = stack_numeric(frame, stackTop);
+                                Number rNegNum = ScriptRuntime.negate(rNum);
+                                if (rNegNum instanceof BigInteger) {
+                                    stack[stackTop] = rNegNum;
+                                } else {
+                                    stack[stackTop] = DBL_MRK;
+                                    sDbl[stackTop] = rNegNum.doubleValue();
+                                }
+                                continue Loop;
+                            }
+                        case Token.ADD:
+                            --stackTop;
+                            doAdd(stack, sDbl, stackTop, cx);
+                            continue Loop;
+                        case Token.SUB:
+                        case Token.MUL:
+                        case Token.DIV:
+                        case Token.MOD:
+                        case Token.EXP:
+                            {
+                                stackTop = doArithmetic(frame, op, stack, sDbl, stackTop);
+                                continue Loop;
+                            }
+                        case Token.NOT:
+                            stack[stackTop] =
+                                    ScriptRuntime.wrapBoolean(!stack_boolean(frame, stackTop));
+                            continue Loop;
+                        case Token.BINDNAME:
+                            stack[++stackTop] = ScriptRuntime.bind(cx, frame.scope, stringReg);
+                            continue Loop;
+                        case Token.STRICT_SETNAME:
+                        case Token.SETNAME:
+                            {
+                                Object rhs = stack[stackTop];
+                                if (rhs == DBL_MRK) rhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                --stackTop;
+                                Scriptable lhs = (Scriptable) stack[stackTop];
+                                stack[stackTop] =
+                                        op == Token.SETNAME
+                                                ? ScriptRuntime.setName(
+                                                        lhs, rhs, cx, frame.scope, stringReg)
+                                                : ScriptRuntime.strictSetName(
+                                                        lhs, rhs, cx, frame.scope, stringReg);
+                                continue Loop;
+                            }
+                        case Icode_SETCONST:
+                            {
+                                Object rhs = stack[stackTop];
+                                if (rhs == DBL_MRK) rhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                --stackTop;
+                                Scriptable lhs = (Scriptable) stack[stackTop];
+                                stack[stackTop] = ScriptRuntime.setConst(lhs, rhs, cx, stringReg);
+                                continue Loop;
+                            }
+                        case Token.DELPROP:
+                        case Icode_DELNAME:
+                            {
+                                stackTop = doDelName(cx, frame, op, stack, sDbl, stackTop);
+                                continue Loop;
+                            }
+                        case Icode_DELPROP_SUPER:
+                            stackTop -= 1;
+                            stack[stackTop] = Boolean.FALSE;
+                            ScriptRuntime.throwDeleteOnSuperPropertyNotAllowed();
+                            continue Loop;
+                        case Token.GETPROPNOWARN:
+                            {
+                                Object lhs = stack[stackTop];
+                                if (lhs == DBL_MRK) lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                stack[stackTop] =
+                                        ScriptRuntime.getObjectPropNoWarn(
+                                                lhs, stringReg, cx, frame.scope);
+                                continue Loop;
+                            }
+                        case Token.GETPROP:
+                            {
+                                Object lhs = stack[stackTop];
+                                if (lhs == DBL_MRK) lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                stack[stackTop] =
+                                        ScriptRuntime.getObjectProp(
+                                                lhs, stringReg, cx, frame.scope);
+                                continue Loop;
+                            }
+                        case Token.GETPROP_SUPER:
+                        case Token.GETPROPNOWARN_SUPER:
+                            {
+                                Object superObject = stack[stackTop];
+                                if (superObject == DBL_MRK) Kit.codeBug();
+                                stack[stackTop] =
+                                        ScriptRuntime.getSuperProp(
+                                                superObject,
+                                                stringReg,
+                                                cx,
+                                                frame.scope,
+                                                frame.thisObj,
+                                                op == Token.GETPROPNOWARN_SUPER);
+                                continue Loop;
+                            }
+                        case Token.SETPROP:
+                            {
+                                Object rhs = stack[stackTop];
+                                if (rhs == DBL_MRK) rhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                --stackTop;
+                                Object lhs = stack[stackTop];
+                                if (lhs == DBL_MRK) lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                stack[stackTop] =
+                                        ScriptRuntime.setObjectProp(
+                                                lhs, stringReg, rhs, cx, frame.scope);
+                                continue Loop;
+                            }
+                        case Token.SETPROP_SUPER:
+                            {
+                                Object rhs = stack[stackTop];
+                                if (rhs == DBL_MRK) rhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                --stackTop;
+                                Object superObject = stack[stackTop];
+                                if (superObject == DBL_MRK) Kit.codeBug();
+                                stack[stackTop] =
+                                        ScriptRuntime.setSuperProp(
+                                                superObject,
+                                                stringReg,
+                                                rhs,
+                                                cx,
+                                                frame.scope,
+                                                frame.thisObj);
+                                continue Loop;
+                            }
+                        case Icode_PROP_INC_DEC:
+                            {
+                                Object lhs = stack[stackTop];
+                                if (lhs == DBL_MRK) lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                stack[stackTop] =
+                                        ScriptRuntime.propIncrDecr(
+                                                lhs, stringReg, cx, frame.scope, iCode[frame.pc]);
+                                ++frame.pc;
+                                continue Loop;
+                            }
+                        case Token.GETELEM:
+                            {
+                                stackTop = doGetElem(cx, frame, stack, sDbl, stackTop);
+                                continue Loop;
+                            }
+                        case Token.GETELEM_SUPER:
+                            {
+                                stackTop = doGetElemSuper(cx, frame, stack, sDbl, stackTop);
+                                continue Loop;
+                            }
+                        case Token.SETELEM:
+                            {
+                                stackTop = doSetElem(cx, frame, stack, sDbl, stackTop);
+                                continue Loop;
+                            }
+                        case Token.SETELEM_SUPER:
+                            {
+                                stackTop = doSetElemSuper(cx, frame, stack, sDbl, stackTop);
+                                continue Loop;
+                            }
+                        case Icode_ELEM_INC_DEC:
+                            {
+                                stackTop = doElemIncDec(cx, frame, iCode, stack, sDbl, stackTop);
+                                continue Loop;
+                            }
+                        case Token.GET_REF:
+                            {
+                                Ref ref = (Ref) stack[stackTop];
+                                stack[stackTop] = ScriptRuntime.refGet(ref, cx);
+                                continue Loop;
+                            }
+                        case Token.SET_REF:
+                            {
+                                Object value = stack[stackTop];
+                                if (value == DBL_MRK)
+                                    value = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                --stackTop;
+                                Ref ref = (Ref) stack[stackTop];
+                                stack[stackTop] = ScriptRuntime.refSet(ref, value, cx, frame.scope);
+                                continue Loop;
+                            }
+                        case Token.DEL_REF:
+                            {
+                                Ref ref = (Ref) stack[stackTop];
+                                stack[stackTop] = ScriptRuntime.refDel(ref, cx);
+                                continue Loop;
+                            }
+                        case Icode_REF_INC_DEC:
+                            {
+                                Ref ref = (Ref) stack[stackTop];
+                                stack[stackTop] =
+                                        ScriptRuntime.refIncrDecr(
+                                                ref, cx, frame.scope, iCode[frame.pc]);
+                                ++frame.pc;
+                                continue Loop;
+                            }
+                        case Token.LOCAL_LOAD:
+                            ++stackTop;
+                            indexReg += frame.idata.itsMaxVars;
+                            stack[stackTop] = stack[indexReg];
+                            sDbl[stackTop] = sDbl[indexReg];
+                            continue Loop;
+                        case Icode_LOCAL_CLEAR:
+                            indexReg += frame.idata.itsMaxVars;
+                            stack[indexReg] = null;
+                            continue Loop;
+                        case Icode_NAME_AND_THIS:
+                            // stringReg: name
+                            ++stackTop;
+                            stack[stackTop] =
+                                    ScriptRuntime.getNameAndThis(stringReg, cx, frame.scope);
+                            continue Loop;
+                        case Icode_NAME_AND_THIS_OPTIONAL:
+                            // stringReg: name
+                            ++stackTop;
+                            stack[stackTop] =
+                                    ScriptRuntime.getNameAndThisOptional(
+                                            stringReg, cx, frame.scope);
+                            continue Loop;
+                        case Icode_PROP_AND_THIS:
+                            {
+                                Object obj = stack[stackTop];
+                                if (obj == DBL_MRK) obj = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                // stringReg: property
+                                stack[stackTop] =
+                                        ScriptRuntime.getPropAndThis(
+                                                obj, stringReg, cx, frame.scope);
+                                continue Loop;
+                            }
+                        case Icode_PROP_AND_THIS_OPTIONAL:
+                            {
+                                Object obj = stack[stackTop];
+                                if (obj == DBL_MRK) obj = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                // stringReg: property
+                                stack[stackTop] =
+                                        ScriptRuntime.getPropAndThisOptional(
+                                                obj, stringReg, cx, frame.scope);
+                                continue Loop;
+                            }
+                        case Icode_ELEM_AND_THIS:
+                            {
+                                Object obj = stack[stackTop - 1];
+                                if (obj == DBL_MRK)
+                                    obj = ScriptRuntime.wrapNumber(sDbl[stackTop - 1]);
+                                Object id = stack[stackTop];
+                                if (id == DBL_MRK) id = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                stackTop--;
+                                stack[stackTop] =
+                                        ScriptRuntime.getElemAndThis(obj, id, cx, frame.scope);
+                                continue Loop;
+                            }
+                        case Icode_ELEM_AND_THIS_OPTIONAL:
+                            {
+                                Object obj = stack[stackTop - 1];
+                                if (obj == DBL_MRK)
+                                    obj = ScriptRuntime.wrapNumber(sDbl[stackTop - 1]);
+                                Object id = stack[stackTop];
+                                if (id == DBL_MRK) id = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                stackTop--;
+                                stack[stackTop] =
+                                        ScriptRuntime.getElemAndThisOptional(
+                                                obj, id, cx, frame.scope);
+                                continue Loop;
+                            }
+                        case Icode_VALUE_AND_THIS:
+                            {
+                                Object value = stack[stackTop];
+                                if (value == DBL_MRK)
+                                    value = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                stack[stackTop] = ScriptRuntime.getValueAndThis(value, cx);
+                                continue Loop;
+                            }
+                        case Icode_VALUE_AND_THIS_OPTIONAL:
+                            {
+                                Object value = stack[stackTop];
+                                if (value == DBL_MRK)
+                                    value = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                stack[stackTop] = ScriptRuntime.getValueAndThisOptional(value, cx);
+                                continue Loop;
+                            }
+                        case Icode_CALLSPECIAL:
+                            {
+                                if (instructionCounting) {
+                                    cx.instructionCount += INVOCATION_COST;
+                                }
+                                stackTop =
+                                        doCallSpecial(
+                                                cx, frame, stack, sDbl, stackTop, iCode, indexReg,
+                                                false);
+                                continue Loop;
+                            }
+                        case Icode_CALLSPECIAL_OPTIONAL:
+                            {
+                                if (instructionCounting) {
+                                    cx.instructionCount += INVOCATION_COST;
+                                }
+                                stackTop =
+                                        doCallSpecial(
+                                                cx, frame, stack, sDbl, stackTop, iCode, indexReg,
+                                                true);
+                                continue Loop;
+                            }
+                        case Token.CALL:
+                        case Icode_CALL_ON_SUPER:
+                        case Icode_TAIL_CALL:
+                        case Token.REF_CALL:
+                            {
+                                var callState =
+                                        doCallByteCode(
+                                                cx,
+                                                frame,
+                                                instructionCounting,
+                                                op,
+                                                stackTop,
+                                                indexReg);
+                                if (callState instanceof ContinueLoop) {
+                                    var contLoop = (ContinueLoop) callState;
+                                    stackTop = contLoop.stackTop;
+                                    indexReg = contLoop.indexReg;
+                                    continue Loop;
+                                } else if (callState instanceof StateContinue) {
+                                    return new StateContinueResult(
+                                            ((StateContinue) callState).frame, indexReg);
+                                } else if (callState instanceof NewThrowable) {
+                                    throwable = ((NewThrowable) callState).throwable;
+                                    break withoutExceptions;
+                                } else {
+                                    Kit.codeBug();
+                                    break;
+                                }
+                            }
+                        case Token.NEW:
+                            {
+                                if (instructionCounting) {
+                                    cx.instructionCount += INVOCATION_COST;
+                                }
+                                // stack change: function arg0 .. argN -> newResult
+                                // indexReg: number of arguments
+                                stackTop -= indexReg;
+
+                                Object lhs = stack[stackTop];
+                                if (lhs instanceof InterpretedFunction) {
+                                    InterpretedFunction f = (InterpretedFunction) lhs;
+                                    if (frame.fnOrScript.securityDomain == f.securityDomain) {
+                                        if (cx.getLanguageVersion() >= Context.VERSION_ES6
+                                                && f.getHomeObject() != null) {
+                                            // Only methods have home objects associated with
+                                            // them
+                                            throw ScriptRuntime.typeErrorById(
+                                                    "msg.not.ctor", f.getFunctionName());
+                                        }
+
+                                        Scriptable newInstance = f.createObject(cx, frame.scope);
+                                        CallFrame calleeFrame =
+                                                initFrame(
+                                                        cx,
+                                                        frame.scope,
+                                                        newInstance,
+                                                        newInstance,
+                                                        stack,
+                                                        sDbl,
+                                                        null,
+                                                        stackTop + 1,
+                                                        indexReg,
+                                                        f,
+                                                        frame);
+
+                                        stack[stackTop] = newInstance;
+                                        frame.savedStackTop = stackTop;
+                                        frame.savedCallOp = op;
+                                        return new StateContinueResult(calleeFrame, indexReg);
+                                    }
+                                }
+                                if (!(lhs instanceof Constructable)) {
+                                    if (lhs == DBL_MRK)
+                                        lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                    throw ScriptRuntime.notFunctionError(lhs);
+                                }
+                                Constructable ctor = (Constructable) lhs;
+
+                                if (ctor instanceof IdFunctionObject) {
+                                    IdFunctionObject ifun = (IdFunctionObject) ctor;
+                                    if (NativeContinuation.isContinuationConstructor(ifun)) {
+                                        frame.stack[stackTop] =
+                                                captureContinuation(cx, frame.parentFrame, false);
+                                        continue Loop;
+                                    }
+                                }
+
+                                Object[] outArgs =
+                                        getArgsArray(stack, sDbl, stackTop + 1, indexReg);
+                                stack[stackTop] = ctor.construct(cx, frame.scope, outArgs);
+                                continue Loop;
+                            }
+                        case Token.TYPEOF:
+                            {
+                                Object lhs = stack[stackTop];
+                                if (lhs == DBL_MRK) lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                stack[stackTop] = ScriptRuntime.typeof(lhs);
+                                continue Loop;
+                            }
+                        case Icode_TYPEOFNAME:
+                            stack[++stackTop] = ScriptRuntime.typeofName(frame.scope, stringReg);
+                            continue Loop;
+                        case Token.STRING:
+                            stack[++stackTop] = stringReg;
+                            continue Loop;
+                        case Icode_SHORTNUMBER:
+                            ++stackTop;
+                            stack[stackTop] = DBL_MRK;
+                            sDbl[stackTop] = getShort(iCode, frame.pc);
+                            frame.pc += 2;
+                            continue Loop;
+                        case Icode_INTNUMBER:
+                            ++stackTop;
+                            stack[stackTop] = DBL_MRK;
+                            sDbl[stackTop] = getInt(iCode, frame.pc);
+                            frame.pc += 4;
+                            continue Loop;
+                        case Token.NUMBER:
+                            ++stackTop;
+                            stack[stackTop] = DBL_MRK;
+                            sDbl[stackTop] = frame.idata.itsDoubleTable[indexReg];
+                            continue Loop;
+                        case Token.BIGINT:
+                            stack[++stackTop] = bigIntReg;
+                            continue Loop;
+                        case Token.NAME:
+                            stack[++stackTop] = ScriptRuntime.name(cx, frame.scope, stringReg);
+                            continue Loop;
+                        case Icode_NAME_INC_DEC:
+                            stack[++stackTop] =
+                                    ScriptRuntime.nameIncrDecr(
+                                            frame.scope, stringReg, cx, iCode[frame.pc]);
+                            ++frame.pc;
+                            continue Loop;
+                        case Icode_SETCONSTVAR1:
+                            indexReg = iCode[frame.pc++];
+                        // fallthrough
+                        case Token.SETCONSTVAR:
+                            stackTop =
+                                    doSetConstVar(
+                                            frame,
+                                            stack,
+                                            sDbl,
+                                            stackTop,
+                                            vars,
+                                            varDbls,
+                                            varAttributes,
+                                            indexReg);
+                            continue Loop;
+                        case Icode_SETVAR1:
+                            indexReg = iCode[frame.pc++];
+                        // fallthrough
+                        case Token.SETVAR:
+                            stackTop =
+                                    doSetVar(
+                                            frame,
+                                            stack,
+                                            sDbl,
+                                            stackTop,
+                                            vars,
+                                            varDbls,
+                                            varAttributes,
+                                            indexReg);
+                            continue Loop;
+                        case Icode_GETVAR1:
+                            indexReg = iCode[frame.pc++];
+                        // fallthrough
+                        case Token.GETVAR:
+                            stackTop =
+                                    doGetVar(frame, stack, sDbl, stackTop, vars, varDbls, indexReg);
+                            continue Loop;
+                        case Icode_VAR_INC_DEC:
+                            {
+                                stackTop =
+                                        doVarIncDec(
+                                                cx,
+                                                frame,
+                                                stack,
+                                                sDbl,
+                                                stackTop,
+                                                vars,
+                                                varDbls,
+                                                varAttributes,
+                                                indexReg);
+                                continue Loop;
+                            }
+                        case Icode_ZERO:
+                            ++stackTop;
+                            stack[stackTop] = Integer.valueOf(0);
+                            continue Loop;
+                        case Icode_ONE:
+                            ++stackTop;
+                            stack[stackTop] = Integer.valueOf(1);
+                            continue Loop;
+                        case Token.NULL:
+                            stack[++stackTop] = null;
+                            continue Loop;
+                        case Token.THIS:
+                            stack[++stackTop] = frame.thisObj;
+                            continue Loop;
+                        case Token.SUPER:
+                            {
+                                // See 9.1.1.3.5 GetSuperBase
+
+                                // If we are referring to "super", then we always have an
+                                // activation
+                                // (this is done in IrFactory). The home object is stored as
+                                // part of the
+                                // activation frame to propagate it correctly for nested
+                                // functions.
+                                Scriptable homeObject = getCurrentFrameHomeObject(frame);
+                                if (homeObject == null) {
+                                    // This if is specified in the spec, but I cannot imagine
+                                    // how the home object will ever be null since `super` is
+                                    // legal _only_ in method definitions, where we do have a
+                                    // home object!
+                                    stack[++stackTop] = Undefined.instance;
+                                } else {
+                                    stack[++stackTop] = homeObject.getPrototype();
+                                }
+                                continue Loop;
+                            }
+                        case Token.THISFN:
+                            stack[++stackTop] = frame.fnOrScript;
+                            continue Loop;
+                        case Token.FALSE:
+                            stack[++stackTop] = Boolean.FALSE;
+                            continue Loop;
+                        case Token.TRUE:
+                            stack[++stackTop] = Boolean.TRUE;
+                            continue Loop;
+                        case Icode_UNDEF:
+                            stack[++stackTop] = undefined;
+                            continue Loop;
+                        case Token.ENTERWITH:
+                            {
+                                Object lhs = stack[stackTop];
+                                if (lhs == DBL_MRK) lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                --stackTop;
+                                frame.scope = ScriptRuntime.enterWith(lhs, cx, frame.scope);
+                                continue Loop;
+                            }
+                        case Token.LEAVEWITH:
+                            frame.scope = ScriptRuntime.leaveWith(frame.scope);
+                            continue Loop;
+                        case Token.CATCH_SCOPE:
+                            {
+                                // stack top: exception object
+                                // stringReg: name of exception variable
+                                // indexReg: local for exception scope
+                                --stackTop;
+                                indexReg += frame.idata.itsMaxVars;
+
+                                boolean afterFirstScope = (frame.idata.itsICode[frame.pc] != 0);
+                                Throwable caughtException = (Throwable) stack[stackTop + 1];
+                                Scriptable lastCatchScope;
+                                if (!afterFirstScope) {
+                                    lastCatchScope = null;
+                                } else {
+                                    lastCatchScope = (Scriptable) stack[indexReg];
+                                }
+                                stack[indexReg] =
+                                        ScriptRuntime.newCatchScope(
+                                                caughtException,
+                                                lastCatchScope,
+                                                stringReg,
+                                                cx,
+                                                frame.scope);
+                                ++frame.pc;
+                                continue Loop;
+                            }
+                        case Token.ENUM_INIT_KEYS:
+                        case Token.ENUM_INIT_VALUES:
+                        case Token.ENUM_INIT_ARRAY:
+                        case Token.ENUM_INIT_VALUES_IN_ORDER:
+                            {
+                                Object lhs = stack[stackTop];
+                                if (lhs == DBL_MRK) lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                --stackTop;
+                                indexReg += frame.idata.itsMaxVars;
+                                int enumType =
+                                        op == Token.ENUM_INIT_KEYS
+                                                ? ScriptRuntime.ENUMERATE_KEYS
+                                                : op == Token.ENUM_INIT_VALUES
+                                                        ? ScriptRuntime.ENUMERATE_VALUES
+                                                        : op == Token.ENUM_INIT_VALUES_IN_ORDER
+                                                                ? ScriptRuntime
+                                                                        .ENUMERATE_VALUES_IN_ORDER
+                                                                : ScriptRuntime.ENUMERATE_ARRAY;
+                                stack[indexReg] =
+                                        ScriptRuntime.enumInit(lhs, cx, frame.scope, enumType);
+                                continue Loop;
+                            }
+                        case Token.ENUM_NEXT:
+                        case Token.ENUM_ID:
+                            {
+                                indexReg += frame.idata.itsMaxVars;
+                                Object val = stack[indexReg];
+                                ++stackTop;
+                                stack[stackTop] =
+                                        (op == Token.ENUM_NEXT)
+                                                ? ScriptRuntime.enumNext(val, cx)
+                                                : ScriptRuntime.enumId(val, cx);
+                                continue Loop;
+                            }
+                        case Token.REF_SPECIAL:
+                            {
+                                // stringReg: name of special property
+                                Object obj = stack[stackTop];
+                                if (obj == DBL_MRK) obj = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                stack[stackTop] =
+                                        ScriptRuntime.specialRef(obj, stringReg, cx, frame.scope);
+                                continue Loop;
+                            }
+                        case Token.REF_MEMBER:
+                            {
+                                // indexReg: flags
+                                stackTop = doRefMember(cx, stack, sDbl, stackTop, indexReg);
+                                continue Loop;
+                            }
+                        case Token.REF_NS_MEMBER:
+                            {
+                                // indexReg: flags
+                                stackTop = doRefNsMember(cx, stack, sDbl, stackTop, indexReg);
+                                continue Loop;
+                            }
+                        case Token.REF_NAME:
+                            {
+                                // indexReg: flags
+                                Object name = stack[stackTop];
+                                if (name == DBL_MRK)
+                                    name = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                stack[stackTop] =
+                                        ScriptRuntime.nameRef(name, cx, frame.scope, indexReg);
+                                continue Loop;
+                            }
+                        case Token.REF_NS_NAME:
+                            {
+                                // indexReg: flags
+                                stackTop = doRefNsName(cx, frame, stack, sDbl, stackTop, indexReg);
+                                continue Loop;
+                            }
+                        case Icode_SCOPE_LOAD:
+                            indexReg += frame.idata.itsMaxVars;
+                            frame.scope = (Scriptable) stack[indexReg];
+                            continue Loop;
+                        case Icode_SCOPE_SAVE:
+                            indexReg += frame.idata.itsMaxVars;
+                            stack[indexReg] = frame.scope;
+                            continue Loop;
+                        case Icode_CLOSURE_EXPR:
+                            InterpretedFunction fn =
+                                    InterpretedFunction.createFunction(
+                                            cx, frame.scope, frame.fnOrScript, indexReg);
+                            if (fn.idata.itsFunctionType == FunctionNode.ARROW_FUNCTION) {
+                                Scriptable homeObject = getCurrentFrameHomeObject(frame);
+                                if (fn.idata.itsNeedsActivation) {
+                                    fn.setHomeObject(homeObject);
+                                }
+
+                                stack[++stackTop] =
+                                        new ArrowFunction(
+                                                cx, frame.scope, fn, frame.thisObj, homeObject);
+                            } else {
+                                stack[++stackTop] = fn;
+                            }
+                            continue Loop;
+                        case ICode_FN_STORE_HOME_OBJECT:
+                            {
+                                // Stack contains: [object, keysArray, flagsArray, valuesArray,
+                                // function]
+                                InterpretedFunction fun = (InterpretedFunction) stack[stackTop];
+                                Scriptable homeObject = (Scriptable) stack[stackTop - 4];
+                                fun.setHomeObject(homeObject);
+                                continue Loop;
+                            }
+                        case Icode_CLOSURE_STMT:
+                            initFunction(cx, frame.scope, frame.fnOrScript, indexReg);
+                            continue Loop;
+                        case Token.REGEXP:
+                            Object re = frame.idata.itsRegExpLiterals[indexReg];
+                            stack[++stackTop] = ScriptRuntime.wrapRegExp(cx, frame.scope, re);
+                            continue Loop;
+                        case Icode_TEMPLATE_LITERAL_CALLSITE:
+                            Object[] templateLiterals = frame.idata.itsTemplateLiterals;
+                            stack[++stackTop] =
+                                    ScriptRuntime.getTemplateLiteralCallSite(
+                                            cx, frame.scope, templateLiterals, indexReg);
+                            continue Loop;
+                        case Icode_LITERAL_NEW_OBJECT:
+                            {
+                                // indexReg: index of constant with the keys
+                                Object[] ids = (Object[]) frame.idata.literalIds[indexReg];
+                                boolean copyArray = iCode[frame.pc] != 0;
+                                ++frame.pc;
+                                ++stackTop;
+                                stack[stackTop] = cx.newObject(frame.scope);
+                                ++stackTop;
+                                stack[stackTop] = copyArray ? Arrays.copyOf(ids, ids.length) : ids;
+                                ++stackTop;
+                                stack[stackTop] = new int[ids.length];
+                                ++stackTop;
+                                stack[stackTop] = new Object[ids.length];
+                                sDbl[stackTop] = 0;
+                                continue Loop;
+                            }
+                        case Icode_LITERAL_NEW_ARRAY:
+                            // indexReg: number of values in the literal
+                            ++stackTop;
+                            stack[stackTop] = new int[indexReg];
+                            ++stackTop;
+                            stack[stackTop] = new Object[indexReg];
+                            sDbl[stackTop] = 0;
+                            continue Loop;
+                        case Icode_LITERAL_SET:
+                            {
+                                Object value = stack[stackTop];
+                                if (value == DBL_MRK)
+                                    value = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                --stackTop;
+                                int i = (int) sDbl[stackTop];
+                                ((Object[]) stack[stackTop])[i] = value;
+                                sDbl[stackTop] = i + 1;
+                                continue Loop;
+                            }
+                        case Icode_LITERAL_GETTER:
+                            {
+                                Object value = stack[stackTop];
+                                --stackTop;
+                                int i = (int) sDbl[stackTop];
+                                ((Object[]) stack[stackTop])[i] = value;
+                                ((int[]) stack[stackTop - 1])[i] = -1;
+                                sDbl[stackTop] = i + 1;
+                                continue Loop;
+                            }
+                        case Icode_LITERAL_SETTER:
+                            {
+                                Object value = stack[stackTop];
+                                --stackTop;
+                                int i = (int) sDbl[stackTop];
+                                ((Object[]) stack[stackTop])[i] = value;
+                                ((int[]) stack[stackTop - 1])[i] = 1;
+                                sDbl[stackTop] = i + 1;
+                                continue Loop;
+                            }
+
+                        case Icode_LITERAL_KEY_SET:
+                            {
+                                Object key = stack[stackTop];
+                                if (key == DBL_MRK) key = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                --stackTop;
+                                Object[] ids = (Object[]) stack[stackTop - 2];
+                                int i = (int) sDbl[stackTop];
+                                ids[i] = key;
+                                continue Loop;
+                            }
+                        case Token.OBJECTLIT:
+                            {
+                                Object[] values = (Object[]) stack[stackTop];
+                                --stackTop;
+                                int[] getterSetters = (int[]) stack[stackTop];
+                                --stackTop;
+                                Object[] keys = (Object[]) stack[stackTop];
+                                --stackTop;
+                                Scriptable object = (Scriptable) stack[stackTop];
+                                ScriptRuntime.fillObjectLiteral(
+                                        object, keys, values, getterSetters, cx, frame.scope);
+                                continue Loop;
+                            }
+                        case Token.ARRAYLIT:
+                        case Icode_SPARE_ARRAYLIT:
+                            {
+                                Object[] data = (Object[]) stack[stackTop];
+                                --stackTop;
+                                int[] getterSetters = (int[]) stack[stackTop];
+                                Object val;
+
+                                int[] skipIndexces = null;
+                                if (op == Icode_SPARE_ARRAYLIT) {
+                                    skipIndexces = (int[]) frame.idata.literalIds[indexReg];
+                                }
+                                val =
+                                        ScriptRuntime.newArrayLiteral(
+                                                data, skipIndexces, cx, frame.scope);
+
+                                stack[stackTop] = val;
+                                continue Loop;
+                            }
+                        case Icode_ENTERDQ:
+                            {
+                                Object lhs = stack[stackTop];
+                                if (lhs == DBL_MRK) lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                --stackTop;
+                                frame.scope = ScriptRuntime.enterDotQuery(lhs, frame.scope);
+                                continue Loop;
+                            }
+                        case Icode_LEAVEDQ:
+                            {
+                                boolean valBln = stack_boolean(frame, stackTop);
+                                Object x = ScriptRuntime.updateDotQuery(valBln, frame.scope);
+                                if (x != null) {
+                                    stack[stackTop] = x;
+                                    frame.scope = ScriptRuntime.leaveDotQuery(frame.scope);
+                                    frame.pc += 2;
+                                    continue Loop;
+                                }
+                                // reset stack and PC to code after ENTERDQ
+                                --stackTop;
+                                break jumplessRun;
+                            }
+                        case Token.DEFAULTNAMESPACE:
+                            {
+                                Object value = stack[stackTop];
+                                if (value == DBL_MRK)
+                                    value = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+                                stack[stackTop] = ScriptRuntime.setDefaultNamespace(value, cx);
+                                continue Loop;
+                            }
+                        case Token.ESCXMLATTR:
+                            {
+                                Object value = stack[stackTop];
+                                if (value != DBL_MRK) {
+                                    stack[stackTop] = ScriptRuntime.escapeAttributeValue(value, cx);
+                                }
+                                continue Loop;
+                            }
+                        case Token.ESCXMLTEXT:
+                            {
+                                Object value = stack[stackTop];
+                                if (value != DBL_MRK) {
+                                    stack[stackTop] = ScriptRuntime.escapeTextValue(value, cx);
+                                }
+                                continue Loop;
+                            }
+                        case Icode_DEBUGGER:
+                            if (frame.debuggerFrame != null) {
+                                frame.debuggerFrame.onDebuggerStatement(cx);
+                            }
+                            continue Loop;
+                        case Icode_LINE:
+                            frame.pcSourceLineStart = frame.pc;
+                            if (frame.debuggerFrame != null) {
+                                int line = getIndex(iCode, frame.pc);
+                                frame.debuggerFrame.onLineChange(cx, line);
+                            }
+                            frame.pc += 2;
+                            continue Loop;
+                        case Icode_REG_IND_C0:
+                            indexReg = 0;
+                            continue Loop;
+                        case Icode_REG_IND_C1:
+                            indexReg = 1;
+                            continue Loop;
+                        case Icode_REG_IND_C2:
+                            indexReg = 2;
+                            continue Loop;
+                        case Icode_REG_IND_C3:
+                            indexReg = 3;
+                            continue Loop;
+                        case Icode_REG_IND_C4:
+                            indexReg = 4;
+                            continue Loop;
+                        case Icode_REG_IND_C5:
+                            indexReg = 5;
+                            continue Loop;
+                        case Icode_REG_IND1:
+                            indexReg = 0xFF & iCode[frame.pc];
+                            ++frame.pc;
+                            continue Loop;
+                        case Icode_REG_IND2:
+                            indexReg = getIndex(iCode, frame.pc);
+                            frame.pc += 2;
+                            continue Loop;
+                        case Icode_REG_IND4:
+                            indexReg = getInt(iCode, frame.pc);
+                            frame.pc += 4;
+                            continue Loop;
+                        case Icode_REG_STR_C0:
+                            stringReg = strings[0];
+                            continue Loop;
+                        case Icode_REG_STR_C1:
+                            stringReg = strings[1];
+                            continue Loop;
+                        case Icode_REG_STR_C2:
+                            stringReg = strings[2];
+                            continue Loop;
+                        case Icode_REG_STR_C3:
+                            stringReg = strings[3];
+                            continue Loop;
+                        case Icode_REG_STR1:
+                            stringReg = strings[0xFF & iCode[frame.pc]];
+                            ++frame.pc;
+                            continue Loop;
+                        case Icode_REG_STR2:
+                            stringReg = strings[getIndex(iCode, frame.pc)];
+                            frame.pc += 2;
+                            continue Loop;
+                        case Icode_REG_STR4:
+                            stringReg = strings[getInt(iCode, frame.pc)];
+                            frame.pc += 4;
+                            continue Loop;
+                        case Icode_REG_BIGINT_C0:
+                            bigIntReg = bigInts[0];
+                            continue Loop;
+                        case Icode_REG_BIGINT_C1:
+                            bigIntReg = bigInts[1];
+                            continue Loop;
+                        case Icode_REG_BIGINT_C2:
+                            bigIntReg = bigInts[2];
+                            continue Loop;
+                        case Icode_REG_BIGINT_C3:
+                            bigIntReg = bigInts[3];
+                            continue Loop;
+                        case Icode_REG_BIGINT1:
+                            bigIntReg = bigInts[0xFF & iCode[frame.pc]];
+                            ++frame.pc;
+                            continue Loop;
+                        case Icode_REG_BIGINT2:
+                            bigIntReg = bigInts[getIndex(iCode, frame.pc)];
+                            frame.pc += 2;
+                            continue Loop;
+                        case Icode_REG_BIGINT4:
+                            bigIntReg = bigInts[getInt(iCode, frame.pc)];
+                            frame.pc += 4;
+                            continue Loop;
+                        default:
+                            dumpICode(frame.idata);
+                            throw new RuntimeException(
+                                    "Unknown icode : " + op + " @ pc : " + (frame.pc - 1));
+                    } // end of interpreter switch
+                } // end of jumplessRun label block
+
+                // This should be reachable only for jump implementation
+                // when pc points to encoded target offset
+                if (instructionCounting) {
+                    addInstructionCount(cx, frame, 2);
+                }
+                int offset = getShort(iCode, frame.pc);
+                if (offset != 0) {
+                    // -1 accounts for pc pointing to jump opcode + 1
+                    frame.pc += offset - 1;
+                } else {
+                    frame.pc = frame.idata.longJumps.get(frame.pc);
+                }
+                if (instructionCounting) {
+                    frame.pcPrevBranch = frame.pc;
+                }
+                continue Loop;
+            } // end of Loop: for
+
+            exitFrame(cx, frame, null);
+            if (frame.parentFrame != null) {
+                CallFrame newFrame = frame.parentFrame;
+                if (newFrame.frozen) {
+                    newFrame = newFrame.cloneFrozen();
+                }
+                setCallResult(newFrame, frame.result, frame.resultDbl);
+                return new StateContinueResult(newFrame, indexReg);
+            }
+            return new StateBreakResult(frame);
+
+        } // end of interpreter withoutExceptions: try
+        catch (Throwable ex) {
+            if (throwable != null) {
+                // This is serious bug and it is better to track it ASAP
+                ex.printStackTrace(System.err);
+                throw new IllegalStateException();
+            }
+            throwable = ex;
+        }
+        return new ThrowableResult(frame, throwable);
     }
 
     private static NewState doCallByteCode(
