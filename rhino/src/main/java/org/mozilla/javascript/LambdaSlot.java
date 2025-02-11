@@ -29,7 +29,6 @@ public class LambdaSlot extends Slot {
         newSlot.getter = getter;
         newSlot.setter = setter;
         newSlot.next = null;
-        newSlot.orderedNext = null;
         return newSlot;
     }
 

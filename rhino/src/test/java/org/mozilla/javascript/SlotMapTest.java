@@ -48,14 +48,12 @@ public class SlotMapTest {
                 List.of(
                         () -> SlotMapOwner.EMPTY_SLOT_MAP,
                         () -> new SlotMapOwner.SingleEntrySlotMap(new Slot(new Object(), 0, 0)),
-                        () -> new EmbeddedSlotMap(),
                         () -> new OrderedSlotMap(),
                         () -> new HashSlotMap(),
                         () -> SlotMapOwner.THREAD_SAFE_EMPTY_SLOT_MAP,
                         () ->
                                 new SlotMapOwner.ThreadSafeSingleEntrySlotMap(
                                         new Slot(new Object(), 0, 0)),
-                        () -> new ThreadSafeEmbeddedSlotMap(),
                         () -> new ThreadSafeOrderedSlotMap(),
                         () -> new ThreadSafeHashSlotMap());
         return suppliers.stream().map(i -> new Object[] {i}).collect(Collectors.toList());

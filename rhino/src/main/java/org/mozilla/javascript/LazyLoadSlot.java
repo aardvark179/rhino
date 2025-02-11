@@ -18,7 +18,6 @@ public class LazyLoadSlot extends Slot {
         var newSlot = new LazyLoadSlot(this);
         newSlot.value = value;
         newSlot.next = null;
-        newSlot.orderedNext = null;
         return newSlot;
     }
 

@@ -145,7 +145,7 @@ public abstract class SlotMapOwner {
             if (ret == null) {
                 throw new NoSuchElementException();
             }
-            next = next.orderedNext;
+            next = null;
             return ret;
         }
     }
@@ -229,7 +229,7 @@ public abstract class SlotMapOwner {
             if (owner == null) {
                 throw new IllegalStateException();
             } else {
-                var newMap = new ThreadSafeEmbeddedSlotMap(2);
+                var newMap = new ThreadSafeOrderedSlotMap(2);
                 newMap.add(null, slot);
                 var currentMap = ThreadedAccess.checkAndReplaceMap(owner, this, newMap);
                 if (currentMap == this) {
@@ -243,7 +243,7 @@ public abstract class SlotMapOwner {
         @Override
         public <S extends Slot> S compute(
                 SlotMapOwner owner, Object key, int index, SlotComputer<S> c) {
-            var newMap = new ThreadSafeEmbeddedSlotMap(2);
+            var newMap = new ThreadSafeOrderedSlotMap(2);
             newMap.add(null, slot);
             var currentMap = ThreadedAccess.checkAndReplaceMap(owner, this, newMap);
             if (currentMap == this) {
@@ -280,7 +280,7 @@ public abstract class SlotMapOwner {
             } else if (initialSize > LARGE_HASH_SIZE) {
                 return new ThreadSafeHashSlotMap(initialSize);
             } else {
-                return new ThreadSafeEmbeddedSlotMap();
+                return new ThreadSafeOrderedSlotMap();
             }
         } else if (initialSize == 0) {
             return EMPTY_SLOT_MAP;

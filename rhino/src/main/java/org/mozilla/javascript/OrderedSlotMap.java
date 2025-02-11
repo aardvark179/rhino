@@ -228,7 +228,7 @@ public class OrderedSlotMap implements SlotMap {
             System.arraycopy(orderedSlots, 0, newOrderedSlots, 0, orderedCount);
             orderedSlots = newOrderedSlots;
         }
-        newSlot.orderedPos = orderedCount;
+        newSlot.orderedPos = (short) orderedCount;
         orderedSlots[orderedCount++] = newSlot;
         addKnownAbsentSlot(slots, newSlot);
     }

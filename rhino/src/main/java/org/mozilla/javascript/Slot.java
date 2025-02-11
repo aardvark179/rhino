@@ -15,10 +15,9 @@ public class Slot implements Serializable {
     Object name; // This can change due to caching
     int indexOrHash;
     private short attributes;
+    transient short orderedPos; // Position in the array for OrderedSlotMap only
     Object value;
     transient Slot next; // next in hash table bucket for EmbeddedSlotMap only
-    transient Slot orderedNext; // next in linked list for EmbeddedSlotMap only
-    transient int orderedPos; // Position in the array for OrderedSlotMap only
 
     Slot(Object name, int index, int attributes) {
         this.name = name;
@@ -29,7 +28,6 @@ public class Slot implements Serializable {
     Slot copySlot() {
         var newSlot = new Slot(this);
         newSlot.next = null;
-        newSlot.orderedNext = null;
         return newSlot;
     }
 
@@ -54,7 +52,6 @@ public class Slot implements Serializable {
         attributes = oldSlot.attributes;
         value = oldSlot.value;
         next = oldSlot.next;
-        orderedNext = oldSlot.orderedNext;
     }
 
     private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {

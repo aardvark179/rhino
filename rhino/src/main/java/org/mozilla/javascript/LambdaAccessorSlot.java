@@ -34,7 +34,6 @@ public class LambdaAccessorSlot extends Slot {
         newSlot.getterFunction = getterFunction;
         newSlot.setterFunction = setterFunction;
         newSlot.next = null;
-        newSlot.orderedNext = null;
         return newSlot;
     }
 
