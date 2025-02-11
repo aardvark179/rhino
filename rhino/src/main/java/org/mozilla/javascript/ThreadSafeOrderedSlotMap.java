@@ -3,16 +3,16 @@ package org.mozilla.javascript;
 import java.util.concurrent.locks.StampedLock;
 
 @SuppressWarnings("AndroidJdkLibsChecker")
-class ThreadSafeEmbeddedSlotMap extends EmbeddedSlotMap implements LockAwareSlotMap {
+class ThreadSafeOrderedSlotMap extends OrderedSlotMap implements LockAwareSlotMap {
 
     private final StampedLock lock = new StampedLock();
     private volatile LockAwareSlotMap current = this;
 
-    public ThreadSafeEmbeddedSlotMap() {
+    public ThreadSafeOrderedSlotMap() {
         super();
     }
 
-    public ThreadSafeEmbeddedSlotMap(int capacity) {
+    public ThreadSafeOrderedSlotMap(int capacity) {
         super(capacity);
     }
 
@@ -147,7 +147,10 @@ class ThreadSafeEmbeddedSlotMap extends EmbeddedSlotMap implements LockAwareSlot
         // We can use `setMap` here as this promotion can only be done
         // by the lock holder and the operation will be being done on
         // the "current" map.
-        var newMap = new ThreadSafeHashSlotMap(lock, this, newSlot);
+        var newMap =
+                newSlot == null
+                        ? new ThreadSafeHashSlotMap(lock, this)
+                        : new ThreadSafeHashSlotMap(lock, this, newSlot);
         owner.setMap(newMap);
         current = newMap;
     }
