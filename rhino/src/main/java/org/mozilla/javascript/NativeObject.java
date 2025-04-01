@@ -203,26 +203,28 @@ public class NativeObject extends ScriptableObject implements Map {
             result = ((SymbolScriptable) thisObj).has((Symbol) arg, thisObj);
             result = result && isEnumerable((Symbol) arg, thisObj);
         } else {
-            StringIdOrIndex s = ScriptRuntime.toStringIdOrIndex(arg);
+            Object key = ScriptRuntime.prepareKey(arg);
+            int index = ScriptRuntime.tryMakeIndex(key);
             // When checking if a property is enumerable, a missing property should
             // return "false" instead of
             // throwing an exception.  See: https://github.com/mozilla/rhino/issues/415
             try {
-                if (s.stringId == null) {
-                    result = thisObj.has(s.index, thisObj);
-                    result = result && isEnumerable(s.index, thisObj);
+                if (index != -1) {
+                    result = thisObj.has(index, thisObj);
+                    result = result && isEnumerable(index, thisObj);
                 } else {
-                    result = thisObj.has(s.stringId, thisObj);
-                    result = result && isEnumerable(s.stringId, thisObj);
+                    String s = ScriptRuntime.finalizeKey(key);
+                    result = thisObj.has(s, thisObj);
+                    result = result && isEnumerable(s, thisObj);
                 }
             } catch (EvaluatorException ee) {
                 if (ee.getMessage()
                         .startsWith(
                                 ScriptRuntime.getMessageById(
                                         "msg.prop.not.found",
-                                        s.stringId == null
-                                                ? Integer.toString(s.index)
-                                                : s.stringId))) {
+                                        index != -1
+                                                ? Integer.toString(index)
+                                            : ScriptRuntime.toString(arg)))) {
                     result = false;
                 } else {
                     throw ee;
@@ -277,10 +279,11 @@ public class NativeObject extends ScriptableObject implements Map {
                     String.valueOf(args[0]));
         }
         ScriptableObject so = (ScriptableObject) thisObj;
-        StringIdOrIndex s = ScriptRuntime.toStringIdOrIndex(args[0]);
-        int index = s.stringId != null ? 0 : s.index;
+        Object key = ScriptRuntime.prepareKey(args[0]);
+        int rawIndex = ScriptRuntime.tryMakeIndex(key);
+        int index = rawIndex == -1 ? 0 : rawIndex;
         Callable getterOrSetter = (Callable) args[1];
-        so.setGetterOrSetter(s.stringId, index, getterOrSetter, isSetter);
+        so.setGetterOrSetter(rawIndex == -1 ? ScriptRuntime.finalizeKey(key) : null, index, getterOrSetter, isSetter);
         if (so instanceof NativeArray) ((NativeArray) so).setDenseOnly(false);
 
         return Undefined.instance;
@@ -301,11 +304,12 @@ public class NativeObject extends ScriptableObject implements Map {
         if (args.length < 1 || !(thisObj instanceof ScriptableObject)) return Undefined.instance;
 
         ScriptableObject so = (ScriptableObject) thisObj;
-        StringIdOrIndex s = ScriptRuntime.toStringIdOrIndex(args[0]);
-        int index = s.stringId != null ? 0 : s.index;
+        Object key = ScriptRuntime.prepareKey(args[0]);
+        int rawIndex = ScriptRuntime.tryMakeIndex(key);
+        int index = rawIndex == -1 ? 0 : rawIndex;
         Object gs;
         for (; ; ) {
-            gs = so.getGetterOrSetter(s.stringId, index, scope, isSetter);
+            gs = so.getGetterOrSetter(rawIndex == -1 ? ScriptRuntime.finalizeKey(key) : null, index, scope, isSetter);
             if (gs != null) {
                 break;
             }

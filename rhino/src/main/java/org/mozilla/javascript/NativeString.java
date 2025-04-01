@@ -494,10 +494,11 @@ final class NativeString extends ScriptableObject {
     protected ScriptableObject getOwnPropertyDescriptor(Context cx, Object id) {
         if (!(id instanceof Symbol)
                 && (cx != null)
-                && (cx.getLanguageVersion() >= Context.VERSION_ES6)) {
-            StringIdOrIndex s = ScriptRuntime.toStringIdOrIndex(id);
-            if (s.stringId == null && 0 <= s.index && s.index < string.length()) {
-                String value = String.valueOf(string.charAt(s.index));
+            && (cx.getLanguageVersion() >= Context.VERSION_ES6)) {
+            Object key = ScriptRuntime.prepareKey(id);
+            int index = ScriptRuntime.tryMakeIndex(key);
+            if (0 <= index && index < string.length()) {
+                String value = String.valueOf(string.charAt(index));
                 return defaultIndexPropertyDescriptor(value);
             }
         }

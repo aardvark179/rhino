@@ -52,11 +52,12 @@ public class AbstractEcmaObjectOperations {
         if (property instanceof Symbol) {
             result = ScriptableObject.ensureSymbolScriptable(o).has((Symbol) property, obj);
         } else {
-            ScriptRuntime.StringIdOrIndex s = ScriptRuntime.toStringIdOrIndex(property);
-            if (s.stringId == null) {
-                result = obj.has(s.index, obj);
+            Object key = ScriptRuntime.prepareKey(property);
+            int index = ScriptRuntime.tryMakeIndex(key);
+            if (index != -1) {
+                result = obj.has(index, obj);
             } else {
-                result = obj.has(s.stringId, obj);
+                result = obj.has(ScriptRuntime.finalizeKey(key), obj);
             }
         }
 

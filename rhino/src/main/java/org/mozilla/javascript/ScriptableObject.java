@@ -1644,11 +1644,13 @@ public abstract class ScriptableObject extends SlotMapOwner
         if (id instanceof Symbol) {
             key = id;
         } else {
-            StringIdOrIndex s = ScriptRuntime.toStringIdOrIndex(id);
-            if (s.stringId == null) {
-                index = s.index;
+            key = ScriptRuntime.prepareKey(id);
+            index = ScriptRuntime.tryMakeIndex(key);
+            if (index == -1) {
+                index = 0;
+                key = ScriptRuntime.finalizeKey(key);
             } else {
-                key = s.stringId;
+                key = null;
             }
         }
 
@@ -3004,11 +3006,12 @@ public abstract class ScriptableObject extends SlotMapOwner
         if (id instanceof Symbol) {
             return getMap().query(id, 0);
         }
-        StringIdOrIndex s = ScriptRuntime.toStringIdOrIndex(id);
-        if (s.stringId == null) {
-            return getMap().query(null, s.index);
+        Object key = ScriptRuntime.prepareKey(id);
+        int index = ScriptRuntime.tryMakeIndex(key);
+        if (index != -1) {
+            return getMap().query(null, index);
         }
-        return getMap().query(s.stringId, 0);
+        return getMap().query(ScriptRuntime.finalizeKey(key), 0);
     }
 
     // Partial implementation of java.util.Map. See NativeObject for

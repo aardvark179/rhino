@@ -1672,6 +1672,51 @@ public class ScriptRuntime {
         return new StringIdOrIndex(s);
     }
 
+    public static Object prepareKey(Object id) {
+        if (id instanceof Integer ||
+            id instanceof Number ||
+            id instanceof String) {
+            return id;
+        } else {
+            return toString(id);
+        }
+    }
+
+    public static int tryMakeIndex(Object id) {
+        if (id instanceof Integer) {
+            int i = (Integer) id;
+            return i >= 0 ? i : -1;
+        } else if (id instanceof Number) {
+            double d = ((Number) id).doubleValue();
+            // -0.0 is tricky, so we need to use `Double.compare` here.
+            if (d >= 0.0) {
+                int index = (int) d;
+                if (index == d) {
+                    return index;
+                }
+            }
+            return -1;
+        }
+        String s = id.toString();
+
+        long indexTest = indexFromString(s);
+        if (indexTest >= 0 && indexTest <= Integer.MAX_VALUE) {
+            return (int)indexTest;
+        } else {
+            return -1;
+        }
+    }
+
+    public static String finalizeKey(Object id) {
+        if (id instanceof Integer ||
+            id instanceof Number) {
+            return numberToString(((Number) id).doubleValue(), 10);
+        } else {
+            return (String) id;
+        }
+    }
+
+    
     /**
      * Call obj.[[Get]](id)
      *
@@ -1696,12 +1741,12 @@ public class ScriptRuntime {
         } else if (isSymbol(elem)) {
             result = ScriptableObject.getProperty(obj, (Symbol) elem);
         } else {
-            StringIdOrIndex s = toStringIdOrIndex(elem);
-            if (s.stringId == null) {
-                int index = s.index;
+            Object key = prepareKey(elem);
+            int index = tryMakeIndex(key);
+            if (index != -1) {
                 result = ScriptableObject.getProperty(obj, index);
             } else {
-                result = ScriptableObject.getProperty(obj, s.stringId);
+                result = ScriptableObject.getProperty(obj, finalizeKey(key));
             }
         }
 
@@ -1728,14 +1773,14 @@ public class ScriptRuntime {
                     ScriptableObject.getSuperProperty(
                             superScriptable, thisScriptable, (Symbol) elem);
         } else {
-            StringIdOrIndex s = toStringIdOrIndex(elem);
-            if (s.stringId == null) {
-                int index = s.index;
+            Object key = prepareKey(elem);
+            int index = tryMakeIndex(key);
+            if (index != -1) {
                 result = ScriptableObject.getSuperProperty(superScriptable, thisScriptable, index);
             } else {
                 result =
                         ScriptableObject.getSuperProperty(
-                                superScriptable, thisScriptable, s.stringId);
+                            superScriptable, thisScriptable, finalizeKey(key));
             }
         }
 
@@ -1910,11 +1955,12 @@ public class ScriptRuntime {
         } else if (isSymbol(elem)) {
             ScriptableObject.putProperty(obj, (Symbol) elem, value);
         } else {
-            StringIdOrIndex s = toStringIdOrIndex(elem);
-            if (s.stringId == null) {
-                ScriptableObject.putProperty(obj, s.index, value);
+            Object key = prepareKey(elem);
+            int index = tryMakeIndex(key);
+            if (index != -1) {
+                ScriptableObject.putProperty(obj, index, value);
             } else {
-                ScriptableObject.putProperty(obj, s.stringId, value);
+                ScriptableObject.putProperty(obj, finalizeKey(key), value);
             }
         }
 
@@ -1947,12 +1993,13 @@ public class ScriptRuntime {
             ScriptableObject.putSuperProperty(
                     superScriptable, thisScriptable, (Symbol) elem, value);
         } else {
-            StringIdOrIndex s = toStringIdOrIndex(elem);
-            if (s.stringId == null) {
-                ScriptableObject.putSuperProperty(superScriptable, thisScriptable, s.index, value);
+            Object key = prepareKey(elem);
+            int index = tryMakeIndex(key);
+            if (index != -1) {
+                ScriptableObject.putSuperProperty(superScriptable, thisScriptable, index, value);
             } else {
                 ScriptableObject.putSuperProperty(
-                        superScriptable, thisScriptable, s.stringId, value);
+                    superScriptable, thisScriptable, finalizeKey(key), value);
             }
         }
         return value;
@@ -2075,13 +2122,15 @@ public class ScriptRuntime {
             so.delete(s);
             return !so.has(s, target);
         }
-        StringIdOrIndex s = toStringIdOrIndex(elem);
-        if (s.stringId == null) {
-            target.delete(s.index);
-            return !target.has(s.index, target);
+        Object key = prepareKey(elem);
+        int index = tryMakeIndex(key);
+        if (index != -1) {
+            target.delete(index);
+            return !target.has(index, target);
         }
-        target.delete(s.stringId);
-        return !target.has(s.stringId, target);
+        String s = finalizeKey(key);
+        target.delete(s);
+        return !target.has(s, target);
     }
 
     public static boolean hasObjectElem(Scriptable target, Object elem, Context cx) {
@@ -2090,11 +2139,12 @@ public class ScriptRuntime {
         if (isSymbol(elem)) {
             result = ScriptableObject.hasProperty(target, (Symbol) elem);
         } else {
-            StringIdOrIndex s = toStringIdOrIndex(elem);
-            if (s.stringId == null) {
-                result = ScriptableObject.hasProperty(target, s.index);
+            Object key = prepareKey(elem);
+            int index = tryMakeIndex(key);
+            if (index != -1) {
+                result = ScriptableObject.hasProperty(target, index);
             } else {
-                result = ScriptableObject.hasProperty(target, s.stringId);
+                result = ScriptableObject.hasProperty(target, finalizeKey(key));
             }
         }
 
@@ -2643,11 +2693,12 @@ public class ScriptRuntime {
             SymbolScriptable so = ScriptableObject.ensureSymbolScriptable(x.obj);
             result = so.get((Symbol) x.currentId, x.obj);
         } else {
-            StringIdOrIndex s = toStringIdOrIndex(x.currentId);
-            if (s.stringId == null) {
-                result = x.obj.get(s.index, x.obj);
+            Object key = prepareKey(x.currentId);
+            int index = tryMakeIndex(key);
+            if (index != -1) {
+                result = x.obj.get(index, x.obj);
             } else {
-                result = x.obj.get(s.stringId, x.obj);
+                result = x.obj.get(finalizeKey(key), x.obj);
             }
         }
 
@@ -2804,9 +2855,10 @@ public class ScriptRuntime {
             value = ScriptableObject.getProperty(thisObj, (Symbol) elem);
 
         } else {
-            StringIdOrIndex s = toStringIdOrIndex(elem);
-            if (s.stringId != null) {
-                return getPropFunctionAndThis(obj, s.stringId, cx, scope);
+            Object key = prepareKey(elem);
+            int index = tryMakeIndex(key);
+            if (index == -1) {
+                return getPropFunctionAndThis(obj, finalizeKey(key), cx, scope);
             }
 
             thisObj = toObjectOrNull(cx, obj, scope);
@@ -2814,7 +2866,7 @@ public class ScriptRuntime {
                 throw undefCallError(obj, String.valueOf(elem));
             }
 
-            value = ScriptableObject.getProperty(thisObj, s.index);
+            value = ScriptableObject.getProperty(thisObj, index);
         }
 
         if (!(value instanceof Callable)) {
@@ -5028,14 +5080,18 @@ public class ScriptRuntime {
                     int index = (Integer) id;
                     object.put(index, object, value);
                 } else {
-                    StringIdOrIndex s = toStringIdOrIndex(id);
-                    if (s.stringId == null) {
-                        object.put(s.index, object, value);
-                    } else if (isSpecialProperty(s.stringId)) {
-                        Ref ref = specialRef(object, s.stringId, cx, scope);
-                        ref.set(cx, scope, value);
+                    Object key = prepareKey(id);
+                    int index = tryMakeIndex(key);
+                    if (index != -1) {
+                        object.put(index, object, value);
                     } else {
-                        object.put(s.stringId, object, value);
+                        String s = finalizeKey(key);
+                        if (isSpecialProperty(s)) {
+                            Ref ref = specialRef(object, s, cx, scope);
+                            ref.set(cx, scope, value);
+                        } else {
+                            object.put(s, object, value);
+                        }
                     }
                 }
             } else {
