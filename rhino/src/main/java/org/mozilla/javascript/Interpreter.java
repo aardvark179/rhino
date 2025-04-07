@@ -131,6 +131,8 @@ public final class Interpreter extends Icode implements Evaluator {
                     makeOrphan ? null : original.previousInterpreterFrame);
         }
 
+        /* Copy the frame for *continuations*. Here we want to make
+        fresh copies of the stack and everything related to it. */
         private CallFrame(
                 CallFrame original, CallFrame parentFrame, CallFrame previousInterpreterFrame) {
             if (!original.frozen) Kit.codeBug();
@@ -141,6 +143,55 @@ public final class Interpreter extends Icode implements Evaluator {
             sDbl = Arrays.copyOf(original.sDbl, original.sDbl.length);
 
             frozen = false;
+            this.parentFrame = parentFrame;
+            this.previousInterpreterFrame = previousInterpreterFrame;
+            if (parentFrame == null) {
+                frameIndex = 0;
+                parentPC = -1;
+            } else {
+                frameIndex = original.frameIndex;
+                parentPC = parentFrame.pcSourceLineStart;
+            }
+
+            fnOrScript = original.fnOrScript;
+            idata = original.idata;
+
+            varSource = original.varSource;
+            emptyStackTop = original.emptyStackTop;
+
+            debuggerFrame = original.debuggerFrame;
+            useActivation = original.useActivation;
+            isContinuationsTopFrame = original.isContinuationsTopFrame;
+
+            thisObj = original.thisObj;
+
+            result = original.result;
+            resultDbl = original.resultDbl;
+            pc = original.pc;
+            pcPrevBranch = original.pcPrevBranch;
+            pcSourceLineStart = original.pcSourceLineStart;
+            scope = original.scope;
+
+            savedStackTop = original.savedStackTop;
+            savedCallOp = original.savedCallOp;
+            throwable = original.throwable;
+        }
+
+        /* Copy the stack for running a generator. We're only doing
+        this to maintain the correct chain of parents for exception
+        stacks, so we'll reuse the existing stack arrays. */
+        private CallFrame(
+                CallFrame original,
+                CallFrame parentFrame,
+                CallFrame previousInterpreterFrame,
+                boolean keepFrozen) {
+            if (!original.frozen) Kit.codeBug();
+
+            stack = original.stack;
+            stackAttributes = original.stackAttributes;
+            sDbl = original.sDbl;
+
+            frozen = keepFrozen;
             this.parentFrame = parentFrame;
             this.previousInterpreterFrame = previousInterpreterFrame;
             if (parentFrame == null) {
@@ -239,8 +290,6 @@ public final class Interpreter extends Icode implements Evaluator {
                 }
             }
 
-            final int maxFrameArray = idata.itsMaxFrameArray;
-
             int varCount = idata.getParamAndVarCount();
             for (int i = 0; i < varCount; i++) {
                 if (idata.getParamOrVarConst(i)) stackAttributes[i] = ScriptableObject.CONST;
@@ -294,8 +343,23 @@ public final class Interpreter extends Icode implements Evaluator {
             return new CallFrame(this, false);
         }
 
-        CallFrame cloneFrozen(CallFrame newParent, CallFrame newPreviousInterpreeterFrame) {
-            return new CallFrame(this, newParent, newPreviousInterpreeterFrame);
+        CallFrame shallowCloneFrozen(CallFrame newPreviousInterpreeterFrame) {
+            return new CallFrame(this, this.parentFrame, newPreviousInterpreeterFrame, true);
+        }
+
+        void syncStateToFrame(CallFrame otherFrame) {
+            otherFrame.frozen = frozen;
+            otherFrame.isContinuationsTopFrame = isContinuationsTopFrame;
+            otherFrame.result = result;
+            otherFrame.resultDbl = resultDbl;
+            otherFrame.pc = pc;
+            otherFrame.pcPrevBranch = pcPrevBranch;
+            otherFrame.pcSourceLineStart = pcSourceLineStart;
+            otherFrame.scope = scope;
+
+            otherFrame.savedStackTop = savedStackTop;
+            otherFrame.savedCallOp = savedCallOp;
+            otherFrame.throwable = throwable;
         }
 
         @Override
@@ -1161,19 +1225,24 @@ public final class Interpreter extends Icode implements Evaluator {
     public static Object resumeGenerator(
             Context cx, Scriptable scope, int operation, Object savedState, Object value) {
         CallFrame frame = (CallFrame) savedState;
-        GeneratorState generatorState = new GeneratorState(operation, value);
-        if (operation == NativeGenerator.GENERATOR_CLOSE) {
-            try {
-                return interpretLoop(cx, frame, generatorState);
-            } catch (RuntimeException e) {
-                // Only propagate exceptions other than closingException
-                if (e != value) throw e;
+        CallFrame activeFrame = frame.shallowCloneFrozen((CallFrame) cx.lastInterpreterFrame);
+        try {
+            GeneratorState generatorState = new GeneratorState(operation, value);
+            if (operation == NativeGenerator.GENERATOR_CLOSE) {
+                try {
+                    return interpretLoop(cx, activeFrame, generatorState);
+                } catch (RuntimeException e) {
+                    // Only propagate exceptions other than closingException
+                    if (e != value) throw e;
+                }
+                return Undefined.instance;
             }
-            return Undefined.instance;
+            Object result = interpretLoop(cx, activeFrame, generatorState);
+            if (generatorState.returnedException != null) throw generatorState.returnedException;
+            return result;
+        } finally {
+            activeFrame.syncStateToFrame(frame);
         }
-        Object result = interpretLoop(cx, frame, generatorState);
-        if (generatorState.returnedException != null) throw generatorState.returnedException;
-        return result;
     }
 
     public static Object restartContinuation(
