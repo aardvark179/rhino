@@ -3274,6 +3274,62 @@ public final class Interpreter extends Icode implements Evaluator {
                     fun = afun.getTargetFunction();
                     funThisObj = afun.getCallThis(cx);
                     funHomeObj = afun.getBoundHomeObject();
+                } else if (fun instanceof KnownBuiltInFunction) {
+                    KnownBuiltInFunction kfun = (KnownBuiltInFunction) fun;
+                    // Bug 405654 -- make the best effort to keep
+                    // Function.apply and Function.call within this
+                    // interpreter loop invocation
+                    if (BaseFunction.isApplyOrCall(kfun)) {
+                        // funThisObj becomes fun
+                        fun = ScriptRuntime.getCallable(funThisObj);
+                        // first arg becomes thisObj
+                        funThisObj =
+                                getApplyThis(
+                                        cx,
+                                        stack,
+                                        sDbl,
+                                        state.stackTop + 1,
+                                        state.indexReg,
+                                        fun,
+                                        frame);
+                        if (BaseFunction.isApply(kfun)) {
+                            // Apply: second argument after new "this"
+                            // should be array-like
+                            // and we'll spread its elements on the stack
+                            Object[] callArgs =
+                                    state.indexReg < 2
+                                            ? ScriptRuntime.emptyArgs
+                                            : ScriptRuntime.getApplyArguments(
+                                                    cx, stack[state.stackTop + 2]);
+                            int alen = callArgs.length;
+                            boundArgs = appendBoundArgs(boundArgs, callArgs);
+                            blen = blen + alen;
+                            state.indexReg = alen;
+                        } else {
+                            // Call: shift args left, starting from 2nd
+                            if (state.indexReg > 0) {
+                                if (state.indexReg > 1) {
+                                    System.arraycopy(
+                                            stack,
+                                            state.stackTop + 2,
+                                            stack,
+                                            state.stackTop + 1,
+                                            state.indexReg - 1);
+                                    System.arraycopy(
+                                            sDbl,
+                                            state.stackTop + 2,
+                                            sDbl,
+                                            state.stackTop + 1,
+                                            state.indexReg - 1);
+                                }
+                                state.indexReg--;
+                            }
+                        }
+                    } else {
+                        // Some other IdFunctionObject we don't know how to
+                        // reduce.
+                        break;
+                    }
                 } else if (fun instanceof LambdaConstructor) {
                     break;
                 } else if (fun instanceof LambdaFunction) {
@@ -3286,62 +3342,6 @@ public final class Interpreter extends Icode implements Evaluator {
                     boundArgs = appendBoundArgs(boundArgs, bArgs);
                     blen = blen + bArgs.length;
                     state.indexReg += blen;
-                } else if (fun instanceof IdFunctionObject) {
-                    IdFunctionObject ifun = (IdFunctionObject) fun;
-                    // Bug 405654 -- make the best effort to keep
-                    // Function.apply and Function.call within this
-                    // interpreter loop invocation
-                    if (BaseFunction.isApplyOrCall(ifun)) {
-                        // funThisObj becomes fun
-                        fun = ScriptRuntime.getCallable(funThisObj);
-                        // first arg becomes thisObj
-                        funThisObj =
-                                getApplyThis(
-                                        cx,
-                                        frame.stack,
-                                        frame.sDbl,
-                                        state.stackTop + 1,
-                                        state.indexReg,
-                                        fun,
-                                        frame);
-                        if (BaseFunction.isApply(ifun)) {
-                            // Apply: second argument after new "this"
-                            // should be array-like
-                            // and we'll spread its elements on the stack
-                            Object[] callArgs =
-                                    state.indexReg < 2
-                                            ? ScriptRuntime.emptyArgs
-                                            : ScriptRuntime.getApplyArguments(
-                                                    cx, frame.stack[state.stackTop + 2]);
-                            int alen = callArgs.length;
-                            boundArgs = appendBoundArgs(boundArgs, callArgs);
-                            blen = blen + alen;
-                            state.indexReg = alen;
-                        } else {
-                            // Call: shift args left, starting from 2nd
-                            if (state.indexReg > 0) {
-                                if (state.indexReg > 1) {
-                                    System.arraycopy(
-                                            frame.stack,
-                                            state.stackTop + 2,
-                                            frame.stack,
-                                            state.stackTop + 1,
-                                            state.indexReg - 1);
-                                    System.arraycopy(
-                                            frame.sDbl,
-                                            state.stackTop + 2,
-                                            frame.sDbl,
-                                            state.stackTop + 1,
-                                            state.indexReg - 1);
-                                }
-                                state.indexReg--;
-                            }
-                        }
-                    } else {
-                        // Some other IdFunctionObject we don't know how to
-                        // reduce.
-                        break;
-                    }
                 } else if (fun instanceof NoSuchMethodShim) {
                     NoSuchMethodShim nsmfun = (NoSuchMethodShim) fun;
                     // Bug 447697 -- make best effort to keep

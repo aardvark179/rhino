@@ -153,7 +153,7 @@ public class NativeRegExp extends IdScriptableObject {
         proto.setParentScope(scope);
         proto.setPrototype(getObjectPrototype(scope));
 
-        NativeRegExpCtor ctor = new NativeRegExpCtor();
+        var ctor = NativeRegExpCtor.init(cx, scope, sealed);
         // Bug #324006: ECMA-262 15.10.6.1 says "The initial value of
         // RegExp.prototype.constructor is the builtin RegExp constructor."
         proto.defineProperty("constructor", ctor, ScriptableObject.DONTENUM);
@@ -167,7 +167,7 @@ public class NativeRegExp extends IdScriptableObject {
             ctor.sealObject();
         }
 
-        defineProperty(scope, "RegExp", ctor, ScriptableObject.DONTENUM);
+        ScriptableObject.defineProperty(scope, "RegExp", ctor, ScriptableObject.DONTENUM);
 
         ScriptRuntimeES6.addSymbolSpecies(cx, scope, ctor);
 
