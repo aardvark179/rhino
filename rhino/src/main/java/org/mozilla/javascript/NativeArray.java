@@ -2387,7 +2387,7 @@ public class NativeArray extends IdScriptableObject implements List {
 
     public Object get(long index) {
         if (index < 0 || index >= length) {
-            throw new IndexOutOfBoundsException();
+            throw new IndexOutOfBoundsException("Index: " + index + ", length: " + length);
         }
         Object value = getRawElem(this, index);
         if (value == Scriptable.NOT_FOUND || value == Undefined.instance) {
@@ -2457,7 +2457,7 @@ public class NativeArray extends IdScriptableObject implements List {
         final int len = size();
 
         if (start < 0 || start > len) {
-            throw new IndexOutOfBoundsException("Index: " + start);
+            throw new IndexOutOfBoundsException("Index: " + start + ", length: " + len);
         }
 
         return new ListIterator() {
