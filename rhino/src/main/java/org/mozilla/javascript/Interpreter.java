@@ -1689,9 +1689,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             }
                         case Token.THROW:
                             {
-                                throwable =
-                                        throwObject(
-                                                frame, stack, sDbl, iData, iCode, state.stackTop);
+                                throwable = throwObject(frame, stack, sDbl, iData, iCode, state);
                                 --state.stackTop;
                                 break withoutExceptions;
                             }
@@ -1706,14 +1704,13 @@ public final class Interpreter extends Icode implements Evaluator {
                         case Token.GT:
                         case Token.LT:
                             {
-                                state.stackTop = doCompare(frame, op, stack, sDbl, state.stackTop);
+                                doCompare(frame, op, stack, sDbl, state);
                                 continue Loop;
                             }
                         case Token.IN:
                         case Token.INSTANCEOF:
                             {
-                                state.stackTop =
-                                        doInOrInstanceof(cx, op, stack, sDbl, state.stackTop);
+                                doInOrInstanceof(cx, op, stack, sDbl, state);
                                 continue Loop;
                             }
                         case Token.EQ:
@@ -3183,10 +3180,10 @@ public final class Interpreter extends Icode implements Evaluator {
             final double[] sDbl,
             final InterpreterData iData,
             final byte[] iCode,
-            int stackTop) {
+            InterpreterState state) {
         Object throwable;
-        Object value = stack[stackTop];
-        if (value == DOUBLE_MARK) value = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+        Object value = stack[state.stackTop];
+        if (value == DOUBLE_MARK) value = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
 
         int sourceLine = getIndex(iCode, frame.pc);
         throwable = new JavaScriptException(value, iData.itsSourceFile, sourceLine);
@@ -3485,33 +3482,30 @@ public final class Interpreter extends Icode implements Evaluator {
         }
     }
 
-    private static int doInOrInstanceof(
-            Context cx, int op, Object[] stack, double[] sDbl, int stackTop) {
-        Object rhs = stack[stackTop];
-        if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-        --stackTop;
-        Object lhs = stack[stackTop];
-        if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+    private static void doInOrInstanceof(
+            Context cx, int op, Object[] stack, double[] sDbl, InterpreterState state) {
+        Object rhs = stack[state.stackTop];
+        if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+        Object lhs = stack[--state.stackTop];
+        if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         boolean valBln;
         if (op == Token.IN) {
             valBln = ScriptRuntime.in(lhs, rhs, cx);
         } else {
             valBln = ScriptRuntime.instanceOf(lhs, rhs, cx);
         }
-        stack[stackTop] = valBln;
-        return stackTop;
+        stack[state.stackTop] = valBln;
     }
 
-    private static int doCompare(
-            CallFrame frame, int op, Object[] stack, double[] sDbl, int stackTop) {
-        --stackTop;
-        Object rhs = stack[stackTop + 1];
-        Object lhs = stack[stackTop];
+    private static void doCompare(
+            CallFrame frame, int op, Object[] stack, double[] sDbl, InterpreterState state) {
+        Object rhs = stack[state.stackTop];
+        Object lhs = stack[--state.stackTop];
         boolean valBln;
         if (lhs == DOUBLE_MARK && rhs == DOUBLE_MARK) {
-            valBln = ScriptRuntime.compareTo(sDbl[stackTop], sDbl[stackTop + 1], op);
-            stack[stackTop] = valBln;
-            return stackTop;
+            valBln = ScriptRuntime.compareTo(sDbl[state.stackTop], sDbl[state.stackTop + 1], op);
+            stack[state.stackTop] = valBln;
+            return;
         }
         object_compare:
         {
@@ -3519,11 +3513,11 @@ public final class Interpreter extends Icode implements Evaluator {
             {
                 Number rNum, lNum;
                 if (rhs == DOUBLE_MARK) {
-                    rNum = sDbl[stackTop + 1];
-                    lNum = stack_numeric(frame, stackTop);
+                    rNum = sDbl[state.stackTop + 1];
+                    lNum = stack_numeric(frame, state.stackTop);
                 } else if (lhs == DOUBLE_MARK) {
                     rNum = ScriptRuntime.toNumeric(rhs);
-                    lNum = sDbl[stackTop];
+                    lNum = sDbl[state.stackTop];
                 } else {
                     break number_compare;
                 }
@@ -3532,8 +3526,7 @@ public final class Interpreter extends Icode implements Evaluator {
             }
             valBln = ScriptRuntime.compare(lhs, rhs, op);
         }
-        stack[stackTop] = valBln;
-        return stackTop;
+        stack[state.stackTop] = valBln;
     }
 
     private static int doFastBitOp(
