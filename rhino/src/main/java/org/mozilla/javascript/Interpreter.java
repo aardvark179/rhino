@@ -2192,44 +2192,25 @@ public final class Interpreter extends Icode implements Evaluator {
                             state.indexReg = iCode[frame.pc++];
                         // fallthrough
                         case Token.SETVAR:
-                            state.stackTop =
-                                    doSetVar(
-                                            frame,
-                                            stack,
-                                            sDbl,
-                                            state.stackTop,
-                                            vars,
-                                            varDbls,
-                                            varAttributes,
-                                            state.indexReg);
+                            doSetVar(frame, stack, sDbl, state, vars, varDbls, varAttributes);
                             continue Loop;
                         case Icode_GETVAR1:
                             state.indexReg = iCode[frame.pc++];
                         // fallthrough
                         case Token.GETVAR:
-                            state.stackTop =
-                                    doGetVar(
-                                            frame,
-                                            stack,
-                                            sDbl,
-                                            state.stackTop,
-                                            vars,
-                                            varDbls,
-                                            state.indexReg);
+                            doGetVar(frame, stack, sDbl, state, vars, varDbls);
                             continue Loop;
                         case Icode_VAR_INC_DEC:
                             {
-                                state.stackTop =
-                                        doVarIncDec(
-                                                cx,
-                                                frame,
-                                                stack,
-                                                sDbl,
-                                                state.stackTop,
-                                                vars,
-                                                varDbls,
-                                                varAttributes,
-                                                state.indexReg);
+                                doVarIncDec(
+                                        cx,
+                                        frame,
+                                        stack,
+                                        sDbl,
+                                        state,
+                                        vars,
+                                        varDbls,
+                                        varAttributes);
                                 continue Loop;
                             }
                         case Icode_ZERO:
@@ -2291,20 +2272,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             continue Loop;
                         case Token.CATCH_SCOPE:
                             {
-                                // stack top: exception object
-                                // state.stringReg: name of exception variable
-                                // state.indexReg: local for exception scope
-                                --state.stackTop;
-                                state.indexReg += iData.itsMaxVars;
-
-                                catchScope(
-                                        cx,
-                                        frame,
-                                        state.indexReg,
-                                        stack,
-                                        iData,
-                                        state.stringReg,
-                                        state.stackTop);
+                                catchScope(cx, frame, state, stack, iData);
                                 continue Loop;
                             }
                         case Token.ENUM_INIT_KEYS:
@@ -2969,22 +2937,27 @@ public final class Interpreter extends Icode implements Evaluator {
     private static void catchScope(
             Context cx,
             CallFrame frame,
-            int indexReg,
+            InterpreterState state,
             final Object[] stack,
-            final InterpreterData iData,
-            String stringReg,
-            int stackTop) {
+            final InterpreterData iData) {
+
+        // stack top: exception object
+        // state.stringReg: name of exception variable
+        // state.indexReg: local for exception scope
+        --state.stackTop;
+        state.indexReg += iData.itsMaxVars;
+
         boolean afterFirstScope = (iData.itsICode[frame.pc] != 0);
-        Throwable caughtException = (Throwable) stack[stackTop + 1];
+        Throwable caughtException = (Throwable) stack[state.stackTop + 1];
         Scriptable lastCatchScope;
         if (!afterFirstScope) {
             lastCatchScope = null;
         } else {
-            lastCatchScope = (Scriptable) stack[indexReg];
+            lastCatchScope = (Scriptable) stack[state.indexReg];
         }
-        stack[indexReg] =
+        stack[state.indexReg] =
                 ScriptRuntime.newCatchScope(
-                        caughtException, lastCatchScope, stringReg, cx, frame.scope);
+                        caughtException, lastCatchScope, state.stringReg, cx, frame.scope);
         ++frame.pc;
     }
 
@@ -3737,67 +3710,62 @@ public final class Interpreter extends Icode implements Evaluator {
         }
     }
 
-    private static int doSetVar(
+    private static void doSetVar(
             CallFrame frame,
             Object[] stack,
             double[] sDbl,
-            int stackTop,
+            InterpreterState state,
             Object[] vars,
             double[] varDbls,
-            byte[] varAttributes,
-            int indexReg) {
+            byte[] varAttributes) {
         if (!frame.useActivation) {
-            if ((varAttributes[indexReg] & ScriptableObject.READONLY) == 0) {
-                vars[indexReg] = stack[stackTop];
-                varDbls[indexReg] = sDbl[stackTop];
+            if ((varAttributes[state.indexReg] & ScriptableObject.READONLY) == 0) {
+                vars[state.indexReg] = stack[state.stackTop];
+                varDbls[state.indexReg] = sDbl[state.stackTop];
             }
         } else {
-            Object val = stack[stackTop];
-            if (val == DOUBLE_MARK) val = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-            String stringReg = frame.idata.argNames[indexReg];
+            Object val = stack[state.stackTop];
+            if (val == DOUBLE_MARK) val = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+            String stringReg = frame.idata.argNames[state.indexReg];
             frame.scope.put(stringReg, frame.scope, val);
         }
-        return stackTop;
     }
 
-    private static int doGetVar(
+    private static void doGetVar(
             CallFrame frame,
             Object[] stack,
             double[] sDbl,
-            int stackTop,
+            InterpreterState state,
             Object[] vars,
-            double[] varDbls,
-            int indexReg) {
-        ++stackTop;
+            double[] varDbls) {
+        ++state.stackTop;
         if (!frame.useActivation) {
-            stack[stackTop] = vars[indexReg];
-            sDbl[stackTop] = varDbls[indexReg];
+            stack[state.stackTop] = vars[state.indexReg];
+            sDbl[state.stackTop] = varDbls[state.indexReg];
         } else {
-            String stringReg = frame.idata.argNames[indexReg];
-            stack[stackTop] = frame.scope.get(stringReg, frame.scope);
+            String stringReg = frame.idata.argNames[state.indexReg];
+            stack[state.stackTop] = frame.scope.get(stringReg, frame.scope);
         }
-        return stackTop;
     }
 
-    private static int doVarIncDec(
+    private static void doVarIncDec(
             Context cx,
             CallFrame frame,
             Object[] stack,
             double[] sDbl,
-            int stackTop,
+            InterpreterState state,
             Object[] vars,
             double[] varDbls,
-            byte[] varAttributes,
-            int indexReg) {
+            byte[] varAttributes) {
         // indexReg : varindex
-        ++stackTop;
+        ++state.stackTop;
         int incrDecrMask = frame.idata.itsICode[frame.pc];
         if (!frame.useActivation) {
-            Object varValue = vars[indexReg];
+            Object varValue = vars[state.indexReg];
             double d = 0.0;
             BigInteger bi = null;
             if (varValue == DOUBLE_MARK) {
-                d = varDbls[indexReg];
+                d = varDbls[state.indexReg];
             } else {
                 Number num = ScriptRuntime.toNumeric(varValue);
                 if (num instanceof BigInteger) {
@@ -3810,19 +3778,19 @@ public final class Interpreter extends Icode implements Evaluator {
                 // double
                 double d2 = ((incrDecrMask & Node.DECR_FLAG) == 0) ? d + 1.0 : d - 1.0;
                 boolean post = ((incrDecrMask & Node.POST_FLAG) != 0);
-                if ((varAttributes[indexReg] & ScriptableObject.READONLY) == 0) {
+                if ((varAttributes[state.indexReg] & ScriptableObject.READONLY) == 0) {
                     if (varValue != DOUBLE_MARK) {
-                        vars[indexReg] = DOUBLE_MARK;
+                        vars[state.indexReg] = DOUBLE_MARK;
                     }
-                    varDbls[indexReg] = d2;
-                    stack[stackTop] = DOUBLE_MARK;
-                    sDbl[stackTop] = post ? d : d2;
+                    varDbls[state.indexReg] = d2;
+                    stack[state.stackTop] = DOUBLE_MARK;
+                    sDbl[state.stackTop] = post ? d : d2;
                 } else {
                     if (post && varValue != DOUBLE_MARK) {
-                        stack[stackTop] = varValue;
+                        stack[state.stackTop] = varValue;
                     } else {
-                        stack[stackTop] = DOUBLE_MARK;
-                        sDbl[stackTop] = post ? d : d2;
+                        stack[state.stackTop] = DOUBLE_MARK;
+                        sDbl[state.stackTop] = post ? d : d2;
                     }
                 }
             } else {
@@ -3835,23 +3803,23 @@ public final class Interpreter extends Icode implements Evaluator {
                 }
 
                 boolean post = ((incrDecrMask & Node.POST_FLAG) != 0);
-                if ((varAttributes[indexReg] & ScriptableObject.READONLY) == 0) {
-                    vars[indexReg] = result;
-                    stack[stackTop] = post ? bi : result;
+                if ((varAttributes[state.indexReg] & ScriptableObject.READONLY) == 0) {
+                    vars[state.indexReg] = result;
+                    stack[state.stackTop] = post ? bi : result;
                 } else {
                     if (post && varValue != DOUBLE_MARK) {
-                        stack[stackTop] = varValue;
+                        stack[state.stackTop] = varValue;
                     } else {
-                        stack[stackTop] = post ? bi : result;
+                        stack[state.stackTop] = post ? bi : result;
                     }
                 }
             }
         } else {
-            String varName = frame.idata.argNames[indexReg];
-            stack[stackTop] = ScriptRuntime.nameIncrDecr(frame.scope, varName, cx, incrDecrMask);
+            String varName = frame.idata.argNames[state.indexReg];
+            stack[state.stackTop] =
+                    ScriptRuntime.nameIncrDecr(frame.scope, varName, cx, incrDecrMask);
         }
         ++frame.pc;
-        return stackTop;
     }
 
     private static int doRefMember(
