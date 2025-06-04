@@ -1716,19 +1716,13 @@ public final class Interpreter extends Icode implements Evaluator {
                         case Token.EQ:
                         case Token.NE:
                             {
-                                --state.stackTop;
-                                boolean valBln = doEquals(stack, sDbl, state.stackTop);
-                                valBln ^= (op == Token.NE);
-                                stack[state.stackTop] = valBln;
+                                doEquals(op, stack, sDbl, state);
                                 continue Loop;
                             }
                         case Token.SHEQ:
                         case Token.SHNE:
                             {
-                                --state.stackTop;
-                                boolean valBln = doShallowEquals(stack, sDbl, state.stackTop);
-                                valBln ^= (op == Token.SHNE);
-                                stack[state.stackTop] = valBln;
+                                doShallowEquals(op, stack, sDbl, state);
                                 continue Loop;
                             }
                         case Token.IFNE:
@@ -1856,7 +1850,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             break Loop;
                         case Token.BITNOT:
                             {
-                                state.stackTop = doBitNOT(frame, stack, sDbl, state.stackTop);
+                                doBitNOT(frame, stack, sDbl, state);
                                 continue Loop;
                             }
                         case Token.BITAND:
@@ -3597,16 +3591,15 @@ public final class Interpreter extends Icode implements Evaluator {
         return stackTop;
     }
 
-    private static int doBitNOT(CallFrame frame, Object[] stack, double[] sDbl, int stackTop) {
-        Number value = stack_numeric(frame, stackTop);
+    private static void doBitNOT(CallFrame frame, Object[] stack, double[] sDbl, InterpreterState state) {
+        Number value = stack_numeric(frame, state.stackTop);
         Number result = ScriptRuntime.bitwiseNOT(value);
         if (result instanceof BigInteger) {
-            stack[stackTop] = result;
+            stack[state.stackTop] = result;
         } else {
-            stack[stackTop] = DOUBLE_MARK;
-            sDbl[stackTop] = result.doubleValue();
+            stack[state.stackTop] = DOUBLE_MARK;
+            sDbl[state.stackTop] = result.doubleValue();
         }
-        return stackTop;
     }
 
     private static int doDelName(
@@ -3954,45 +3947,48 @@ public final class Interpreter extends Icode implements Evaluator {
         return stackTop;
     }
 
-    private static boolean doEquals(Object[] stack, double[] sDbl, int stackTop) {
-        Object rhs = stack[stackTop + 1];
-        Object lhs = stack[stackTop];
+    private static void doEquals(int op, Object[] stack, double[] sDbl, InterpreterState state) {
+        final Object rhs = stack[state.stackTop--];
+        final Object lhs = stack[state.stackTop];
+        final boolean res;
         if (rhs == DOUBLE_MARK) {
             if (lhs == DOUBLE_MARK) {
-                return (sDbl[stackTop] == sDbl[stackTop + 1]);
-            }
-            return ScriptRuntime.eqNumber(sDbl[stackTop + 1], lhs);
-        }
-        if (lhs == DOUBLE_MARK) {
-            return ScriptRuntime.eqNumber(sDbl[stackTop], rhs);
-        }
-        return ScriptRuntime.eq(lhs, rhs);
-    }
-
-    private static boolean doShallowEquals(Object[] stack, double[] sDbl, int stackTop) {
-        Object rhs = stack[stackTop + 1];
-        Object lhs = stack[stackTop];
-        double rdbl, ldbl;
-        if (rhs == DOUBLE_MARK) {
-            rdbl = sDbl[stackTop + 1];
-            if (lhs == DOUBLE_MARK) {
-                ldbl = sDbl[stackTop];
-            } else if (lhs instanceof Number && !(lhs instanceof BigInteger)) {
-                ldbl = ((Number) lhs).doubleValue();
+                res = (sDbl[state.stackTop] == sDbl[state.stackTop + 1]);
             } else {
-                return false;
+                res = ScriptRuntime.eqNumber(sDbl[state.stackTop + 1], lhs);
             }
         } else if (lhs == DOUBLE_MARK) {
-            ldbl = sDbl[stackTop];
-            if (rhs instanceof Number && !(rhs instanceof BigInteger)) {
-                rdbl = ((Number) rhs).doubleValue();
+            res = ScriptRuntime.eqNumber(sDbl[state.stackTop], rhs);
+        } else {
+            res = ScriptRuntime.eq(lhs, rhs);
+        }
+        stack[state.stackTop] = res ^ (op == Token.NE);
+    }
+
+    private static void doShallowEquals(int op, Object[] stack, double[] sDbl, InterpreterState state) {
+        final Object rhs = stack[state.stackTop--];
+        final Object lhs = stack[state.stackTop];
+        final boolean res;
+        if (rhs == DOUBLE_MARK) {
+            double rDbl = sDbl[state.stackTop + 1];
+            if (lhs == DOUBLE_MARK) {
+                res = rDbl == sDbl[state.stackTop];
+            } else if (lhs instanceof Number && !(lhs instanceof BigInteger)) {
+                res = rDbl == ((Number) lhs).doubleValue();
             } else {
-                return false;
+                res = false;
+            }
+        } else if (lhs == DOUBLE_MARK) {
+            double ldbl = sDbl[state.stackTop];
+            if (rhs instanceof Number && !(rhs instanceof BigInteger)) {
+                res = ldbl == ((Number) rhs).doubleValue();
+            } else {
+                res =  false;
             }
         } else {
-            return ScriptRuntime.shallowEq(lhs, rhs);
+            res =  ScriptRuntime.shallowEq(lhs, rhs);
         }
-        return (ldbl == rdbl);
+        stack[state.stackTop] = res ^ (op == Token.SHNE);
     }
 
     private static CallFrame processThrowable(
