@@ -1859,7 +1859,7 @@ public final class Interpreter extends Icode implements Evaluator {
                         case Token.LSH:
                         case Token.RSH:
                             {
-                                state.stackTop = doBitOp(frame, op, stack, sDbl, state.stackTop);
+                                doBitOp(frame, op, stack, sDbl, state);
                                 continue Loop;
                             }
                         case Token.URSH:
@@ -3523,11 +3523,11 @@ public final class Interpreter extends Icode implements Evaluator {
         stack[state.stackTop] = valBln;
     }
 
-    private static int doFastBitOp(
-            CallFrame frame, int op, Object[] stack, double[] sDbl, int stackTop) {
-        double lValue = sDbl[stackTop - 1];
-        double rValue = sDbl[stackTop];
-        stackTop--;
+    private static void doFastBitOp(
+            CallFrame frame, int op, Object[] stack, double[] sDbl, InterpreterState state) {
+        double lValue = sDbl[state.stackTop - 1];
+        double rValue = sDbl[state.stackTop];
+        state.stackTop--;
 
         double result = 0.0;
         switch (op) {
@@ -3548,20 +3548,19 @@ public final class Interpreter extends Icode implements Evaluator {
                 break;
         }
 
-        stack[stackTop] = DOUBLE_MARK;
-        sDbl[stackTop] = result;
-
-        return stackTop;
+        stack[state.stackTop] = DOUBLE_MARK;
+        sDbl[state.stackTop] = result;
     }
 
-    private static int doBitOp(
-            CallFrame frame, int op, Object[] stack, double[] sDbl, int stackTop) {
-        if (stack[stackTop] == DOUBLE_MARK && stack[stackTop - 1] == DOUBLE_MARK) {
-            return doFastBitOp(frame, op, stack, sDbl, stackTop);
+    private static void doBitOp(
+            CallFrame frame, int op, Object[] stack, double[] sDbl, InterpreterState state) {
+        if (stack[state.stackTop] == DOUBLE_MARK && stack[state.stackTop - 1] == DOUBLE_MARK) {
+            doFastBitOp(frame, op, stack, sDbl, state);
+            return;
         }
-        Number lValue = stack_numeric(frame, stackTop - 1);
-        Number rValue = stack_numeric(frame, stackTop);
-        stackTop--;
+        Number lValue = stack_numeric(frame, state.stackTop - 1);
+        Number rValue = stack_numeric(frame, state.stackTop);
+        state.stackTop--;
 
         Number result = null;
         switch (op) {
@@ -3583,15 +3582,15 @@ public final class Interpreter extends Icode implements Evaluator {
         }
 
         if (result instanceof BigInteger) {
-            stack[stackTop] = result;
+            stack[state.stackTop] = result;
         } else {
-            stack[stackTop] = DOUBLE_MARK;
-            sDbl[stackTop] = result.doubleValue();
+            stack[state.stackTop] = DOUBLE_MARK;
+            sDbl[state.stackTop] = result.doubleValue();
         }
-        return stackTop;
     }
 
-    private static void doBitNOT(CallFrame frame, Object[] stack, double[] sDbl, InterpreterState state) {
+    private static void doBitNOT(
+            CallFrame frame, Object[] stack, double[] sDbl, InterpreterState state) {
         Number value = stack_numeric(frame, state.stackTop);
         Number result = ScriptRuntime.bitwiseNOT(value);
         if (result instanceof BigInteger) {
@@ -3965,7 +3964,8 @@ public final class Interpreter extends Icode implements Evaluator {
         stack[state.stackTop] = res ^ (op == Token.NE);
     }
 
-    private static void doShallowEquals(int op, Object[] stack, double[] sDbl, InterpreterState state) {
+    private static void doShallowEquals(
+            int op, Object[] stack, double[] sDbl, InterpreterState state) {
         final Object rhs = stack[state.stackTop--];
         final Object lhs = stack[state.stackTop];
         final boolean res;
@@ -3983,10 +3983,10 @@ public final class Interpreter extends Icode implements Evaluator {
             if (rhs instanceof Number && !(rhs instanceof BigInteger)) {
                 res = ldbl == ((Number) rhs).doubleValue();
             } else {
-                res =  false;
+                res = false;
             }
         } else {
-            res =  ScriptRuntime.shallowEq(lhs, rhs);
+            res = ScriptRuntime.shallowEq(lhs, rhs);
         }
         stack[state.stackTop] = res ^ (op == Token.SHNE);
     }
