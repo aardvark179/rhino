@@ -1899,8 +1899,7 @@ public final class Interpreter extends Icode implements Evaluator {
                         case Token.MOD:
                         case Token.EXP:
                             {
-                                state.stackTop =
-                                        doArithmetic(frame, op, stack, sDbl, state.stackTop);
+                                doArithmetic(frame, op, stack, sDbl, state);
                                 continue Loop;
                             }
                         case Token.NOT:
@@ -4453,15 +4452,15 @@ public final class Interpreter extends Icode implements Evaluator {
         }
     }
 
-    private static int doFastArithemtic(
+    private static void doFastArithemtic(
             CallFrame frame,
             int op,
             double lNum,
             double rNum,
             Object[] stack,
             double[] sDbl,
-            int stackTop) {
-        stackTop--;
+            InterpreterState state) {
+        state.stackTop--;
 
         double result = 0.0;
         switch (op) {
@@ -4482,22 +4481,21 @@ public final class Interpreter extends Icode implements Evaluator {
                 break;
         }
 
-        stack[stackTop] = DOUBLE_MARK;
-        sDbl[stackTop] = result;
-
-        return stackTop;
+        stack[state.stackTop] = DOUBLE_MARK;
+        sDbl[state.stackTop] = result;
     }
 
-    private static int doArithmetic(
-            CallFrame frame, int op, Object[] stack, double[] sDbl, int stackTop) {
-        if (stack[stackTop] == DOUBLE_MARK && stack[stackTop - 1] == DOUBLE_MARK) {
-            return doFastArithemtic(
-                    frame, op, sDbl[stackTop - 1], sDbl[stackTop], stack, sDbl, stackTop);
+    private static void doArithmetic(
+            CallFrame frame, int op, Object[] stack, double[] sDbl, InterpreterState state) {
+        if (stack[state.stackTop] == DOUBLE_MARK && stack[state.stackTop - 1] == DOUBLE_MARK) {
+            doFastArithemtic(
+                frame, op, sDbl[state.stackTop - 1], sDbl[state.stackTop], stack, sDbl, state);
+            return;
         }
 
-        Number lNum = stack_numeric(frame, stackTop - 1);
-        Number rNum = stack_numeric(frame, stackTop);
-        --stackTop;
+        Number lNum = stack_numeric(frame, state.stackTop - 1);
+        Number rNum = stack_numeric(frame, state.stackTop);
+        --state.stackTop;
 
         Number result = null;
         switch (op) {
@@ -4519,12 +4517,11 @@ public final class Interpreter extends Icode implements Evaluator {
         }
 
         if (result instanceof BigInteger) {
-            stack[stackTop] = result;
+            stack[state.stackTop] = result;
         } else {
-            stack[stackTop] = DOUBLE_MARK;
-            sDbl[stackTop] = result.doubleValue();
+            stack[state.stackTop] = DOUBLE_MARK;
+            sDbl[state.stackTop] = result.doubleValue();
         }
-        return stackTop;
     }
 
     private static Object[] getArgsArray(Object[] stack, double[] sDbl, int shift, int count) {
