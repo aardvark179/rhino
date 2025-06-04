@@ -1369,8 +1369,6 @@ public final class Interpreter extends Icode implements Evaluator {
 
         final boolean instructionCounting = cx.instructionThreshold != 0;
 
-        String stringReg = null;
-        BigInteger bigIntReg = null;
         int indexReg = -1;
 
         // When restarting continuation throwable is not null and to jump
@@ -1603,6 +1601,8 @@ public final class Interpreter extends Icode implements Evaluator {
         BigInteger bigIntReg;
         String stringReg;
         final boolean instructionCounting;
+        GeneratorState generatorState;
+        Object throwable;
 
         InterpreterState(int stackTop, int indexReg, boolean instructionCounting) {
             this.stackTop = stackTop;
@@ -1614,10 +1614,12 @@ public final class Interpreter extends Icode implements Evaluator {
     private static InterpreterResult interpretFunction(
             Context cx,
             CallFrame frame,
-            Object throwable,
-            GeneratorState generatorState,
+            Object tble,
+            GeneratorState genState,
             int iReg,
             boolean instructionCounting) {
+        final InterpreterState state =
+                new InterpreterState(frame.savedStackTop, iReg, instructionCounting);
 
         withoutExceptions:
         try {
@@ -1625,8 +1627,9 @@ public final class Interpreter extends Icode implements Evaluator {
             // Use local variables for constant values in frame
             // for faster access
             final byte[] iCode = frame.idata.itsICode;
-            final InterpreterState state =
-                    new InterpreterState(frame.savedStackTop, iReg, instructionCounting);
+
+            state.generatorState = genState;
+            state.throwable = tble;
 
             // Store new frame in cx which is used for error reporting etc.
             cx.lastInterpreterFrame = frame;
@@ -1666,26 +1669,26 @@ public final class Interpreter extends Icode implements Evaluator {
                                                     cx,
                                                     frame,
                                                     state,
-                                                    generatorState,
+                                                    state.generatorState,
                                                     op == Icode_YIELD_STAR));
                                 }
-                                Object obj = thawGenerator(frame, state, generatorState, op);
+                                Object obj = thawGenerator(frame, state, state.generatorState, op);
                                 if (obj != Scriptable.NOT_FOUND) {
-                                    throwable = obj;
+                                    state.throwable = obj;
                                     break withoutExceptions;
                                 }
                                 continue Loop;
                             }
                         case Icode_GENERATOR_END:
                             {
-                                generatorEnd(frame, generatorState, frame.idata, iCode);
+                                generatorEnd(frame, state.generatorState, frame.idata, iCode);
                                 break Loop;
                             }
                         case Icode_GENERATOR_RETURN:
                             {
                                 generatorReturn(
                                         frame,
-                                        generatorState,
+                                        state.generatorState,
                                         frame.stack,
                                         frame.sDbl,
                                         frame.idata,
@@ -1695,7 +1698,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             }
                         case Token.THROW:
                             {
-                                throwable =
+                                state.throwable =
                                         throwObject(
                                                 frame,
                                                 frame.stack,
@@ -1709,7 +1712,7 @@ public final class Interpreter extends Icode implements Evaluator {
                         case Token.RETHROW:
                             {
                                 state.indexReg += frame.idata.itsMaxVars;
-                                throwable = frame.stack[state.indexReg];
+                                state.throwable = frame.stack[state.indexReg];
                                 break withoutExceptions;
                             }
                         case Token.GE:
@@ -1790,7 +1793,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                 if (value != DOUBLE_MARK) {
                                     // Invocation from exception handler, restore object to
                                     // rethrow
-                                    throwable = value;
+                                    state.throwable = value;
                                     break withoutExceptions;
                                 }
                                 // Normal return from GOSUB
@@ -1970,7 +1973,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                     return new StateContinueResult(
                                             ((StateContinue) callState).frame, state.indexReg);
                                 } else if (callState instanceof NewThrowable) {
-                                    throwable = ((NewThrowable) callState).throwable;
+                                    state.throwable = ((NewThrowable) callState).throwable;
                                     break withoutExceptions;
                                 } else {
                                     Kit.codeBug();
@@ -2345,14 +2348,14 @@ public final class Interpreter extends Icode implements Evaluator {
 
         } // end of interpreter withoutExceptions: try
         catch (Throwable ex) {
-            if (throwable != null) {
+            if (state.throwable != null) {
                 // This is serious bug and it is better to track it ASAP
                 ex.printStackTrace(System.err);
                 throw new IllegalStateException();
             }
-            throwable = ex;
+            state.throwable = ex;
         }
-        return new ThrowableResult(frame, throwable);
+        return new ThrowableResult(frame, state.throwable);
     }
 
     private static void doRegBigInt4(
