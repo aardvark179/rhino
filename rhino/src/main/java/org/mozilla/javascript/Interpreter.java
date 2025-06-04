@@ -2230,43 +2230,43 @@ public final class Interpreter extends Icode implements Evaluator {
                             doDefaultNamespace(cx, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.ESCXMLATTR:
-                            doEscXMLAttr(cx, frame.stack, state);
+                            doEscXMLAttr(cx, frame, state, op);
                             continue Loop;
                         case Token.ESCXMLTEXT:
-                            doEscXMLText(cx, frame.stack, state);
+                            doEscXMLText(cx, frame, state, op);
                             continue Loop;
                         case Icode_DEBUGGER:
-                            doDebug(cx, frame);
+                            doDebug(cx, frame, state, op);
                             continue Loop;
                         case Icode_LINE:
-                            doLineChange(cx, frame, iCode);
+                            doLineChange(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_IND_C0:
-                            doIndexCn(op, state);
+                            doIndexCn(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_IND_C1:
-                            doIndexCn(op, state);
+                            doIndexCn(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_IND_C2:
-                            doIndexCn(op, state);
+                            doIndexCn(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_IND_C3:
-                            doIndexCn(op, state);
+                            doIndexCn(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_IND_C4:
-                            doIndexCn(op, state);
+                            doIndexCn(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_IND_C5:
-                            doIndexCn(op, state);
+                            doIndexCn(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_IND1:
-                            doRegIndex1(frame, iCode, state);
+                            doRegIndex1(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_IND2:
-                            doRegIndex2(frame, iCode, state);
+                            doRegIndex2(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_IND4:
-                            doRegIndex4(frame, iCode, state);
+                            doRegIndex4(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_STR_C0:
                             doStringCn(cx, frame, state, op);
@@ -2358,125 +2358,91 @@ public final class Interpreter extends Icode implements Evaluator {
         return new ThrowableResult(frame, state.throwable);
     }
 
-    private static void doRegBigInt4(
-            Context cx,
-            CallFrame frame,
-            InterpreterState state,
-            int op) {
+    private static void doRegBigInt4(Context cx, CallFrame frame, InterpreterState state, int op) {
         state.bigIntReg = frame.idata.itsBigIntTable[getInt(frame.idata.itsICode, frame.pc)];
         frame.pc += 4;
     }
 
-    private static void doRegBigInt2(
-            Context cx,
-            CallFrame frame,
-            InterpreterState state,
-            int op) {
+    private static void doRegBigInt2(Context cx, CallFrame frame, InterpreterState state, int op) {
         state.bigIntReg = frame.idata.itsBigIntTable[getIndex(frame.idata.itsICode, frame.pc)];
         frame.pc += 2;
     }
 
-    private static void doRegBigInt1(
-            Context cx,
-            CallFrame frame,
-            InterpreterState state,
-            int op) {
+    private static void doRegBigInt1(Context cx, CallFrame frame, InterpreterState state, int op) {
         state.bigIntReg = frame.idata.itsBigIntTable[0xFF & frame.idata.itsICode[frame.pc]];
         ++frame.pc;
     }
 
-    private static void doBigIntCn(
-            Context cx,
-            CallFrame frame,
-            InterpreterState state,
-            int op) {
+    private static void doBigIntCn(Context cx, CallFrame frame, InterpreterState state, int op) {
         state.bigIntReg = frame.idata.itsBigIntTable[Icode_REG_BIGINT_C0 - op];
     }
 
-    private static void doRegString4(
-            Context cx,
-            CallFrame frame,
-            InterpreterState state,
-            int op) {
+    private static void doRegString4(Context cx, CallFrame frame, InterpreterState state, int op) {
         state.stringReg = frame.idata.itsStringTable[getInt(frame.idata.itsICode, frame.pc)];
         frame.pc += 4;
     }
 
-    private static void doRegString2(
-            Context cx,
-            CallFrame frame,
-            InterpreterState state,
-            int op) {
+    private static void doRegString2(Context cx, CallFrame frame, InterpreterState state, int op) {
         state.stringReg = frame.idata.itsStringTable[getIndex(frame.idata.itsICode, frame.pc)];
         frame.pc += 2;
     }
 
-    private static void doRegString1(
-            Context cx,
-            CallFrame frame,
-            InterpreterState state,
-            int op) {
+    private static void doRegString1(Context cx, CallFrame frame, InterpreterState state, int op) {
         state.stringReg = frame.idata.itsStringTable[0xFF & frame.idata.itsICode[frame.pc]];
         ++frame.pc;
     }
 
-    private static void doStringCn(            Context cx,
-            CallFrame frame,
-            InterpreterState state,
-            int op) {
+    private static void doStringCn(Context cx, CallFrame frame, InterpreterState state, int op) {
         state.stringReg = frame.idata.itsStringTable[Icode_REG_STR_C0 - op];
     }
 
-    private static void doRegIndex4(
-            CallFrame frame, final byte[] iCode, final InterpreterState state) {
-        state.indexReg = getInt(iCode, frame.pc);
+    private static void doRegIndex4(Context cx, CallFrame frame, InterpreterState state, int op) {
+        state.indexReg = getInt(frame.idata.itsICode, frame.pc);
         frame.pc += 4;
     }
 
-    private static void doRegIndex2(
-            CallFrame frame, final byte[] iCode, final InterpreterState state) {
-        state.indexReg = getIndex(iCode, frame.pc);
+    private static void doRegIndex2(Context cx, CallFrame frame, InterpreterState state, int op) {
+        state.indexReg = getIndex(frame.idata.itsICode, frame.pc);
         frame.pc += 2;
     }
 
-    private static void doRegIndex1(
-            CallFrame frame, final byte[] iCode, final InterpreterState state) {
-        state.indexReg = 0xFF & iCode[frame.pc];
+    private static void doRegIndex1(Context cx, CallFrame frame, InterpreterState state, int op) {
+        state.indexReg = 0xFF & frame.idata.itsICode[frame.pc];
         ++frame.pc;
     }
 
-    private static void doIndexCn(int op, InterpreterState state) {
+    private static void doIndexCn(Context cx, CallFrame frame, InterpreterState state, int op) {
         state.indexReg = Icode_REG_IND_C0 - op;
     }
 
-    private static void doLineChange(Context cx, CallFrame frame, final byte[] iCode) {
+    private static void doLineChange(Context cx, CallFrame frame, InterpreterState state, int op) {
         frame.pcSourceLineStart = frame.pc;
         if (frame.debuggerFrame != null) {
-            int line = getIndex(iCode, frame.pc);
+            int line = getIndex(frame.idata.itsICode, frame.pc);
             frame.debuggerFrame.onLineChange(cx, line);
         }
         frame.pc += 2;
     }
 
-    private static void doDebug(Context cx, CallFrame frame) {
+    private static void doDebug(Context cx, CallFrame frame, InterpreterState state, int op) {
         if (frame.debuggerFrame != null) {
             frame.debuggerFrame.onDebuggerStatement(cx);
         }
     }
 
     private static void doEscXMLText(
-            Context cx, final Object[] stack, final InterpreterState state) {
-        Object value = stack[state.stackTop];
+        Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object value = frame.stack[state.stackTop];
         if (value != DOUBLE_MARK) {
-            stack[state.stackTop] = ScriptRuntime.escapeTextValue(value, cx);
+            frame.stack[state.stackTop] = ScriptRuntime.escapeTextValue(value, cx);
         }
     }
 
     private static void doEscXMLAttr(
-            Context cx, final Object[] stack, final InterpreterState state) {
-        Object value = stack[state.stackTop];
+        Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object value = frame.stack[state.stackTop];
         if (value != DOUBLE_MARK) {
-            stack[state.stackTop] = ScriptRuntime.escapeAttributeValue(value, cx);
+            frame.stack[state.stackTop] = ScriptRuntime.escapeAttributeValue(value, cx);
         }
     }
 
