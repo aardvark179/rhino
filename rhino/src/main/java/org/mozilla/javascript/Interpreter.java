@@ -1186,6 +1186,11 @@ public final class Interpreter extends Icode implements Evaluator {
                 cx, scope, fn, fn.idata.itsFunctionType, parent.idata.evalScriptFlag);
     }
 
+    private static void initFunction(
+            Context cx, Scriptable scope, InterpretedFunction parent, InterpreterState state) {
+        initFunction(cx, scope, parent, state.indexReg);
+    }
+
     static Object interpret(
             InterpretedFunction ifun,
             Context cx,
@@ -2340,7 +2345,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                 continue Loop;
                             }
                         case Icode_CLOSURE_STMT:
-                            initFunction(cx, frame.scope, frame.fnOrScript, state.indexReg);
+                            initFunction(cx, frame.scope, frame.fnOrScript, state);
                             continue Loop;
                         case Token.REGEXP:
                             Object re = iData.itsRegExpLiterals[state.indexReg];
@@ -2354,16 +2359,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             continue Loop;
                         case Icode_LITERAL_NEW_OBJECT:
                             {
-                                literalNewObject(
-                                        cx,
-                                        frame,
-                                        state.indexReg,
-                                        stack,
-                                        sDbl,
-                                        iData,
-                                        iCode,
-                                        state.stackTop);
-                                state.stackTop += 4;
+                                literalNewObject(cx, frame, state, stack, sDbl, iData, iCode);
                                 continue Loop;
                             }
                         case Icode_LITERAL_NEW_ARRAY:
@@ -2827,21 +2823,20 @@ public final class Interpreter extends Icode implements Evaluator {
     private static void literalNewObject(
             Context cx,
             CallFrame frame,
-            int indexReg,
+            InterpreterState state,
             final Object[] stack,
             final double[] sDbl,
             final InterpreterData iData,
-            final byte[] iCode,
-            int stackTop) {
+            final byte[] iCode) {
         // indexReg: index of constant with the keys
-        Object[] ids = (Object[]) iData.literalIds[indexReg];
+        Object[] ids = (Object[]) iData.literalIds[state.indexReg];
         boolean copyArray = iCode[frame.pc] != 0;
         ++frame.pc;
-        stack[stackTop + 1] = cx.newObject(frame.scope);
-        stack[stackTop + 2] = copyArray ? Arrays.copyOf(ids, ids.length) : ids;
-        stack[stackTop + 3] = new int[ids.length];
-        stack[stackTop + 4] = new Object[ids.length];
-        sDbl[stackTop + 4] = 0;
+        stack[++state.stackTop] = cx.newObject(frame.scope);
+        stack[++state.stackTop] = copyArray ? Arrays.copyOf(ids, ids.length) : ids;
+        stack[++state.stackTop] = new int[ids.length];
+        stack[++state.stackTop] = new Object[ids.length];
+        sDbl[state.stackTop] = 0;
     }
 
     private static void enumInit(
