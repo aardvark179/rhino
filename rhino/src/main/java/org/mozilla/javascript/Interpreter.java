@@ -1929,8 +1929,7 @@ public final class Interpreter extends Icode implements Evaluator {
                         case Token.DELPROP:
                         case Icode_DELNAME:
                             {
-                                state.stackTop =
-                                        doDelName(cx, frame, op, stack, sDbl, state.stackTop);
+                                doDelName(cx, frame, op, stack, sDbl, state);
                                 continue Loop;
                             }
                         case Icode_DELPROP_SUPER:
@@ -3598,15 +3597,14 @@ public final class Interpreter extends Icode implements Evaluator {
         }
     }
 
-    private static int doDelName(
-            Context cx, CallFrame frame, int op, Object[] stack, double[] sDbl, int stackTop) {
-        Object rhs = stack[stackTop];
-        if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-        --stackTop;
-        Object lhs = stack[stackTop];
-        if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-        stack[stackTop] = ScriptRuntime.delete(lhs, rhs, cx, frame.scope, op == Icode_DELNAME);
-        return stackTop;
+    private static void doDelName(
+            Context cx, CallFrame frame, int op, Object[] stack, double[] sDbl, InterpreterState state) {
+        Object rhs = stack[state.stackTop];
+        if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+        --state.stackTop;
+        Object lhs = stack[state.stackTop];
+        if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+        stack[state.stackTop] = ScriptRuntime.delete(lhs, rhs, cx, frame.scope, op == Icode_DELNAME);
     }
 
     private static int doGetElem(
