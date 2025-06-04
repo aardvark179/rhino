@@ -2383,34 +2383,23 @@ public final class Interpreter extends Icode implements Evaluator {
 
                         case Icode_LITERAL_KEY_SET:
                             {
-                                literalKeySet(stack, sDbl, state.stackTop);
-                                --state.stackTop;
+                                literalKeySet(stack, sDbl, state);
                                 continue Loop;
                             }
                         case Token.OBJECTLIT:
                             {
-                                objectLit(cx, frame, stack, state.stackTop);
-                                state.stackTop -= 3;
+                                objectLit(cx, frame, stack, state);
                                 continue Loop;
                             }
                         case Token.ARRAYLIT:
                         case Icode_SPARE_ARRAYLIT:
                             {
-                                arrayLiteral(
-                                        cx,
-                                        frame,
-                                        state.indexReg,
-                                        stack,
-                                        iData,
-                                        state.stackTop,
-                                        op);
-                                --state.stackTop;
+                                arrayLiteral(cx, frame, state, stack, iData, op);
                                 continue Loop;
                             }
                         case Icode_ENTERDQ:
                             {
-                                enterDotQuery(frame, stack, sDbl, state.stackTop);
-                                --state.stackTop;
+                                enterDotQuery(frame, stack, sDbl, state);
                                 continue Loop;
                             }
                         case Icode_LEAVEDQ:
@@ -2594,46 +2583,47 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void enterDotQuery(
-            CallFrame frame, final Object[] stack, final double[] sDbl, int stackTop) {
-        Object lhs = stack[stackTop];
-        if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+            CallFrame frame, final Object[] stack, final double[] sDbl, InterpreterState state) {
+        Object lhs = stack[state.stackTop];
+        if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         frame.scope = ScriptRuntime.enterDotQuery(lhs, frame.scope);
+        state.stackTop--;
     }
 
     private static void arrayLiteral(
             Context cx,
             CallFrame frame,
-            int indexReg,
+            InterpreterState state,
             final Object[] stack,
             final InterpreterData iData,
-            int stackTop,
             int op) {
-        Object[] data = (Object[]) stack[stackTop];
-        int[] getterSetters = (int[]) stack[stackTop - 1];
+        Object[] data = (Object[]) stack[state.stackTop--];
         Object val;
 
         int[] skipIndexces = null;
         if (op == Icode_SPARE_ARRAYLIT) {
-            skipIndexces = (int[]) iData.literalIds[indexReg];
+            skipIndexces = (int[]) iData.literalIds[state.indexReg];
         }
         val = ScriptRuntime.newArrayLiteral(data, skipIndexces, cx, frame.scope);
 
-        stack[stackTop - 1] = val;
+        stack[state.stackTop] = val;
     }
 
-    private static void objectLit(Context cx, CallFrame frame, final Object[] stack, int stackTop) {
-        Object[] values = (Object[]) stack[stackTop];
-        int[] getterSetters = (int[]) stack[stackTop - 1];
-        Object[] keys = (Object[]) stack[stackTop - 2];
-        Scriptable object = (Scriptable) stack[stackTop - 3];
+    private static void objectLit(
+            Context cx, CallFrame frame, final Object[] stack, InterpreterState state) {
+        Object[] values = (Object[]) stack[state.stackTop];
+        int[] getterSetters = (int[]) stack[--state.stackTop];
+        Object[] keys = (Object[]) stack[--state.stackTop];
+        Scriptable object = (Scriptable) stack[--state.stackTop];
         ScriptRuntime.fillObjectLiteral(object, keys, values, getterSetters, cx, frame.scope);
     }
 
-    private static void literalKeySet(final Object[] stack, final double[] sDbl, int stackTop) {
-        Object key = stack[stackTop];
-        if (key == DOUBLE_MARK) key = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-        Object[] ids = (Object[]) stack[stackTop - 3];
-        int i = (int) sDbl[stackTop - 1];
+    private static void literalKeySet(
+            final Object[] stack, final double[] sDbl, InterpreterState state) {
+        Object key = stack[state.stackTop];
+        if (key == DOUBLE_MARK) key = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+        Object[] ids = (Object[]) stack[state.stackTop - 3];
+        int i = (int) sDbl[--state.stackTop];
         ids[i] = key;
     }
 
