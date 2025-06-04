@@ -2112,15 +2112,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                 if (lhs instanceof InterpretedFunction) {
                                     InterpretedFunction f = (InterpretedFunction) lhs;
                                     if (frame.fnOrScript.securityDomain == f.securityDomain) {
-                                        return doNewByteCode(
-                                                cx,
-                                                frame,
-                                                state.indexReg,
-                                                stack,
-                                                sDbl,
-                                                state.stackTop,
-                                                op,
-                                                f);
+                                        return doNewByteCode(cx, frame, state, stack, sDbl, op, f);
                                     }
                                 }
                                 if (!(lhs instanceof Constructable)) {
@@ -2194,16 +2186,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             state.indexReg = iCode[frame.pc++];
                         // fallthrough
                         case Icode_SETCONSTVAR:
-                            state.stackTop =
-                                    doSetConstVar(
-                                            frame,
-                                            stack,
-                                            sDbl,
-                                            state.stackTop,
-                                            vars,
-                                            varDbls,
-                                            varAttributes,
-                                            state.indexReg);
+                            doSetConstVar(frame, stack, sDbl, state, vars, varDbls, varAttributes);
                             continue Loop;
                         case Icode_SETVAR1:
                             state.indexReg = iCode[frame.pc++];
@@ -2951,10 +2934,9 @@ public final class Interpreter extends Icode implements Evaluator {
     private static InterpreterResult doNewByteCode(
             Context cx,
             CallFrame frame,
-            int indexReg,
+            InterpreterState state,
             final Object[] stack,
             final double[] sDbl,
-            int stackTop,
             int op,
             InterpretedFunction f) {
         if (cx.getLanguageVersion() >= Context.VERSION_ES6 && f.getHomeObject() != null) {
@@ -2973,15 +2955,15 @@ public final class Interpreter extends Icode implements Evaluator {
                         stack,
                         sDbl,
                         null,
-                        stackTop + 1,
-                        indexReg,
+                        state.stackTop + 1,
+                        state.indexReg,
                         f,
                         frame);
 
-        stack[stackTop] = newInstance;
-        frame.savedStackTop = stackTop;
+        stack[state.stackTop] = newInstance;
+        frame.savedStackTop = state.stackTop;
         frame.savedCallOp = op;
-        return new StateContinueResult(calleeFrame, indexReg);
+        return new StateContinueResult(calleeFrame, state.indexReg);
     }
 
     private static void catchScope(
@@ -3726,35 +3708,33 @@ public final class Interpreter extends Icode implements Evaluator {
         frame.pc += 4;
     }
 
-    private static int doSetConstVar(
+    private static void doSetConstVar(
             CallFrame frame,
             Object[] stack,
             double[] sDbl,
-            int stackTop,
+            InterpreterState state,
             Object[] vars,
             double[] varDbls,
-            byte[] varAttributes,
-            int indexReg) {
+            byte[] varAttributes) {
         if (!frame.useActivation) {
-            if ((varAttributes[indexReg] & ScriptableObject.READONLY) == 0) {
+            if ((varAttributes[state.indexReg] & ScriptableObject.READONLY) == 0) {
                 throw Context.reportRuntimeErrorById(
-                        "msg.var.redecl", frame.idata.argNames[indexReg]);
+                        "msg.var.redecl", frame.idata.argNames[state.indexReg]);
             }
-            if ((varAttributes[indexReg] & ScriptableObject.UNINITIALIZED_CONST) != 0) {
-                vars[indexReg] = stack[stackTop];
-                varAttributes[indexReg] &= ~ScriptableObject.UNINITIALIZED_CONST;
-                varDbls[indexReg] = sDbl[stackTop];
+            if ((varAttributes[state.indexReg] & ScriptableObject.UNINITIALIZED_CONST) != 0) {
+                vars[state.indexReg] = stack[state.stackTop];
+                varAttributes[state.indexReg] &= ~ScriptableObject.UNINITIALIZED_CONST;
+                varDbls[state.indexReg] = sDbl[state.stackTop];
             }
         } else {
-            Object val = stack[stackTop];
-            if (val == DOUBLE_MARK) val = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-            String stringReg = frame.idata.argNames[indexReg];
+            Object val = stack[state.stackTop];
+            if (val == DOUBLE_MARK) val = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+            String stringReg = frame.idata.argNames[state.indexReg];
             if (frame.scope instanceof ConstProperties) {
                 ConstProperties cp = (ConstProperties) frame.scope;
                 cp.putConst(stringReg, frame.scope, val);
             } else throw Kit.codeBug();
         }
-        return stackTop;
     }
 
     private static int doSetVar(
