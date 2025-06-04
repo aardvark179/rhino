@@ -1891,7 +1891,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             }
                         case Token.ADD:
                             --state.stackTop;
-                            doAdd(stack, sDbl, state.stackTop, cx);
+                            doAdd(stack, sDbl, state, cx);
                             continue Loop;
                         case Token.SUB:
                         case Token.MUL:
@@ -4375,39 +4375,39 @@ public final class Interpreter extends Icode implements Evaluator {
         }
     }
 
-    private static void doAdd(Object[] stack, double[] sDbl, int stackTop, Context cx) {
-        Object rhs = stack[stackTop + 1];
-        Object lhs = stack[stackTop];
+    private static void doAdd(Object[] stack, double[] sDbl, InterpreterState state, Context cx) {
+        Object rhs = stack[state.stackTop + 1];
+        Object lhs = stack[state.stackTop];
         double d;
         boolean leftRightOrder;
         if (rhs == DOUBLE_MARK) {
-            d = sDbl[stackTop + 1];
+            d = sDbl[state.stackTop + 1];
             if (lhs == DOUBLE_MARK) {
-                sDbl[stackTop] += d;
+                sDbl[state.stackTop] += d;
                 return;
             }
             leftRightOrder = true;
             // fallthrough to object + number code
         } else if (lhs == DOUBLE_MARK) {
-            d = sDbl[stackTop];
+            d = sDbl[state.stackTop];
             lhs = rhs;
             leftRightOrder = false;
             // fallthrough to object + number code
         } else {
             if (lhs instanceof Scriptable || rhs instanceof Scriptable) {
-                stack[stackTop] = ScriptRuntime.add(lhs, rhs, cx);
+                stack[state.stackTop] = ScriptRuntime.add(lhs, rhs, cx);
 
                 // the next two else if branches are a bit more tricky
                 // to reduce method calls
             } else if (lhs instanceof CharSequence) {
                 if (rhs instanceof CharSequence) {
-                    stack[stackTop] = new ConsString((CharSequence) lhs, (CharSequence) rhs);
+                    stack[state.stackTop] = new ConsString((CharSequence) lhs, (CharSequence) rhs);
                 } else {
-                    stack[stackTop] =
+                    stack[state.stackTop] =
                             new ConsString((CharSequence) lhs, ScriptRuntime.toCharSequence(rhs));
                 }
             } else if (rhs instanceof CharSequence) {
-                stack[stackTop] =
+                stack[state.stackTop] =
                         new ConsString(ScriptRuntime.toCharSequence(lhs), (CharSequence) rhs);
 
             } else {
@@ -4415,12 +4415,12 @@ public final class Interpreter extends Icode implements Evaluator {
                 Number rNum = (rhs instanceof Number) ? (Number) rhs : ScriptRuntime.toNumeric(rhs);
 
                 if (lNum instanceof BigInteger && rNum instanceof BigInteger) {
-                    stack[stackTop] = ((BigInteger) lNum).add((BigInteger) rNum);
+                    stack[state.stackTop] = ((BigInteger) lNum).add((BigInteger) rNum);
                 } else if (lNum instanceof BigInteger || rNum instanceof BigInteger) {
                     throw ScriptRuntime.typeErrorById("msg.cant.convert.to.number", "BigInt");
                 } else {
-                    stack[stackTop] = DOUBLE_MARK;
-                    sDbl[stackTop] = lNum.doubleValue() + rNum.doubleValue();
+                    stack[state.stackTop] = DOUBLE_MARK;
+                    sDbl[state.stackTop] = lNum.doubleValue() + rNum.doubleValue();
                 }
             }
             return;
@@ -4434,21 +4434,21 @@ public final class Interpreter extends Icode implements Evaluator {
                 lhs = rhs;
                 rhs = tmp;
             }
-            stack[stackTop] = ScriptRuntime.add(lhs, rhs, cx);
+            stack[state.stackTop] = ScriptRuntime.add(lhs, rhs, cx);
         } else if (lhs instanceof CharSequence) {
             CharSequence rstr = ScriptRuntime.numberToString(d, 10);
             if (leftRightOrder) {
-                stack[stackTop] = new ConsString((CharSequence) lhs, rstr);
+                stack[state.stackTop] = new ConsString((CharSequence) lhs, rstr);
             } else {
-                stack[stackTop] = new ConsString(rstr, (CharSequence) lhs);
+                stack[state.stackTop] = new ConsString(rstr, (CharSequence) lhs);
             }
         } else {
             Number lNum = (lhs instanceof Number) ? (Number) lhs : ScriptRuntime.toNumeric(lhs);
             if (lNum instanceof BigInteger) {
                 throw ScriptRuntime.typeErrorById("msg.cant.convert.to.number", "BigInt");
             } else {
-                stack[stackTop] = DOUBLE_MARK;
-                sDbl[stackTop] = lNum.doubleValue() + d;
+                stack[state.stackTop] = DOUBLE_MARK;
+                sDbl[state.stackTop] = lNum.doubleValue() + d;
             }
         }
     }
