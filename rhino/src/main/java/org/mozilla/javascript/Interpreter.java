@@ -1923,8 +1923,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             }
                         case Icode_SETCONST:
                             {
-                                setConst(cx, stack, sDbl, state.stringReg, state.stackTop);
-                                --state.stackTop;
+                                setConst(cx, stack, sDbl, state);
                                 continue Loop;
                             }
                         case Token.DELPROP:
@@ -2922,11 +2921,12 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void setConst(
-            Context cx, final Object[] stack, final double[] sDbl, String stringReg, int stackTop) {
-        Object rhs = stack[stackTop];
-        if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-        Scriptable lhs = (Scriptable) stack[stackTop - 1];
-        stack[stackTop - 1] = ScriptRuntime.setConst(lhs, rhs, cx, stringReg);
+            Context cx, final Object[] stack, final double[] sDbl, InterpreterState state) {
+        Object rhs = stack[state.stackTop];
+        if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+        Scriptable lhs = (Scriptable) stack[state.stackTop - 1];
+        stack[state.stackTop - 1] = ScriptRuntime.setConst(lhs, rhs, cx, state.stringReg);
+        --state.stackTop;
     }
 
     private static void getProp(
