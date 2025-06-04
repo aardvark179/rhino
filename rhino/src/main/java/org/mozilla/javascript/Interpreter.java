@@ -1624,10 +1624,6 @@ public final class Interpreter extends Icode implements Evaluator {
 
             // Use local variables for constant values in frame
             // for faster access
-            final Object[] stack = frame.stack;
-            final double[] sDbl = frame.sDbl;
-            final Object[] vars = frame.varSource.stack;
-            final double[] varDbls = frame.varSource.sDbl;
             final byte[] varAttributes = frame.varSource.stackAttributes;
             final InterpreterData iData = frame.idata;
             final byte[] iCode = iData.itsICode;
@@ -1692,47 +1688,52 @@ public final class Interpreter extends Icode implements Evaluator {
                         case Icode_GENERATOR_RETURN:
                             {
                                 generatorReturn(
-                                        frame, generatorState, stack, sDbl, iData, iCode, state);
+                                        frame,
+                                        generatorState,
+                                        frame.stack,
+                                        frame.sDbl,
+                                        iData,
+                                        iCode,
+                                        state);
                                 break Loop;
                             }
                         case Token.THROW:
                             {
-                                throwable = throwObject(frame, stack, sDbl, iData, iCode, state);
+                                throwable =
+                                        throwObject(
+                                                frame,
+                                                frame.stack,
+                                                frame.sDbl,
+                                                iData,
+                                                iCode,
+                                                state);
                                 --state.stackTop;
                                 break withoutExceptions;
                             }
                         case Token.RETHROW:
                             {
                                 state.indexReg += iData.itsMaxVars;
-                                throwable = stack[state.indexReg];
+                                throwable = frame.stack[state.indexReg];
                                 break withoutExceptions;
                             }
                         case Token.GE:
                         case Token.LE:
                         case Token.GT:
                         case Token.LT:
-                            {
-                                doCompare(frame, op, stack, sDbl, state);
-                                continue Loop;
-                            }
+                            doCompare(frame, op, frame.stack, frame.sDbl, state);
+                            continue Loop;
                         case Token.IN:
                         case Token.INSTANCEOF:
-                            {
-                                doInOrInstanceof(cx, op, stack, sDbl, state);
-                                continue Loop;
-                            }
+                            doInOrInstanceof(cx, op, frame.stack, frame.sDbl, state);
+                            continue Loop;
                         case Token.EQ:
                         case Token.NE:
-                            {
-                                doEquals(op, stack, sDbl, state);
-                                continue Loop;
-                            }
+                            doEquals(op, frame.stack, frame.sDbl, state);
+                            continue Loop;
                         case Token.SHEQ:
                         case Token.SHNE:
-                            {
-                                doShallowEquals(op, stack, sDbl, state);
-                                continue Loop;
-                            }
+                            doShallowEquals(op, frame.stack, frame.sDbl, state);
+                            continue Loop;
                         case Token.IFNE:
                             if (stack_boolean(frame, state.stackTop--)) {
                                 frame.pc += 2;
@@ -1750,7 +1751,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                 frame.pc += 2;
                                 continue Loop;
                             }
-                            stack[state.stackTop--] = null;
+                            frame.stack[state.stackTop--] = null;
                             break jumplessRun;
                         case Icode_IF_NULL_UNDEF:
                             {
@@ -1776,11 +1777,11 @@ public final class Interpreter extends Icode implements Evaluator {
                             break jumplessRun;
                         case Icode_GOSUB:
                             ++state.stackTop;
-                            stack[state.stackTop] = DOUBLE_MARK;
-                            sDbl[state.stackTop] = frame.pc + 2;
+                            frame.stack[state.stackTop] = DOUBLE_MARK;
+                            frame.sDbl[state.stackTop] = frame.pc + 2;
                             break jumplessRun;
                         case Icode_STARTSUB:
-                            startSub(frame, stack, sDbl, iData, state);
+                            startSub(frame, frame.stack, frame.sDbl, iData, state);
                             continue Loop;
                         case Icode_RETSUB:
                             {
@@ -1789,7 +1790,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                     addInstructionCount(cx, frame, 0);
                                 }
                                 state.indexReg += iData.itsMaxVars;
-                                Object value = stack[state.indexReg];
+                                Object value = frame.stack[state.indexReg];
                                 if (value != DOUBLE_MARK) {
                                     // Invocation from exception handler, restore object to
                                     // rethrow
@@ -1797,29 +1798,29 @@ public final class Interpreter extends Icode implements Evaluator {
                                     break withoutExceptions;
                                 }
                                 // Normal return from GOSUB
-                                frame.pc = (int) sDbl[state.indexReg];
+                                frame.pc = (int) frame.sDbl[state.indexReg];
                                 if (instructionCounting) {
                                     frame.pcPrevBranch = frame.pc;
                                 }
                                 continue Loop;
                             }
                         case Icode_POP:
-                            pop(stack, state);
+                            pop(frame.stack, state);
                             continue Loop;
                         case Icode_POP_RESULT:
-                            popResult(frame, stack, sDbl, state);
+                            popResult(frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_DUP:
-                            dup(stack, sDbl, state);
+                            dup(frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_DUP2:
-                            dup2(stack, sDbl, state);
+                            dup2(frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_SWAP:
-                            swap(stack, sDbl, state);
+                            swap(frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.RETURN:
-                            doReturn(frame, stack, sDbl, state);
+                            doReturn(frame, frame.stack, frame.sDbl, state);
                             break Loop;
                         case Token.RETURN_RESULT:
                             break Loop;
@@ -1827,135 +1828,135 @@ public final class Interpreter extends Icode implements Evaluator {
                             frame.result = undefined;
                             break Loop;
                         case Token.BITNOT:
-                            doBitNOT(frame, stack, sDbl, state);
+                            doBitNOT(frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.BITAND:
                         case Token.BITOR:
                         case Token.BITXOR:
                         case Token.LSH:
                         case Token.RSH:
-                            doBitOp(frame, op, stack, sDbl, state);
+                            doBitOp(frame, op, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.URSH:
-                            unsignedRightShift(frame, stack, sDbl, state);
+                            unsignedRightShift(frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.POS:
-                            toPositive(frame, stack, sDbl, state);
+                            toPositive(frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.NEG:
-                            toNegative(frame, stack, sDbl, state);
+                            toNegative(frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.ADD:
-                            doAdd(stack, sDbl, state, cx);
+                            doAdd(frame.stack, frame.sDbl, state, cx);
                             continue Loop;
                         case Token.SUB:
                         case Token.MUL:
                         case Token.DIV:
                         case Token.MOD:
                         case Token.EXP:
-                            doArithmetic(frame, op, stack, sDbl, state);
+                            doArithmetic(frame, op, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.NOT:
-                            doNot(frame, stack, state);
+                            doNot(frame, frame.stack, state);
                             continue Loop;
                         case Token.BINDNAME:
-                            doBindName(cx, frame, stack, state);
+                            doBindName(cx, frame, frame.stack, state);
                             continue Loop;
                         case Token.STRICT_SETNAME:
                         case Token.SETNAME:
-                            setName(cx, frame, stack, sDbl, state, op);
+                            setName(cx, frame, frame.stack, frame.sDbl, state, op);
                             continue Loop;
                         case Icode_SETCONST:
-                            setConst(cx, stack, sDbl, state);
+                            setConst(cx, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.DELPROP:
                         case Icode_DELNAME:
-                            doDelName(cx, frame, op, stack, sDbl, state);
+                            doDelName(cx, frame, op, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_DELPROP_SUPER:
-                            doDelPropSuper(stack, state);
+                            doDelPropSuper(frame.stack, state);
                             continue Loop;
                         case Token.GETPROPNOWARN:
-                            getPropNoWarn(cx, frame, stack, sDbl, state);
+                            getPropNoWarn(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.GETPROP:
-                            getProp(cx, frame, stack, sDbl, state);
+                            getProp(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.GETPROP_SUPER:
                         case Token.GETPROPNOWARN_SUPER:
-                            getPropSuper(cx, frame, stack, state, op);
+                            getPropSuper(cx, frame, frame.stack, state, op);
                             continue Loop;
                         case Token.SETPROP:
-                            setProp(cx, frame, stack, sDbl, state);
+                            setProp(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.SETPROP_SUPER:
-                            setPropSuper(cx, frame, stack, sDbl, state);
+                            setPropSuper(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_PROP_INC_DEC:
-                            propIncDec(cx, frame, stack, sDbl, iCode, state);
+                            propIncDec(cx, frame, frame.stack, frame.sDbl, iCode, state);
                             continue Loop;
                         case Token.GETELEM:
-                            doGetElem(cx, frame, stack, sDbl, state);
+                            doGetElem(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.GETELEM_SUPER:
-                            doGetElemSuper(cx, frame, stack, sDbl, state);
+                            doGetElemSuper(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.SETELEM:
-                            doSetElem(cx, frame, stack, sDbl, state);
+                            doSetElem(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.SETELEM_SUPER:
-                            doSetElemSuper(cx, frame, stack, sDbl, state);
+                            doSetElemSuper(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_ELEM_INC_DEC:
-                            doElemIncDec(cx, frame, iCode, stack, sDbl, state);
+                            doElemIncDec(cx, frame, iCode, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.GET_REF:
-                            getRef(cx, stack, state);
+                            getRef(cx, frame.stack, state);
                             continue Loop;
                         case Token.SET_REF:
-                            setRef(cx, frame, stack, sDbl, state);
+                            setRef(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.DEL_REF:
-                            delRef(cx, stack, state);
+                            delRef(cx, frame.stack, state);
                             continue Loop;
                         case Icode_REF_INC_DEC:
-                            refIncDec(cx, frame, stack, iCode, state);
+                            refIncDec(cx, frame, frame.stack, iCode, state);
                             continue Loop;
                         case Token.LOCAL_LOAD:
-                            localLoad(stack, sDbl, iData, state);
+                            localLoad(frame.stack, frame.sDbl, iData, state);
                             continue Loop;
                         case Icode_LOCAL_CLEAR:
-                            localClear(stack, iData, state);
+                            localClear(frame.stack, iData, state);
                             continue Loop;
                         case Icode_NAME_AND_THIS:
-                            nameAndThis(cx, frame, stack, state);
+                            nameAndThis(cx, frame, frame.stack, state);
                             continue Loop;
                         case Icode_NAME_AND_THIS_OPTIONAL:
-                            nameAndThisOptional(cx, frame, stack, state);
+                            nameAndThisOptional(cx, frame, frame.stack, state);
                             continue Loop;
                         case Icode_PROP_AND_THIS:
-                            propAndThis(cx, frame, stack, sDbl, state);
+                            propAndThis(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_PROP_AND_THIS_OPTIONAL:
-                            propAndThisOptional(cx, frame, stack, sDbl, state);
+                            propAndThisOptional(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_ELEM_AND_THIS:
-                            elemAndThis(cx, frame, stack, sDbl, state);
+                            elemAndThis(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_ELEM_AND_THIS_OPTIONAL:
-                            elemAndThisOptional(cx, frame, stack, sDbl, state);
+                            elemAndThisOptional(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_VALUE_AND_THIS:
-                            valueAndThis(cx, stack, sDbl, state);
+                            valueAndThis(cx, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_VALUE_AND_THIS_OPTIONAL:
-                            valueAndThisOptional(cx, stack, sDbl, state);
+                            valueAndThisOptional(cx, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_CALLSPECIAL:
-                            doCallSpecial(cx, frame, stack, sDbl, state, iCode, false);
+                            doCallSpecial(cx, frame, frame.stack, frame.sDbl, state, iCode, false);
                             continue Loop;
                         case Icode_CALLSPECIAL_OPTIONAL:
-                            doCallSpecial(cx, frame, stack, sDbl, state, iCode, true);
+                            doCallSpecial(cx, frame, frame.stack, frame.sDbl, state, iCode, true);
                             continue Loop;
                         case Token.CALL:
                         case Icode_CALL_ON_SUPER:
@@ -1989,16 +1990,17 @@ public final class Interpreter extends Icode implements Evaluator {
                                 // state.indexReg: number of arguments
                                 state.stackTop -= state.indexReg;
 
-                                Object lhs = stack[state.stackTop];
+                                Object lhs = frame.stack[state.stackTop];
                                 if (lhs instanceof InterpretedFunction) {
                                     InterpretedFunction f = (InterpretedFunction) lhs;
                                     if (frame.fnOrScript.securityDomain == f.securityDomain) {
-                                        return doNewByteCode(cx, frame, state, stack, sDbl, op, f);
+                                        return doNewByteCode(
+                                                cx, frame, state, frame.stack, frame.sDbl, op, f);
                                     }
                                 }
                                 if (!(lhs instanceof Constructable)) {
                                     if (lhs == DOUBLE_MARK)
-                                        lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+                                        lhs = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
                                     throw ScriptRuntime.notFunctionError(lhs);
                                 }
                                 Constructable ctor = (Constructable) lhs;
@@ -2014,184 +2016,202 @@ public final class Interpreter extends Icode implements Evaluator {
 
                                 Object[] outArgs =
                                         getArgsArray(
-                                                stack, sDbl, state.stackTop + 1, state.indexReg);
-                                stack[state.stackTop] = ctor.construct(cx, frame.scope, outArgs);
+                                                frame.stack,
+                                                frame.sDbl,
+                                                state.stackTop + 1,
+                                                state.indexReg);
+                                frame.stack[state.stackTop] = ctor.construct(cx, frame.scope, outArgs);
                                 continue Loop;
                             }
                         case Token.TYPEOF:
-                            doTypeOf(stack, sDbl, state);
+                            doTypeOf(frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_TYPEOFNAME:
-                            doTypeOfName(frame, stack, state);
+                            doTypeOfName(frame, frame.stack, state);
                             continue Loop;
                         case Token.STRING:
-                            doString(stack, state);
+                            doString(frame.stack, state);
                             continue Loop;
                         case Icode_SHORTNUMBER:
-                            doShortNumber(frame, stack, sDbl, iCode, state);
+                            doShortNumber(frame, frame.stack, frame.sDbl, iCode, state);
                             continue Loop;
                         case Icode_INTNUMBER:
-                            DoIntNumber(frame, stack, sDbl, iCode, state);
+                            DoIntNumber(frame, frame.stack, frame.sDbl, iCode, state);
                             continue Loop;
                         case Token.NUMBER:
-                            doNumber(stack, sDbl, iData, state);
+                            doNumber(frame.stack, frame.sDbl, iData, state);
                             continue Loop;
                         case Token.BIGINT:
-                            doBigInt(stack, state);
+                            doBigInt(frame.stack, state);
                             continue Loop;
                         case Token.NAME:
-                            doName(cx, frame, stack, state);
+                            doName(cx, frame, frame.stack, state);
                             continue Loop;
                         case Icode_NAME_INC_DEC:
-                            doNameIncDec(cx, frame, stack, iCode, state);
+                            doNameIncDec(cx, frame, frame.stack, iCode, state);
                             continue Loop;
                         case Icode_SETCONSTVAR1:
                             state.indexReg = iCode[frame.pc++];
                         // fallthrough
                         case Icode_SETCONSTVAR:
-                            doSetConstVar(frame, stack, sDbl, state, vars, varDbls, varAttributes);
+                            doSetConstVar(
+                                    frame,
+                                    frame.stack,
+                                    frame.sDbl,
+                                    state,
+                                    frame.varSource.stack,
+                                    frame.varSource.sDbl,
+                                    varAttributes);
                             continue Loop;
                         case Icode_SETVAR1:
                             state.indexReg = iCode[frame.pc++];
                         // fallthrough
                         case Token.SETVAR:
-                            doSetVar(frame, stack, sDbl, state, vars, varDbls, varAttributes);
+                            doSetVar(
+                                    frame,
+                                    frame.stack,
+                                    frame.sDbl,
+                                    state,
+                                    frame.varSource.stack,
+                                    frame.varSource.sDbl,
+                                    varAttributes);
                             continue Loop;
                         case Icode_GETVAR1:
                             state.indexReg = iCode[frame.pc++];
                         // fallthrough
                         case Token.GETVAR:
-                            doGetVar(frame, stack, sDbl, state, vars, varDbls);
+                            doGetVar(frame, frame.stack, frame.sDbl, state, frame.varSource.stack, frame.varSource.sDbl);
                             continue Loop;
                         case Icode_VAR_INC_DEC:
                             {
                                 doVarIncDec(
                                         cx,
                                         frame,
-                                        stack,
-                                        sDbl,
+                                        frame.stack,
+                                        frame.sDbl,
                                         state,
-                                        vars,
-                                        varDbls,
+                                        frame.varSource.stack,
+                                        frame.varSource.sDbl,
                                         varAttributes);
                                 continue Loop;
                             }
                         case Icode_ZERO:
-                            doZero(stack, state);
+                            doZero(frame.stack, state);
                             continue Loop;
                         case Icode_ONE:
-                            doOne(stack, state);
+                            doOne(frame.stack, state);
                             continue Loop;
                         case Token.NULL:
-                            doNull(stack, state);
+                            doNull(frame.stack, state);
                             continue Loop;
                         case Token.THIS:
-                            doThis(frame, stack, state);
+                            doThis(frame, frame.stack, state);
                             continue Loop;
                         case Token.SUPER:
-                            doSuper(frame, stack, state);
+                            doSuper(frame, frame.stack, state);
                             continue Loop;
                         case Token.THISFN:
-                            doThisFunction(frame, stack, state);
+                            doThisFunction(frame, frame.stack, state);
                             continue Loop;
                         case Token.FALSE:
-                            doFalse(stack, state);
+                            doFalse(frame.stack, state);
                             continue Loop;
                         case Token.TRUE:
-                            doTrue(stack, state);
+                            doTrue(frame.stack, state);
                             continue Loop;
                         case Icode_UNDEF:
-                            doUndef(stack, state);
+                            doUndef(frame.stack, state);
                             continue Loop;
                         case Token.ENTERWITH:
-                            enterWith(cx, frame, stack, sDbl, state);
+                            enterWith(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.LEAVEWITH:
                             doLeaveWith(frame);
                             continue Loop;
                         case Token.CATCH_SCOPE:
-                            catchScope(cx, frame, state, stack, iData);
+                            catchScope(cx, frame, state, frame.stack, iData);
                             continue Loop;
                         case Token.ENUM_INIT_KEYS:
                         case Token.ENUM_INIT_VALUES:
                         case Token.ENUM_INIT_ARRAY:
                         case Token.ENUM_INIT_VALUES_IN_ORDER:
-                            enumInit(cx, frame, state, stack, sDbl, iData, op);
+                            enumInit(cx, frame, state, frame.stack, frame.sDbl, iData, op);
                             continue Loop;
                         case Token.ENUM_NEXT:
                         case Token.ENUM_ID:
-                            enumOp(cx, state, stack, iData, op);
+                            enumOp(cx, state, frame.stack, iData, op);
                             continue Loop;
                         case Token.REF_SPECIAL:
-                            refSpecial(cx, frame, stack, sDbl, state);
+                            refSpecial(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.REF_MEMBER:
-                            doRefMember(cx, stack, sDbl, state);
+                            doRefMember(cx, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.REF_NS_MEMBER:
-                            doRefNsMember(cx, stack, sDbl, state);
+                            doRefNsMember(cx, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.REF_NAME:
-                            refName(cx, frame, state, stack, sDbl);
+                            refName(cx, frame, state, frame.stack, frame.sDbl);
                             continue Loop;
                         case Token.REF_NS_NAME:
-                            doRefNsName(cx, frame, stack, sDbl, state);
+                            doRefNsName(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_SCOPE_LOAD:
-                            doScopeLoad(frame, stack, iData, state);
+                            doScopeLoad(frame, frame.stack, iData, state);
                             continue Loop;
                         case Icode_SCOPE_SAVE:
-                            doScopeSave(frame, stack, iData, state);
+                            doScopeSave(frame, frame.stack, iData, state);
                             continue Loop;
                         case Icode_CLOSURE_EXPR:
-                            closureExpr(cx, frame, state, stack);
+                            closureExpr(cx, frame, state, frame.stack);
                             continue Loop;
                         case ICode_FN_STORE_HOME_OBJECT:
-                            doStoreHomeObject(stack, state);
+                            doStoreHomeObject(frame.stack, state);
                             continue Loop;
                         case Icode_CLOSURE_STMT:
                             initFunction(cx, frame.scope, frame.fnOrScript, state);
                             continue Loop;
                         case Token.REGEXP:
-                            doRegExp(cx, frame, stack, iData, state);
+                            doRegExp(cx, frame, frame.stack, iData, state);
                             continue Loop;
                         case Icode_TEMPLATE_LITERAL_CALLSITE:
-                            doTemplateLiteralCallSite(cx, frame, stack, iData, state);
+                            doTemplateLiteralCallSite(cx, frame, frame.stack, iData, state);
                             continue Loop;
                         case Icode_LITERAL_NEW_OBJECT:
-                            literalNewObject(cx, frame, state, stack, sDbl, iData, iCode);
+                            literalNewObject(
+                                    cx, frame, state, frame.stack, frame.sDbl, iData, iCode);
                             continue Loop;
                         case Icode_LITERAL_NEW_ARRAY:
-                            newArrayLit(state, stack, sDbl);
+                            newArrayLit(state, frame.stack, frame.sDbl);
                             continue Loop;
                         case Icode_LITERAL_SET:
-                            literalSet(stack, sDbl, state);
+                            literalSet(frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_LITERAL_GETTER:
-                            literalGetter(stack, sDbl, state);
+                            literalGetter(frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_LITERAL_SETTER:
-                            literalSetter(stack, sDbl, state);
+                            literalSetter(frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_LITERAL_KEY_SET:
-                            literalKeySet(stack, sDbl, state);
+                            literalKeySet(frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.OBJECTLIT:
-                            objectLit(cx, frame, stack, state);
+                            objectLit(cx, frame, frame.stack, state);
                             continue Loop;
                         case Token.ARRAYLIT:
                         case Icode_SPARE_ARRAYLIT:
-                            arrayLiteral(cx, frame, state, stack, iData, op);
+                            arrayLiteral(cx, frame, state, frame.stack, iData, op);
                             continue Loop;
                         case Icode_ENTERDQ:
-                            enterDotQuery(frame, stack, sDbl, state);
+                            enterDotQuery(frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_LEAVEDQ:
                             {
                                 boolean valBln = stack_boolean(frame, state.stackTop);
                                 Object x = ScriptRuntime.updateDotQuery(valBln, frame.scope);
                                 if (x != null) {
-                                    stack[state.stackTop] = x;
+                                    frame.stack[state.stackTop] = x;
                                     frame.scope = ScriptRuntime.leaveDotQuery(frame.scope);
                                     frame.pc += 2;
                                     continue Loop;
@@ -2201,13 +2221,13 @@ public final class Interpreter extends Icode implements Evaluator {
                                 break jumplessRun;
                             }
                         case Token.DEFAULTNAMESPACE:
-                            doDefaultNamespace(cx, stack, sDbl, state);
+                            doDefaultNamespace(cx, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Token.ESCXMLATTR:
-                            doEscXMLAttr(cx, stack, state);
+                            doEscXMLAttr(cx, frame.stack, state);
                             continue Loop;
                         case Token.ESCXMLTEXT:
-                            doEscXMLText(cx, stack, state);
+                            doEscXMLText(cx, frame.stack, state);
                             continue Loop;
                         case Icode_DEBUGGER:
                             doDebug(cx, frame);
