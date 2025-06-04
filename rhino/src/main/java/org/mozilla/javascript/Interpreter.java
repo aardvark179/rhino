@@ -1624,11 +1624,7 @@ public final class Interpreter extends Icode implements Evaluator {
 
             // Use local variables for constant values in frame
             // for faster access
-            final byte[] varAttributes = frame.varSource.stackAttributes;
-            final InterpreterData iData = frame.idata;
-            final byte[] iCode = iData.itsICode;
-            final String[] strings = iData.itsStringTable;
-            final BigInteger[] bigInts = iData.itsBigIntTable;
+            final byte[] iCode = frame.idata.itsICode;
             final InterpreterState state =
                     new InterpreterState(frame.savedStackTop, iReg, instructionCounting);
 
@@ -1682,7 +1678,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             }
                         case Icode_GENERATOR_END:
                             {
-                                generatorEnd(frame, generatorState, iData, iCode);
+                                generatorEnd(frame, generatorState, frame.idata, iCode);
                                 break Loop;
                             }
                         case Icode_GENERATOR_RETURN:
@@ -1692,7 +1688,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                         generatorState,
                                         frame.stack,
                                         frame.sDbl,
-                                        iData,
+                                        frame.idata,
                                         iCode,
                                         state);
                                 break Loop;
@@ -1704,7 +1700,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                                 frame,
                                                 frame.stack,
                                                 frame.sDbl,
-                                                iData,
+                                                frame.idata,
                                                 iCode,
                                                 state);
                                 --state.stackTop;
@@ -1712,7 +1708,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             }
                         case Token.RETHROW:
                             {
-                                state.indexReg += iData.itsMaxVars;
+                                state.indexReg += frame.idata.itsMaxVars;
                                 throwable = frame.stack[state.indexReg];
                                 break withoutExceptions;
                             }
@@ -1781,7 +1777,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             frame.sDbl[state.stackTop] = frame.pc + 2;
                             break jumplessRun;
                         case Icode_STARTSUB:
-                            startSub(frame, frame.stack, frame.sDbl, iData, state);
+                            startSub(frame, frame.stack, frame.sDbl, frame.idata, state);
                             continue Loop;
                         case Icode_RETSUB:
                             {
@@ -1789,7 +1785,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                 if (instructionCounting) {
                                     addInstructionCount(cx, frame, 0);
                                 }
-                                state.indexReg += iData.itsMaxVars;
+                                state.indexReg += frame.idata.itsMaxVars;
                                 Object value = frame.stack[state.indexReg];
                                 if (value != DOUBLE_MARK) {
                                     // Invocation from exception handler, restore object to
@@ -1923,10 +1919,10 @@ public final class Interpreter extends Icode implements Evaluator {
                             refIncDec(cx, frame, frame.stack, iCode, state);
                             continue Loop;
                         case Token.LOCAL_LOAD:
-                            localLoad(frame.stack, frame.sDbl, iData, state);
+                            localLoad(frame.stack, frame.sDbl, frame.idata, state);
                             continue Loop;
                         case Icode_LOCAL_CLEAR:
-                            localClear(frame.stack, iData, state);
+                            localClear(frame.stack, frame.idata, state);
                             continue Loop;
                         case Icode_NAME_AND_THIS:
                             nameAndThis(cx, frame, frame.stack, state);
@@ -2020,7 +2016,8 @@ public final class Interpreter extends Icode implements Evaluator {
                                                 frame.sDbl,
                                                 state.stackTop + 1,
                                                 state.indexReg);
-                                frame.stack[state.stackTop] = ctor.construct(cx, frame.scope, outArgs);
+                                frame.stack[state.stackTop] =
+                                        ctor.construct(cx, frame.scope, outArgs);
                                 continue Loop;
                             }
                         case Token.TYPEOF:
@@ -2039,7 +2036,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             DoIntNumber(frame, frame.stack, frame.sDbl, iCode, state);
                             continue Loop;
                         case Token.NUMBER:
-                            doNumber(frame.stack, frame.sDbl, iData, state);
+                            doNumber(frame.stack, frame.sDbl, frame.idata, state);
                             continue Loop;
                         case Token.BIGINT:
                             doBigInt(frame.stack, state);
@@ -2061,7 +2058,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                     state,
                                     frame.varSource.stack,
                                     frame.varSource.sDbl,
-                                    varAttributes);
+                                    frame.varSource.stackAttributes);
                             continue Loop;
                         case Icode_SETVAR1:
                             state.indexReg = iCode[frame.pc++];
@@ -2074,13 +2071,19 @@ public final class Interpreter extends Icode implements Evaluator {
                                     state,
                                     frame.varSource.stack,
                                     frame.varSource.sDbl,
-                                    varAttributes);
+                                    frame.varSource.stackAttributes);
                             continue Loop;
                         case Icode_GETVAR1:
                             state.indexReg = iCode[frame.pc++];
                         // fallthrough
                         case Token.GETVAR:
-                            doGetVar(frame, frame.stack, frame.sDbl, state, frame.varSource.stack, frame.varSource.sDbl);
+                            doGetVar(
+                                    frame,
+                                    frame.stack,
+                                    frame.sDbl,
+                                    state,
+                                    frame.varSource.stack,
+                                    frame.varSource.sDbl);
                             continue Loop;
                         case Icode_VAR_INC_DEC:
                             {
@@ -2092,7 +2095,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                         state,
                                         frame.varSource.stack,
                                         frame.varSource.sDbl,
-                                        varAttributes);
+                                        frame.varSource.stackAttributes);
                                 continue Loop;
                             }
                         case Icode_ZERO:
@@ -2129,17 +2132,17 @@ public final class Interpreter extends Icode implements Evaluator {
                             doLeaveWith(frame);
                             continue Loop;
                         case Token.CATCH_SCOPE:
-                            catchScope(cx, frame, state, frame.stack, iData);
+                            catchScope(cx, frame, state, frame.stack, frame.idata);
                             continue Loop;
                         case Token.ENUM_INIT_KEYS:
                         case Token.ENUM_INIT_VALUES:
                         case Token.ENUM_INIT_ARRAY:
                         case Token.ENUM_INIT_VALUES_IN_ORDER:
-                            enumInit(cx, frame, state, frame.stack, frame.sDbl, iData, op);
+                            enumInit(cx, frame, state, frame.stack, frame.sDbl, frame.idata, op);
                             continue Loop;
                         case Token.ENUM_NEXT:
                         case Token.ENUM_ID:
-                            enumOp(cx, state, frame.stack, iData, op);
+                            enumOp(cx, state, frame.stack, frame.idata, op);
                             continue Loop;
                         case Token.REF_SPECIAL:
                             refSpecial(cx, frame, frame.stack, frame.sDbl, state);
@@ -2157,10 +2160,10 @@ public final class Interpreter extends Icode implements Evaluator {
                             doRefNsName(cx, frame, frame.stack, frame.sDbl, state);
                             continue Loop;
                         case Icode_SCOPE_LOAD:
-                            doScopeLoad(frame, frame.stack, iData, state);
+                            doScopeLoad(frame, frame.stack, frame.idata, state);
                             continue Loop;
                         case Icode_SCOPE_SAVE:
-                            doScopeSave(frame, frame.stack, iData, state);
+                            doScopeSave(frame, frame.stack, frame.idata, state);
                             continue Loop;
                         case Icode_CLOSURE_EXPR:
                             closureExpr(cx, frame, state, frame.stack);
@@ -2172,14 +2175,14 @@ public final class Interpreter extends Icode implements Evaluator {
                             initFunction(cx, frame.scope, frame.fnOrScript, state);
                             continue Loop;
                         case Token.REGEXP:
-                            doRegExp(cx, frame, frame.stack, iData, state);
+                            doRegExp(cx, frame, frame.stack, frame.idata, state);
                             continue Loop;
                         case Icode_TEMPLATE_LITERAL_CALLSITE:
-                            doTemplateLiteralCallSite(cx, frame, frame.stack, iData, state);
+                            doTemplateLiteralCallSite(cx, frame, frame.stack, frame.idata, state);
                             continue Loop;
                         case Icode_LITERAL_NEW_OBJECT:
                             literalNewObject(
-                                    cx, frame, state, frame.stack, frame.sDbl, iData, iCode);
+                                    cx, frame, state, frame.stack, frame.sDbl, frame.idata, iCode);
                             continue Loop;
                         case Icode_LITERAL_NEW_ARRAY:
                             newArrayLit(state, frame.stack, frame.sDbl);
@@ -2201,7 +2204,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             continue Loop;
                         case Token.ARRAYLIT:
                         case Icode_SPARE_ARRAYLIT:
-                            arrayLiteral(cx, frame, state, frame.stack, iData, op);
+                            arrayLiteral(cx, frame, state, frame.stack, frame.idata, op);
                             continue Loop;
                         case Icode_ENTERDQ:
                             enterDotQuery(frame, frame.stack, frame.sDbl, state);
@@ -2263,49 +2266,49 @@ public final class Interpreter extends Icode implements Evaluator {
                             doRegIndex4(frame, iCode, state);
                             continue Loop;
                         case Icode_REG_STR_C0:
-                            doStringCn(op, strings, state);
+                            doStringCn(op, frame.idata.itsStringTable, state);
                             continue Loop;
                         case Icode_REG_STR_C1:
-                            doStringCn(op, strings, state);
+                            doStringCn(op, frame.idata.itsStringTable, state);
                             continue Loop;
                         case Icode_REG_STR_C2:
-                            doStringCn(op, strings, state);
+                            doStringCn(op, frame.idata.itsStringTable, state);
                             continue Loop;
                         case Icode_REG_STR_C3:
-                            doStringCn(op, strings, state);
+                            doStringCn(op, frame.idata.itsStringTable, state);
                             continue Loop;
                         case Icode_REG_STR1:
-                            doRegString1(frame, iCode, strings, state);
+                            doRegString1(frame, iCode, frame.idata.itsStringTable, state);
                             continue Loop;
                         case Icode_REG_STR2:
-                            doRegString2(frame, iCode, strings, state);
+                            doRegString2(frame, iCode, frame.idata.itsStringTable, state);
                             continue Loop;
                         case Icode_REG_STR4:
-                            doRegString4(frame, iCode, strings, state);
+                            doRegString4(frame, iCode, frame.idata.itsStringTable, state);
                             continue Loop;
                         case Icode_REG_BIGINT_C0:
-                            doBigIntCn(op, bigInts, state);
+                            doBigIntCn(op, frame.idata.itsBigIntTable, state);
                             continue Loop;
                         case Icode_REG_BIGINT_C1:
-                            doBigIntCn(op, bigInts, state);
+                            doBigIntCn(op, frame.idata.itsBigIntTable, state);
                             continue Loop;
                         case Icode_REG_BIGINT_C2:
-                            doBigIntCn(op, bigInts, state);
+                            doBigIntCn(op, frame.idata.itsBigIntTable, state);
                             continue Loop;
                         case Icode_REG_BIGINT_C3:
-                            doBigIntCn(op, bigInts, state);
+                            doBigIntCn(op, frame.idata.itsBigIntTable, state);
                             continue Loop;
                         case Icode_REG_BIGINT1:
-                            doRegBigInt1(frame, iCode, bigInts, state);
+                            doRegBigInt1(frame, iCode, frame.idata.itsBigIntTable, state);
                             continue Loop;
                         case Icode_REG_BIGINT2:
-                            doRegBigInt2(frame, iCode, bigInts, state);
+                            doRegBigInt2(frame, iCode, frame.idata.itsBigIntTable, state);
                             continue Loop;
                         case Icode_REG_BIGINT4:
-                            doRegBigInt4(frame, iCode, bigInts, state);
+                            doRegBigInt4(frame, iCode, frame.idata.itsBigIntTable, state);
                             continue Loop;
                         default:
-                            dumpICode(iData);
+                            dumpICode(frame.idata);
                             throw new RuntimeException(
                                     "Unknown icode : " + op + " @ pc : " + (frame.pc - 1));
                     } // end of interpreter switch
@@ -2321,7 +2324,7 @@ public final class Interpreter extends Icode implements Evaluator {
                     // -1 accounts for pc pointing to jump opcode + 1
                     frame.pc += offset - 1;
                 } else {
-                    frame.pc = iData.longJumps.get(frame.pc);
+                    frame.pc = frame.idata.longJumps.get(frame.pc);
                 }
                 if (instructionCounting) {
                     frame.pcPrevBranch = frame.pc;
