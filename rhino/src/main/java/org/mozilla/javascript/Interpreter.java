@@ -2269,46 +2269,46 @@ public final class Interpreter extends Icode implements Evaluator {
                             doRegIndex4(frame, iCode, state);
                             continue Loop;
                         case Icode_REG_STR_C0:
-                            doStringCn(op, frame.idata.itsStringTable, state);
+                            doStringCn(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_STR_C1:
-                            doStringCn(op, frame.idata.itsStringTable, state);
+                            doStringCn(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_STR_C2:
-                            doStringCn(op, frame.idata.itsStringTable, state);
+                            doStringCn(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_STR_C3:
-                            doStringCn(op, frame.idata.itsStringTable, state);
+                            doStringCn(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_STR1:
-                            doRegString1(frame, iCode, frame.idata.itsStringTable, state);
+                            doRegString1(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_STR2:
-                            doRegString2(frame, iCode, frame.idata.itsStringTable, state);
+                            doRegString2(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_STR4:
-                            doRegString4(frame, iCode, frame.idata.itsStringTable, state);
+                            doRegString4(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_BIGINT_C0:
-                            doBigIntCn(op, frame.idata.itsBigIntTable, state);
+                            doBigIntCn(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_BIGINT_C1:
-                            doBigIntCn(op, frame.idata.itsBigIntTable, state);
+                            doBigIntCn(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_BIGINT_C2:
-                            doBigIntCn(op, frame.idata.itsBigIntTable, state);
+                            doBigIntCn(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_BIGINT_C3:
-                            doBigIntCn(op, frame.idata.itsBigIntTable, state);
+                            doBigIntCn(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_BIGINT1:
-                            doRegBigInt1(frame, iCode, frame.idata.itsBigIntTable, state);
+                            doRegBigInt1(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_BIGINT2:
-                            doRegBigInt2(frame, iCode, frame.idata.itsBigIntTable, state);
+                            doRegBigInt2(cx, frame, state, op);
                             continue Loop;
                         case Icode_REG_BIGINT4:
-                            doRegBigInt4(frame, iCode, frame.idata.itsBigIntTable, state);
+                            doRegBigInt4(cx, frame, state, op);
                             continue Loop;
                         default:
                             dumpICode(frame.idata);
@@ -2359,66 +2359,72 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void doRegBigInt4(
+            Context cx,
             CallFrame frame,
-            final byte[] iCode,
-            final BigInteger[] bigInts,
-            final InterpreterState state) {
-        state.bigIntReg = bigInts[getInt(iCode, frame.pc)];
+            InterpreterState state,
+            int op) {
+        state.bigIntReg = frame.idata.itsBigIntTable[getInt(frame.idata.itsICode, frame.pc)];
         frame.pc += 4;
     }
 
     private static void doRegBigInt2(
+            Context cx,
             CallFrame frame,
-            final byte[] iCode,
-            final BigInteger[] bigInts,
-            final InterpreterState state) {
-        state.bigIntReg = bigInts[getIndex(iCode, frame.pc)];
+            InterpreterState state,
+            int op) {
+        state.bigIntReg = frame.idata.itsBigIntTable[getIndex(frame.idata.itsICode, frame.pc)];
         frame.pc += 2;
     }
 
     private static void doRegBigInt1(
+            Context cx,
             CallFrame frame,
-            final byte[] iCode,
-            final BigInteger[] bigInts,
-            final InterpreterState state) {
-        state.bigIntReg = bigInts[0xFF & iCode[frame.pc]];
+            InterpreterState state,
+            int op) {
+        state.bigIntReg = frame.idata.itsBigIntTable[0xFF & frame.idata.itsICode[frame.pc]];
         ++frame.pc;
     }
 
     private static void doBigIntCn(
-            int op, final BigInteger[] bigInts, final InterpreterState state) {
-        state.bigIntReg = bigInts[Icode_REG_BIGINT_C0 - op];
+            Context cx,
+            CallFrame frame,
+            InterpreterState state,
+            int op) {
+        state.bigIntReg = frame.idata.itsBigIntTable[Icode_REG_BIGINT_C0 - op];
     }
 
     private static void doRegString4(
+            Context cx,
             CallFrame frame,
-            final byte[] iCode,
-            final String[] strings,
-            final InterpreterState state) {
-        state.stringReg = strings[getInt(iCode, frame.pc)];
+            InterpreterState state,
+            int op) {
+        state.stringReg = frame.idata.itsStringTable[getInt(frame.idata.itsICode, frame.pc)];
         frame.pc += 4;
     }
 
     private static void doRegString2(
+            Context cx,
             CallFrame frame,
-            final byte[] iCode,
-            final String[] strings,
-            final InterpreterState state) {
-        state.stringReg = strings[getIndex(iCode, frame.pc)];
+            InterpreterState state,
+            int op) {
+        state.stringReg = frame.idata.itsStringTable[getIndex(frame.idata.itsICode, frame.pc)];
         frame.pc += 2;
     }
 
     private static void doRegString1(
+            Context cx,
             CallFrame frame,
-            final byte[] iCode,
-            final String[] strings,
-            final InterpreterState state) {
-        state.stringReg = strings[0xFF & iCode[frame.pc]];
+            InterpreterState state,
+            int op) {
+        state.stringReg = frame.idata.itsStringTable[0xFF & frame.idata.itsICode[frame.pc]];
         ++frame.pc;
     }
 
-    private static void doStringCn(int op, final String[] strings, final InterpreterState state) {
-        state.stringReg = strings[Icode_REG_STR_C0 - op];
+    private static void doStringCn(            Context cx,
+            CallFrame frame,
+            InterpreterState state,
+            int op) {
+        state.stringReg = frame.idata.itsStringTable[Icode_REG_STR_C0 - op];
     }
 
     private static void doRegIndex4(
