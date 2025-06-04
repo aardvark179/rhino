@@ -2363,25 +2363,21 @@ public final class Interpreter extends Icode implements Evaluator {
                                 continue Loop;
                             }
                         case Icode_LITERAL_NEW_ARRAY:
-                            newArrayLit(state.indexReg, stack, sDbl, state.stackTop);
-                            state.stackTop += 2;
+                            newArrayLit(state, stack, sDbl);
                             continue Loop;
                         case Icode_LITERAL_SET:
                             {
-                                literalSet(stack, sDbl, state.stackTop);
-                                --state.stackTop;
+                                literalSet(stack, sDbl, state);
                                 continue Loop;
                             }
                         case Icode_LITERAL_GETTER:
                             {
-                                literalGetter(stack, sDbl, state.stackTop);
-                                --state.stackTop;
+                                literalGetter(stack, sDbl, state);
                                 continue Loop;
                             }
                         case Icode_LITERAL_SETTER:
                             {
-                                literalSetter(stack, sDbl, state.stackTop);
-                                --state.stackTop;
+                                literalSetter(stack, sDbl, state);
                                 continue Loop;
                             }
 
@@ -2641,36 +2637,39 @@ public final class Interpreter extends Icode implements Evaluator {
         ids[i] = key;
     }
 
-    private static void literalSetter(final Object[] stack, final double[] sDbl, int stackTop) {
-        Object value = stack[stackTop];
-        int i = (int) sDbl[stackTop - 1];
-        ((Object[]) stack[stackTop - 1])[i] = value;
-        ((int[]) stack[stackTop - 2])[i] = 1;
-        sDbl[stackTop - 1] = i + 1;
+    private static void literalSetter(
+            final Object[] stack, final double[] sDbl, InterpreterState state) {
+        Object value = stack[state.stackTop];
+        int i = (int) sDbl[--state.stackTop];
+        ((Object[]) stack[state.stackTop])[i] = value;
+        ((int[]) stack[--state.stackTop])[i] = 1;
+        sDbl[++state.stackTop] = i + 1;
     }
 
-    private static void literalGetter(final Object[] stack, final double[] sDbl, int stackTop) {
-        Object value = stack[stackTop];
-        int i = (int) sDbl[stackTop - 1];
-        ((Object[]) stack[stackTop - 1])[i] = value;
-        ((int[]) stack[stackTop - 2])[i] = -1;
-        sDbl[stackTop - 1] = i + 1;
+    private static void literalGetter(
+            final Object[] stack, final double[] sDbl, InterpreterState state) {
+        Object value = stack[state.stackTop];
+        int i = (int) sDbl[--state.stackTop];
+        ((Object[]) stack[state.stackTop])[i] = value;
+        ((int[]) stack[--state.stackTop])[i] = -1;
+        sDbl[++state.stackTop] = i + 1;
     }
 
-    private static void literalSet(final Object[] stack, final double[] sDbl, int stackTop) {
-        Object value = stack[stackTop];
-        if (value == DOUBLE_MARK) value = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-        int i = (int) sDbl[stackTop - 1];
-        ((Object[]) stack[stackTop - 1])[i] = value;
-        sDbl[stackTop - 1] = i + 1;
+    private static void literalSet(
+            final Object[] stack, final double[] sDbl, InterpreterState state) {
+        Object value = stack[state.stackTop];
+        if (value == DOUBLE_MARK) value = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+        int i = (int) sDbl[--state.stackTop];
+        ((Object[]) stack[state.stackTop])[i] = value;
+        sDbl[state.stackTop] = i + 1;
     }
 
     private static void newArrayLit(
-            int indexReg, final Object[] stack, final double[] sDbl, int stackTop) {
+            InterpreterState state, final Object[] stack, final double[] sDbl) {
         // indexReg: number of values in the literal
-        stack[stackTop + 1] = new int[indexReg];
-        stack[stackTop + 2] = new Object[indexReg];
-        sDbl[stackTop + 2] = 0;
+        stack[++state.stackTop] = new int[state.indexReg];
+        stack[++state.stackTop] = new Object[state.indexReg];
+        sDbl[state.stackTop] = 0;
     }
 
     private static void closureExpr(
