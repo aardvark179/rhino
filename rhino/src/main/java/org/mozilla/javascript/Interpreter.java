@@ -2082,13 +2082,7 @@ public final class Interpreter extends Icode implements Evaluator {
                         case Token.REF_CALL:
                             {
                                 var callState =
-                                        doCallByteCode(
-                                                cx,
-                                                frame,
-                                                instructionCounting,
-                                                op,
-                                                state.stackTop,
-                                                state.indexReg);
+                                        doCallByteCode(cx, frame, instructionCounting, op, state);
                                 if (callState instanceof ContinueLoop) {
                                     var contLoop = (ContinueLoop) callState;
                                     state.stackTop = contLoop.stackTop;
@@ -3197,8 +3191,7 @@ public final class Interpreter extends Icode implements Evaluator {
             CallFrame frame,
             boolean instructionCounting,
             int op,
-            int stackTop,
-            int indexReg) {
+            InterpreterState state) {
 
         Object[] stack = frame.stack;
         double[] sDbl = frame.sDbl;
@@ -3210,8 +3203,8 @@ public final class Interpreter extends Icode implements Evaluator {
         }
         // stack change: lookup_result arg0 .. argN -> result
         // indexReg: number of arguments
-        stackTop -= indexReg;
-        ScriptRuntime.LookupResult result = (ScriptRuntime.LookupResult) stack[stackTop];
+        state.stackTop -= state.indexReg;
+        ScriptRuntime.LookupResult result = (ScriptRuntime.LookupResult) stack[state.stackTop];
         // Check if the lookup result is a function and throw if it's not
         // must not be done sooner according to the spec
         Callable fun = result.getCallable();
@@ -3227,12 +3220,12 @@ public final class Interpreter extends Icode implements Evaluator {
         }
 
         if (op == Token.REF_CALL) {
-            Object[] outArgs = getArgsArray(stack, sDbl, stackTop + 1, indexReg);
-            stack[stackTop] =
+            Object[] outArgs = getArgsArray(stack, sDbl, state.stackTop + 1, state.indexReg);
+            stack[state.stackTop] =
                     ScriptRuntime.callRef(
                             fun, funThisObj,
                             outArgs, cx);
-            return new ContinueLoop(stackTop, indexReg);
+            return new ContinueLoop(state.stackTop, state.indexReg);
         }
         Scriptable calleeScope = frame.scope;
         if (frame.useActivation) {
@@ -3260,29 +3253,46 @@ public final class Interpreter extends Icode implements Evaluator {
                     // funThisObj becomes fun
                     fun = ScriptRuntime.getCallable(funThisObj);
                     // first arg becomes thisObj
-                    funThisObj = getApplyThis(cx, stack, sDbl, stackTop + 1, indexReg, fun, frame);
+                    funThisObj =
+                            getApplyThis(
+                                    cx,
+                                    stack,
+                                    sDbl,
+                                    state.stackTop + 1,
+                                    state.indexReg,
+                                    fun,
+                                    frame);
                     if (BaseFunction.isApply(kfun)) {
                         // Apply: second argument after new "this"
                         // should be array-like
                         // and we'll spread its elements on the stack
                         Object[] callArgs =
-                                indexReg < 2
+                                state.indexReg < 2
                                         ? ScriptRuntime.emptyArgs
-                                        : ScriptRuntime.getApplyArguments(cx, stack[stackTop + 2]);
+                                        : ScriptRuntime.getApplyArguments(
+                                                cx, stack[state.stackTop + 2]);
                         int alen = callArgs.length;
                         boundArgs = appendBoundArgs(boundArgs, callArgs);
                         blen = blen + alen;
-                        indexReg = alen;
+                        state.indexReg = alen;
                     } else {
                         // Call: shift args left, starting from 2nd
-                        if (indexReg > 0) {
-                            if (indexReg > 1) {
+                        if (state.indexReg > 0) {
+                            if (state.indexReg > 1) {
                                 System.arraycopy(
-                                        stack, stackTop + 2, stack, stackTop + 1, indexReg - 1);
+                                        stack,
+                                        state.stackTop + 2,
+                                        stack,
+                                        state.stackTop + 1,
+                                        state.indexReg - 1);
                                 System.arraycopy(
-                                        sDbl, stackTop + 2, sDbl, stackTop + 1, indexReg - 1);
+                                        sDbl,
+                                        state.stackTop + 2,
+                                        sDbl,
+                                        state.stackTop + 1,
+                                        state.indexReg - 1);
                             }
-                            indexReg--;
+                            state.indexReg--;
                         }
                     }
                 } else {
@@ -3301,20 +3311,21 @@ public final class Interpreter extends Icode implements Evaluator {
                 Object[] bArgs = bfun.getBoundArgs();
                 boundArgs = appendBoundArgs(boundArgs, bArgs);
                 blen = blen + bArgs.length;
-                indexReg += blen;
+                state.indexReg += blen;
             } else if (fun instanceof NoSuchMethodShim) {
                 NoSuchMethodShim nsmfun = (NoSuchMethodShim) fun;
                 // Bug 447697 -- make best effort to keep
                 // __noSuchMethod__ within this interpreter loop
                 // invocation.
                 Object[] elements =
-                        getArgsArray(stack, sDbl, boundArgs, blen, stackTop + 1, indexReg);
+                        getArgsArray(
+                                stack, sDbl, boundArgs, blen, state.stackTop + 1, state.indexReg);
                 fun = nsmfun.noSuchMethodMethod;
                 boundArgs = new Object[2];
                 blen = 2;
                 boundArgs[0] = nsmfun.methodName;
                 boundArgs[1] = cx.newArray(calleeScope, elements);
-                indexReg = 2;
+                state.indexReg = 2;
             } else if (fun == null) {
                 throw ScriptRuntime.notFunctionError(null, null);
             } else {
@@ -3361,12 +3372,12 @@ public final class Interpreter extends Icode implements Evaluator {
                                 stack,
                                 sDbl,
                                 boundArgs,
-                                stackTop + 1,
-                                indexReg,
+                                state.stackTop + 1,
+                                state.indexReg,
                                 ifun,
                                 callParentFrame);
                 if (op != Icode_TAIL_CALL) {
-                    frame.savedStackTop = stackTop;
+                    frame.savedStackTop = state.stackTop;
                     frame.savedCallOp = op;
                 }
                 return new StateContinue(calleeFrame);
@@ -3380,11 +3391,11 @@ public final class Interpreter extends Icode implements Evaluator {
 
             // continuation result is the first argument if any
             // of continuation call
-            if (indexReg == 0) {
+            if (state.indexReg == 0) {
                 cjump.result = undefined;
             } else {
-                cjump.result = stack[stackTop + 1];
-                cjump.resultDbl = sDbl[stackTop + 1];
+                cjump.result = stack[state.stackTop + 1];
+                cjump.resultDbl = sDbl[state.stackTop + 1];
             }
 
             // Start the real unwind job
@@ -3394,21 +3405,22 @@ public final class Interpreter extends Icode implements Evaluator {
         if (fun instanceof IdFunctionObject) {
             IdFunctionObject ifun = (IdFunctionObject) fun;
             if (NativeContinuation.isContinuationConstructor(ifun)) {
-                frame.stack[stackTop] = captureContinuation(cx, frame.parentFrame, false);
-                return new ContinueLoop(stackTop, indexReg);
+                frame.stack[state.stackTop] = captureContinuation(cx, frame.parentFrame, false);
+                return new ContinueLoop(state.stackTop, state.indexReg);
             }
         }
 
         frame.savedCallOp = op;
-        frame.savedStackTop = stackTop;
-        stack[stackTop] =
+        frame.savedStackTop = state.stackTop;
+        stack[state.stackTop] =
                 fun.call(
                         cx,
                         calleeScope,
                         funThisObj,
-                        getArgsArray(stack, sDbl, boundArgs, blen, stackTop + 1, indexReg));
+                        getArgsArray(
+                                stack, sDbl, boundArgs, blen, state.stackTop + 1, state.indexReg));
 
-        return new ContinueLoop(stackTop, indexReg);
+        return new ContinueLoop(state.stackTop, state.indexReg);
     }
 
     private static Object[] appendBoundArgs(Object[] boundArgs, Object[] newArgs) {
