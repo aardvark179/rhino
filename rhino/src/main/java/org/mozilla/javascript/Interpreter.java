@@ -2268,8 +2268,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             continue Loop;
                         case Token.ENTERWITH:
                             {
-                                enterWith(cx, frame, stack, sDbl, state.stackTop);
-                                --state.stackTop;
+                                enterWith(cx, frame, stack, sDbl, state);
                                 continue Loop;
                             }
                         case Token.LEAVEWITH:
@@ -2719,10 +2718,15 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void enterWith(
-            Context cx, CallFrame frame, final Object[] stack, final double[] sDbl, int stackTop) {
-        Object lhs = stack[stackTop];
-        if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
+            Context cx,
+            CallFrame frame,
+            final Object[] stack,
+            final double[] sDbl,
+            InterpreterState state) {
+        Object lhs = stack[state.stackTop];
+        if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         frame.scope = ScriptRuntime.enterWith(lhs, cx, frame.scope);
+        state.stackTop--;
     }
 
     private static void nameAndThisOptional(
