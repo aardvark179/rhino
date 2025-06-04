@@ -1917,10 +1917,8 @@ public final class Interpreter extends Icode implements Evaluator {
                                         frame,
                                         stack,
                                         sDbl,
-                                        state.stringReg,
-                                        state.stackTop,
+                                        state,
                                         op);
-                                --state.stackTop;
                                 continue Loop;
                             }
                         case Icode_SETCONST:
@@ -3155,16 +3153,16 @@ public final class Interpreter extends Icode implements Evaluator {
             CallFrame frame,
             final Object[] stack,
             final double[] sDbl,
-            String stringReg,
-            int stackTop,
+            InterpreterState state,
             int op) {
-        Object rhs = stack[stackTop];
-        if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[stackTop]);
-        Scriptable lhs = (Scriptable) stack[stackTop - 1];
-        stack[stackTop - 1] =
+        Object rhs = stack[state.stackTop];
+        if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+        Scriptable lhs = (Scriptable) stack[state.stackTop - 1];
+        stack[state.stackTop - 1] =
                 op == Token.SETNAME
-                        ? ScriptRuntime.setName(lhs, rhs, cx, frame.scope, stringReg)
-                        : ScriptRuntime.strictSetName(lhs, rhs, cx, frame.scope, stringReg);
+                        ? ScriptRuntime.setName(lhs, rhs, cx, frame.scope, state.stringReg)
+                    : ScriptRuntime.strictSetName(lhs, rhs, cx, frame.scope, state.stringReg);
+        --state.stackTop;
     }
 
     private static Object throwObject(
