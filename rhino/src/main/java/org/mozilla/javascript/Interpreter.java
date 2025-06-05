@@ -1187,8 +1187,8 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void initFunction(
-            Context cx, Scriptable scope, InterpretedFunction parent, InterpreterState state) {
-        initFunction(cx, scope, parent, state.indexReg);
+        Context cx, CallFrame frame, InterpreterState state, int op) {
+        initFunction(cx, frame.scope, frame.fnOrScript, state.indexReg);
     }
 
     static Object interpret(
@@ -2129,53 +2129,53 @@ public final class Interpreter extends Icode implements Evaluator {
                             doUndef(frame.stack, state);
                             continue Loop;
                         case Token.ENTERWITH:
-                            enterWith(cx, frame, frame.stack, frame.sDbl, state);
+                            enterWith(cx, frame, state, op);
                             continue Loop;
                         case Token.LEAVEWITH:
-                            doLeaveWith(frame);
+                            doLeaveWith(cx, frame, state, op);
                             continue Loop;
                         case Token.CATCH_SCOPE:
-                            catchScope(cx, frame, state, frame.stack, frame.idata);
+                            catchScope(cx, frame, state, op);
                             continue Loop;
                         case Token.ENUM_INIT_KEYS:
                         case Token.ENUM_INIT_VALUES:
                         case Token.ENUM_INIT_ARRAY:
                         case Token.ENUM_INIT_VALUES_IN_ORDER:
-                            enumInit(cx, frame, state, frame.stack, frame.sDbl, frame.idata, op);
+                            enumInit(cx, frame, state, op);
                             continue Loop;
                         case Token.ENUM_NEXT:
                         case Token.ENUM_ID:
-                            enumOp(cx, state, frame.stack, frame.idata, op);
+                            enumOp(cx, frame, state, op);
                             continue Loop;
                         case Token.REF_SPECIAL:
-                            refSpecial(cx, frame, frame.stack, frame.sDbl, state);
+                            refSpecial(cx, frame, state, op);
                             continue Loop;
                         case Token.REF_MEMBER:
-                            doRefMember(cx, frame.stack, frame.sDbl, state);
+                            doRefMember(cx, frame, state, op);
                             continue Loop;
                         case Token.REF_NS_MEMBER:
-                            doRefNsMember(cx, frame.stack, frame.sDbl, state);
+                            doRefNsMember(cx, frame, state, op);
                             continue Loop;
                         case Token.REF_NAME:
-                            refName(cx, frame, state, frame.stack, frame.sDbl);
+                            refName(cx, frame, state, op);
                             continue Loop;
                         case Token.REF_NS_NAME:
-                            doRefNsName(cx, frame, frame.stack, frame.sDbl, state);
+                            doRefNsName(cx, frame, state, op);
                             continue Loop;
                         case Icode_SCOPE_LOAD:
-                            doScopeLoad(frame, frame.stack, frame.idata, state);
+                            doScopeLoad(cx, frame, state, op);
                             continue Loop;
                         case Icode_SCOPE_SAVE:
-                            doScopeSave(frame, frame.stack, frame.idata, state);
+                            doScopeSave(cx, frame, state, op);
                             continue Loop;
                         case Icode_CLOSURE_EXPR:
-                            closureExpr(cx, frame, state, frame.stack);
+                            closureExpr(cx, frame, state, op);
                             continue Loop;
                         case ICode_FN_STORE_HOME_OBJECT:
-                            doStoreHomeObject(frame.stack, state);
+                            doStoreHomeObject(cx, frame, state, op);
                             continue Loop;
                         case Icode_CLOSURE_STMT:
-                            initFunction(cx, frame.scope, frame.fnOrScript, state);
+                            initFunction(cx, frame, state, op);
                             continue Loop;
                         case Token.REGEXP:
                             doRegExp(cx, frame, state, op);
@@ -2463,33 +2463,27 @@ public final class Interpreter extends Icode implements Evaluator {
         frame.stack[++state.stackTop] = ScriptRuntime.wrapRegExp(cx, frame.scope, re);
     }
 
-    private static void doStoreHomeObject(final Object[] stack, final InterpreterState state) {
+    private static void doStoreHomeObject(Context cx, CallFrame frame, InterpreterState state, int op) {
         // Stack contains: [object, keysArray, flagsArray, valuesArray,
         // function]
-        InterpretedFunction fun = (InterpretedFunction) stack[state.stackTop];
-        Scriptable homeObject = (Scriptable) stack[state.stackTop - 4];
+        InterpretedFunction fun = (InterpretedFunction) frame.stack[state.stackTop];
+        Scriptable homeObject = (Scriptable) frame.stack[state.stackTop - 4];
         fun.setHomeObject(homeObject);
     }
 
     private static void doScopeSave(
-            CallFrame frame,
-            final Object[] stack,
-            final InterpreterData iData,
-            final InterpreterState state) {
-        state.indexReg += iData.itsMaxVars;
-        stack[state.indexReg] = frame.scope;
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        state.indexReg += frame.idata.itsMaxVars;
+        frame.stack[state.indexReg] = frame.scope;
     }
 
     private static void doScopeLoad(
-            CallFrame frame,
-            final Object[] stack,
-            final InterpreterData iData,
-            final InterpreterState state) {
-        state.indexReg += iData.itsMaxVars;
-        frame.scope = (Scriptable) stack[state.indexReg];
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        state.indexReg += frame.idata.itsMaxVars;
+        frame.scope = (Scriptable) frame.stack[state.indexReg];
     }
 
-    private static void doLeaveWith(CallFrame frame) {
+    private static void doLeaveWith(Context cx, CallFrame frame, InterpreterState state, int op) {
         frame.scope = ScriptRuntime.leaveWith(frame.scope);
     }
 
@@ -2848,7 +2842,7 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void closureExpr(
-            Context cx, CallFrame frame, InterpreterState state, final Object[] stack) {
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         InterpretedFunction fn =
                 InterpretedFunction.createFunction(
                         cx, frame.scope, frame.fnOrScript, state.indexReg);
@@ -2858,62 +2852,46 @@ public final class Interpreter extends Icode implements Evaluator {
                 fn.setHomeObject(homeObject);
             }
 
-            stack[++state.stackTop] =
+            frame.stack[++state.stackTop] =
                     new ArrowFunction(cx, frame.scope, fn, frame.thisObj, homeObject);
         } else {
-            stack[++state.stackTop] = fn;
+            frame.stack[++state.stackTop] = fn;
         }
     }
 
     private static void refName(
-            Context cx,
-            CallFrame frame,
-            InterpreterState state,
-            final Object[] stack,
-            final double[] sDbl) {
+        Context cx, CallFrame frame, InterpreterState state, int op) {
         // indexReg: flags
-        Object name = stack[state.stackTop];
-        if (name == DOUBLE_MARK) name = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
-        stack[state.stackTop] = ScriptRuntime.nameRef(name, cx, frame.scope, state.indexReg);
+        Object name = frame.stack[state.stackTop];
+        if (name == DOUBLE_MARK) name = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
+        frame.stack[state.stackTop] = ScriptRuntime.nameRef(name, cx, frame.scope, state.indexReg);
     }
 
     private static void refSpecial(
-            Context cx,
-            CallFrame frame,
-            final Object[] stack,
-            final double[] sDbl,
-            InterpreterState state) {
-        // stringReg: name of special property
-        Object obj = stack[state.stackTop];
-        if (obj == DOUBLE_MARK) obj = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
-        stack[state.stackTop] = ScriptRuntime.specialRef(obj, state.stringReg, cx, frame.scope);
-    }
+        Context cx, CallFrame frame, InterpreterState state, int op) {
+    // stringReg: name of special property
+    Object obj = frame.stack[state.stackTop];
+    if (obj == DOUBLE_MARK) obj = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
+    frame.stack[state.stackTop] = ScriptRuntime.specialRef(obj, state.stringReg, cx, frame.scope);
+}
 
     private static void enumOp(
-            Context cx,
-            InterpreterState state,
-            final Object[] stack,
-            final InterpreterData iData,
-            int op) {
-        state.indexReg += iData.itsMaxVars;
-        Object val = stack[state.indexReg];
-        stack[++state.stackTop] =
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        state.indexReg += frame.idata.itsMaxVars;
+        Object val = frame.stack[state.indexReg];
+        frame.stack[++state.stackTop] =
                 (op == Token.ENUM_NEXT)
                         ? ScriptRuntime.enumNext(val, cx)
                         : ScriptRuntime.enumId(val, cx);
     }
 
     private static void enterWith(
-            Context cx,
-            CallFrame frame,
-            final Object[] stack,
-            final double[] sDbl,
-            InterpreterState state) {
-        Object lhs = stack[state.stackTop];
-        if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
-        frame.scope = ScriptRuntime.enterWith(lhs, cx, frame.scope);
-        state.stackTop--;
-    }
+        Context cx, CallFrame frame, InterpreterState state, int op) {
+    Object lhs = frame.stack[state.stackTop];
+    if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
+    frame.scope = ScriptRuntime.enterWith(lhs, cx, frame.scope);
+    state.stackTop--;
+}
 
     private static void nameAndThisOptional(
             Context cx, CallFrame frame, final Object[] stack, InterpreterState state) {
@@ -3013,16 +2991,10 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void enumInit(
-            Context cx,
-            CallFrame frame,
-            InterpreterState state,
-            final Object[] stack,
-            final double[] sDbl,
-            final InterpreterData iData,
-            int op) {
-        Object lhs = stack[state.stackTop];
-        if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
-        state.indexReg += iData.itsMaxVars;
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object lhs = frame.stack[state.stackTop];
+        if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
+        state.indexReg += frame.idata.itsMaxVars;
         int enumType =
                 op == Token.ENUM_INIT_KEYS
                         ? ScriptRuntime.ENUMERATE_KEYS
@@ -3031,7 +3003,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                 : op == Token.ENUM_INIT_VALUES_IN_ORDER
                                         ? ScriptRuntime.ENUMERATE_VALUES_IN_ORDER
                                         : ScriptRuntime.ENUMERATE_ARRAY;
-        stack[state.indexReg] = ScriptRuntime.enumInit(lhs, cx, frame.scope, enumType);
+        frame.stack[state.indexReg] = ScriptRuntime.enumInit(lhs, cx, frame.scope, enumType);
         --state.stackTop;
     }
 
@@ -3071,31 +3043,27 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void catchScope(
-            Context cx,
-            CallFrame frame,
-            InterpreterState state,
-            final Object[] stack,
-            final InterpreterData iData) {
+        Context cx, CallFrame frame, InterpreterState state, int op) {
 
-        // stack top: exception object
-        // state.stringReg: name of exception variable
-        // state.indexReg: local for exception scope
-        --state.stackTop;
-        state.indexReg += iData.itsMaxVars;
+    // stack top: exception object
+    // state.stringReg: name of exception variable
+    // state.indexReg: local for exception scope
+    --state.stackTop;
+    state.indexReg += frame.idata.itsMaxVars;
 
-        boolean afterFirstScope = (iData.itsICode[frame.pc] != 0);
-        Throwable caughtException = (Throwable) stack[state.stackTop + 1];
-        Scriptable lastCatchScope;
-        if (!afterFirstScope) {
-            lastCatchScope = null;
-        } else {
-            lastCatchScope = (Scriptable) stack[state.indexReg];
-        }
-        stack[state.indexReg] =
-                ScriptRuntime.newCatchScope(
-                        caughtException, lastCatchScope, state.stringReg, cx, frame.scope);
-        ++frame.pc;
+    boolean afterFirstScope = (frame.idata.itsICode[frame.pc] != 0);
+    Throwable caughtException = (Throwable) frame.stack[state.stackTop + 1];
+    Scriptable lastCatchScope;
+    if (!afterFirstScope) {
+        lastCatchScope = null;
+    } else {
+        lastCatchScope = (Scriptable) frame.stack[state.indexReg];
     }
+    frame.stack[state.indexReg] =
+            ScriptRuntime.newCatchScope(
+                    caughtException, lastCatchScope, state.stringReg, cx, frame.scope);
+    ++frame.pc;
+}
 
     private static void valueAndThisOptional(
             Context cx, final Object[] stack, final double[] sDbl, InterpreterState state) {
@@ -3962,36 +3930,36 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void doRefMember(
-            Context cx, Object[] stack, double[] sDbl, InterpreterState state) {
-        Object elem = stack[state.stackTop];
-        if (elem == DOUBLE_MARK) elem = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object elem = frame.stack[state.stackTop];
+        if (elem == DOUBLE_MARK) elem = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         --state.stackTop;
-        Object obj = stack[state.stackTop];
-        if (obj == DOUBLE_MARK) obj = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
-        stack[state.stackTop] = ScriptRuntime.memberRef(obj, elem, cx, state.indexReg);
+        Object obj = frame.stack[state.stackTop];
+        if (obj == DOUBLE_MARK) obj = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
+        frame.stack[state.stackTop] = ScriptRuntime.memberRef(obj, elem, cx, state.indexReg);
     }
 
     private static void doRefNsMember(
-            Context cx, Object[] stack, double[] sDbl, InterpreterState state) {
-        Object elem = stack[state.stackTop];
-        if (elem == DOUBLE_MARK) elem = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+        Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object elem = frame.stack[state.stackTop];
+        if (elem == DOUBLE_MARK) elem = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         --state.stackTop;
-        Object ns = stack[state.stackTop];
-        if (ns == DOUBLE_MARK) ns = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+        Object ns = frame.stack[state.stackTop];
+        if (ns == DOUBLE_MARK) ns = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         --state.stackTop;
-        Object obj = stack[state.stackTop];
-        if (obj == DOUBLE_MARK) obj = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
-        stack[state.stackTop] = ScriptRuntime.memberRef(obj, ns, elem, cx, state.indexReg);
+        Object obj = frame.stack[state.stackTop];
+        if (obj == DOUBLE_MARK) obj = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
+        frame.stack[state.stackTop] = ScriptRuntime.memberRef(obj, ns, elem, cx, state.indexReg);
     }
 
     private static void doRefNsName(
-            Context cx, CallFrame frame, Object[] stack, double[] sDbl, InterpreterState state) {
-        Object name = stack[state.stackTop];
-        if (name == DOUBLE_MARK) name = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+        Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object name = frame.stack[state.stackTop];
+        if (name == DOUBLE_MARK) name = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         --state.stackTop;
-        Object ns = stack[state.stackTop];
-        if (ns == DOUBLE_MARK) ns = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
-        stack[state.stackTop] = ScriptRuntime.nameRef(ns, name, cx, frame.scope, state.indexReg);
+        Object ns = frame.stack[state.stackTop];
+        if (ns == DOUBLE_MARK) ns = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
+        frame.stack[state.stackTop] = ScriptRuntime.nameRef(ns, name, cx, frame.scope, state.indexReg);
     }
 
     private static void doEquals(int op, Object[] stack, double[] sDbl, InterpreterState state) {
