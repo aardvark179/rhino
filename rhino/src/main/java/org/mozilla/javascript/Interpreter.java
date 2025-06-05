@@ -2034,97 +2034,69 @@ public final class Interpreter extends Icode implements Evaluator {
                             doShortNumber(cx, frame, state, 0);
                             continue Loop;
                         case Icode_INTNUMBER:
-                            DoIntNumber(cx, frame, state, 0);
+                            doIntNumber(cx, frame, state, 0);
                             continue Loop;
                         case Token.NUMBER:
-                            doNumber(frame.stack, frame.sDbl, frame.idata, state);
+                            doNumber(cx, frame, state, op);
                             continue Loop;
                         case Token.BIGINT:
-                            doBigInt(frame.stack, state);
+                            doBigInt(cx, frame, state, op);
                             continue Loop;
                         case Token.NAME:
-                            doName(cx, frame, frame.stack, state);
+                            doName(cx, frame, state, op);
                             continue Loop;
                         case Icode_NAME_INC_DEC:
-                            doNameIncDec(cx, frame, frame.stack, iCode, state);
+                            doNameIncDec(cx, frame, state, op);
                             continue Loop;
                         case Icode_SETCONSTVAR1:
                             state.indexReg = iCode[frame.pc++];
                         // fallthrough
                         case Icode_SETCONSTVAR:
-                            doSetConstVar(
-                                    frame,
-                                    frame.stack,
-                                    frame.sDbl,
-                                    state,
-                                    frame.varSource.stack,
-                                    frame.varSource.sDbl,
-                                    frame.varSource.stackAttributes);
+                            doSetConstVar(cx, frame, state, op);
                             continue Loop;
                         case Icode_SETVAR1:
                             state.indexReg = iCode[frame.pc++];
                         // fallthrough
                         case Token.SETVAR:
-                            doSetVar(
-                                    frame,
-                                    frame.stack,
-                                    frame.sDbl,
-                                    state,
-                                    frame.varSource.stack,
-                                    frame.varSource.sDbl,
-                                    frame.varSource.stackAttributes);
+                            doSetVar(cx, frame, state, op);
                             continue Loop;
                         case Icode_GETVAR1:
                             state.indexReg = iCode[frame.pc++];
                         // fallthrough
                         case Token.GETVAR:
-                            doGetVar(
-                                    frame,
-                                    frame.stack,
-                                    frame.sDbl,
-                                    state,
-                                    frame.varSource.stack,
-                                    frame.varSource.sDbl);
+                            doGetVar(cx, frame, state, op);
                             continue Loop;
                         case Icode_VAR_INC_DEC:
                             {
-                                doVarIncDec(
-                                        cx,
-                                        frame,
-                                        frame.stack,
-                                        frame.sDbl,
-                                        state,
-                                        frame.varSource.stack,
-                                        frame.varSource.sDbl,
-                                        frame.varSource.stackAttributes);
+                                doVarIncDec(cx, frame, state, op);
                                 continue Loop;
                             }
                         case Icode_ZERO:
-                            doZero(frame.stack, state);
+                            doZero(cx, frame, state, op);
                             continue Loop;
                         case Icode_ONE:
-                            doOne(frame.stack, state);
+                            doOne(cx, frame, state, op);
                             continue Loop;
                         case Token.NULL:
-                            doNull(frame.stack, state);
+                            doNull(cx, frame, state, op);
                             continue Loop;
                         case Token.THIS:
-                            doThis(frame, frame.stack, state);
+                            doThis(cx, frame, state, op);
                             continue Loop;
                         case Token.SUPER:
-                            doSuper(frame, frame.stack, state);
+                            doSuper(cx, frame, state, op);
                             continue Loop;
                         case Token.THISFN:
-                            doThisFunction(frame, frame.stack, state);
+                            doThisFunction(cx, frame, state, op);
                             continue Loop;
                         case Token.FALSE:
-                            doFalse(frame.stack, state);
+                            doFalse(cx, frame, state, op);
                             continue Loop;
                         case Token.TRUE:
-                            doTrue(frame.stack, state);
+                            doTrue(cx, frame, state, op);
                             continue Loop;
                         case Icode_UNDEF:
-                            doUndef(frame.stack, state);
+                            doUndef(cx, frame, state, op);
                             continue Loop;
                         case Token.ENTERWITH:
                             enterWith(cx, frame, state, op);
@@ -2484,25 +2456,24 @@ public final class Interpreter extends Icode implements Evaluator {
         frame.scope = ScriptRuntime.leaveWith(frame.scope);
     }
 
-    private static void doUndef(final Object[] stack, final InterpreterState state) {
-        stack[++state.stackTop] = undefined;
+    private static void doUndef(Context cx, CallFrame frame, InterpreterState state, int op) {
+        frame.stack[++state.stackTop] = undefined;
     }
 
-    private static void doTrue(final Object[] stack, final InterpreterState state) {
-        stack[++state.stackTop] = Boolean.TRUE;
+    private static void doTrue(Context cx, CallFrame frame, InterpreterState state, int op) {
+        frame.stack[++state.stackTop] = Boolean.TRUE;
     }
 
-    private static void doFalse(final Object[] stack, final InterpreterState state) {
-        stack[++state.stackTop] = Boolean.FALSE;
+    private static void doFalse(Context cx, CallFrame frame, InterpreterState state, int op) {
+        frame.stack[++state.stackTop] = Boolean.FALSE;
     }
 
     private static void doThisFunction(
-            CallFrame frame, final Object[] stack, final InterpreterState state) {
-        stack[++state.stackTop] = frame.fnOrScript;
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        frame.stack[++state.stackTop] = frame.fnOrScript;
     }
 
-    private static void doSuper(
-            CallFrame frame, final Object[] stack, final InterpreterState state) {
+    private static void doSuper(Context cx, CallFrame frame, InterpreterState state, int op) {
         // If we are referring to "super", then we always have an
         // activation
         // (this is done in IrFactory). The home object is stored as
@@ -2515,62 +2486,52 @@ public final class Interpreter extends Icode implements Evaluator {
             // how the home object will ever be null since `super` is
             // legal _only_ in method definitions, where we do have a
             // home object!
-            stack[++state.stackTop] = Undefined.instance;
+            frame.stack[++state.stackTop] = Undefined.instance;
         } else {
-            stack[++state.stackTop] = homeObject.getPrototype();
+            frame.stack[++state.stackTop] = homeObject.getPrototype();
         }
     }
 
-    private static void doThis(
-            CallFrame frame, final Object[] stack, final InterpreterState state) {
-        stack[++state.stackTop] = frame.thisObj;
+    private static void doThis(Context cx, CallFrame frame, InterpreterState state, int op) {
+        frame.stack[++state.stackTop] = frame.thisObj;
     }
 
-    private static void doNull(final Object[] stack, final InterpreterState state) {
-        stack[++state.stackTop] = null;
+    private static void doNull(Context cx, CallFrame frame, InterpreterState state, int op) {
+        frame.stack[++state.stackTop] = null;
     }
 
-    private static void doOne(final Object[] stack, final InterpreterState state) {
+    private static void doOne(Context cx, CallFrame frame, InterpreterState state, int op) {
         ++state.stackTop;
-        stack[state.stackTop] = Integer.valueOf(1);
+        frame.stack[state.stackTop] = Integer.valueOf(1);
     }
 
-    private static void doZero(final Object[] stack, final InterpreterState state) {
+    private static void doZero(Context cx, CallFrame frame, InterpreterState state, int op) {
         ++state.stackTop;
-        stack[state.stackTop] = Integer.valueOf(0);
+        frame.stack[state.stackTop] = Integer.valueOf(0);
     }
 
-    private static void doNameIncDec(
-            Context cx,
-            CallFrame frame,
-            final Object[] stack,
-            final byte[] iCode,
-            final InterpreterState state) {
-        stack[++state.stackTop] =
-                ScriptRuntime.nameIncrDecr(frame.scope, state.stringReg, cx, iCode[frame.pc]);
+    private static void doNameIncDec(Context cx, CallFrame frame, InterpreterState state, int op) {
+        frame.stack[++state.stackTop] =
+                ScriptRuntime.nameIncrDecr(
+                        frame.scope, state.stringReg, cx, frame.idata.itsICode[frame.pc]);
         ++frame.pc;
     }
 
-    private static void doName(
-            Context cx, CallFrame frame, final Object[] stack, final InterpreterState state) {
-        stack[++state.stackTop] = ScriptRuntime.name(cx, frame.scope, state.stringReg);
+    private static void doName(Context cx, CallFrame frame, InterpreterState state, int op) {
+        frame.stack[++state.stackTop] = ScriptRuntime.name(cx, frame.scope, state.stringReg);
     }
 
-    private static void doBigInt(final Object[] stack, final InterpreterState state) {
-        stack[++state.stackTop] = state.bigIntReg;
+    private static void doBigInt(Context cx, CallFrame frame, InterpreterState state, int op) {
+        frame.stack[++state.stackTop] = state.bigIntReg;
     }
 
-    private static void doNumber(
-            final Object[] stack,
-            final double[] sDbl,
-            final InterpreterData iData,
-            final InterpreterState state) {
+    private static void doNumber(Context cx, CallFrame frame, InterpreterState state, int op) {
         ++state.stackTop;
-        stack[state.stackTop] = DOUBLE_MARK;
-        sDbl[state.stackTop] = iData.itsDoubleTable[state.indexReg];
+        frame.stack[state.stackTop] = DOUBLE_MARK;
+        frame.sDbl[state.stackTop] = frame.idata.itsDoubleTable[state.indexReg];
     }
 
-    private static void DoIntNumber(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static void doIntNumber(Context cx, CallFrame frame, InterpreterState state, int op) {
         ++state.stackTop;
         frame.stack[state.stackTop] = DOUBLE_MARK;
         frame.sDbl[state.stackTop] = getInt(frame.idata.itsICode, frame.pc);
@@ -3736,27 +3697,23 @@ public final class Interpreter extends Icode implements Evaluator {
         frame.pc += 4;
     }
 
-    private static void doSetConstVar(
-            CallFrame frame,
-            Object[] stack,
-            double[] sDbl,
-            InterpreterState state,
-            Object[] vars,
-            double[] varDbls,
-            byte[] varAttributes) {
+    private static void doSetConstVar(Context cx, CallFrame frame, InterpreterState state, int op) {
+        var varAttributes = frame.varSource.stackAttributes;
+        var vars = frame.varSource.stack;
+        var varDbls = frame.varSource.sDbl;
         if (!frame.useActivation) {
             if ((varAttributes[state.indexReg] & ScriptableObject.READONLY) == 0) {
                 throw Context.reportRuntimeErrorById(
                         "msg.var.redecl", frame.idata.argNames[state.indexReg]);
             }
             if ((varAttributes[state.indexReg] & ScriptableObject.UNINITIALIZED_CONST) != 0) {
-                vars[state.indexReg] = stack[state.stackTop];
+                vars[state.indexReg] = frame.stack[state.stackTop];
                 varAttributes[state.indexReg] &= ~ScriptableObject.UNINITIALIZED_CONST;
-                varDbls[state.indexReg] = sDbl[state.stackTop];
+                varDbls[state.indexReg] = frame.sDbl[state.stackTop];
             }
         } else {
-            Object val = stack[state.stackTop];
-            if (val == DOUBLE_MARK) val = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+            Object val = frame.stack[state.stackTop];
+            if (val == DOUBLE_MARK) val = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
             String stringReg = frame.idata.argNames[state.indexReg];
             if (frame.scope instanceof ConstProperties) {
                 ConstProperties cp = (ConstProperties) frame.scope;
@@ -3765,53 +3722,40 @@ public final class Interpreter extends Icode implements Evaluator {
         }
     }
 
-    private static void doSetVar(
-            CallFrame frame,
-            Object[] stack,
-            double[] sDbl,
-            InterpreterState state,
-            Object[] vars,
-            double[] varDbls,
-            byte[] varAttributes) {
+    private static void doSetVar(Context cx, CallFrame frame, InterpreterState state, int op) {
+        var varAttributes = frame.varSource.stackAttributes;
+        var vars = frame.varSource.stack;
+        var varDbls = frame.varSource.sDbl;
         if (!frame.useActivation) {
             if ((varAttributes[state.indexReg] & ScriptableObject.READONLY) == 0) {
-                vars[state.indexReg] = stack[state.stackTop];
-                varDbls[state.indexReg] = sDbl[state.stackTop];
+                vars[state.indexReg] = frame.stack[state.stackTop];
+                varDbls[state.indexReg] = frame.sDbl[state.stackTop];
             }
         } else {
-            Object val = stack[state.stackTop];
-            if (val == DOUBLE_MARK) val = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+            Object val = frame.stack[state.stackTop];
+            if (val == DOUBLE_MARK) val = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
             String stringReg = frame.idata.argNames[state.indexReg];
             frame.scope.put(stringReg, frame.scope, val);
         }
     }
 
-    private static void doGetVar(
-            CallFrame frame,
-            Object[] stack,
-            double[] sDbl,
-            InterpreterState state,
-            Object[] vars,
-            double[] varDbls) {
+    private static void doGetVar(Context cx, CallFrame frame, InterpreterState state, int op) {
+        var vars = frame.varSource.stack;
+        var varDbls = frame.varSource.sDbl;
         ++state.stackTop;
         if (!frame.useActivation) {
-            stack[state.stackTop] = vars[state.indexReg];
-            sDbl[state.stackTop] = varDbls[state.indexReg];
+            frame.stack[state.stackTop] = vars[state.indexReg];
+            frame.sDbl[state.stackTop] = varDbls[state.indexReg];
         } else {
             String stringReg = frame.idata.argNames[state.indexReg];
-            stack[state.stackTop] = frame.scope.get(stringReg, frame.scope);
+            frame.stack[state.stackTop] = frame.scope.get(stringReg, frame.scope);
         }
     }
 
-    private static void doVarIncDec(
-            Context cx,
-            CallFrame frame,
-            Object[] stack,
-            double[] sDbl,
-            InterpreterState state,
-            Object[] vars,
-            double[] varDbls,
-            byte[] varAttributes) {
+    private static void doVarIncDec(Context cx, CallFrame frame, InterpreterState state, int op) {
+        var varAttributes = frame.varSource.stackAttributes;
+        var vars = frame.varSource.stack;
+        var varDbls = frame.varSource.sDbl;
         // indexReg : varindex
         ++state.stackTop;
         int incrDecrMask = frame.idata.itsICode[frame.pc];
@@ -3838,14 +3782,14 @@ public final class Interpreter extends Icode implements Evaluator {
                         vars[state.indexReg] = DOUBLE_MARK;
                     }
                     varDbls[state.indexReg] = d2;
-                    stack[state.stackTop] = DOUBLE_MARK;
-                    sDbl[state.stackTop] = post ? d : d2;
+                    frame.stack[state.stackTop] = DOUBLE_MARK;
+                    frame.sDbl[state.stackTop] = post ? d : d2;
                 } else {
                     if (post && varValue != DOUBLE_MARK) {
-                        stack[state.stackTop] = varValue;
+                        frame.stack[state.stackTop] = varValue;
                     } else {
-                        stack[state.stackTop] = DOUBLE_MARK;
-                        sDbl[state.stackTop] = post ? d : d2;
+                        frame.stack[state.stackTop] = DOUBLE_MARK;
+                        frame.sDbl[state.stackTop] = post ? d : d2;
                     }
                 }
             } else {
@@ -3860,18 +3804,18 @@ public final class Interpreter extends Icode implements Evaluator {
                 boolean post = ((incrDecrMask & Node.POST_FLAG) != 0);
                 if ((varAttributes[state.indexReg] & ScriptableObject.READONLY) == 0) {
                     vars[state.indexReg] = result;
-                    stack[state.stackTop] = post ? bi : result;
+                    frame.stack[state.stackTop] = post ? bi : result;
                 } else {
                     if (post && varValue != DOUBLE_MARK) {
-                        stack[state.stackTop] = varValue;
+                        frame.stack[state.stackTop] = varValue;
                     } else {
-                        stack[state.stackTop] = post ? bi : result;
+                        frame.stack[state.stackTop] = post ? bi : result;
                     }
                 }
             }
         } else {
             String varName = frame.idata.argNames[state.indexReg];
-            stack[state.stackTop] =
+            frame.stack[state.stackTop] =
                     ScriptRuntime.nameIncrDecr(frame.scope, varName, cx, incrDecrMask);
         }
         ++frame.pc;
