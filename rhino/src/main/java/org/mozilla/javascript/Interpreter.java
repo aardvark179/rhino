@@ -1948,21 +1948,20 @@ public final class Interpreter extends Icode implements Evaluator {
                             valueAndThis(cx, frame, state, op);
                             continue Loop;
                         case Icode_VALUE_AND_THIS_OPTIONAL:
-                            valueAndThisOptional(cx, frame.stack, frame.sDbl, state);
+                            valueAndThisOptional(cx, frame, state, op);
                             continue Loop;
                         case Icode_CALLSPECIAL:
-                            doCallSpecial(cx, frame, frame.stack, frame.sDbl, state, iCode, false);
+                            doCallSpecial(cx, frame, state, op);
                             continue Loop;
                         case Icode_CALLSPECIAL_OPTIONAL:
-                            doCallSpecial(cx, frame, frame.stack, frame.sDbl, state, iCode, true);
+                            doCallSpecial(cx, frame, state, op);
                             continue Loop;
                         case Token.CALL:
                         case Icode_CALL_ON_SUPER:
                         case Icode_TAIL_CALL:
                         case Token.REF_CALL:
                             {
-                                var callState =
-                                        doCallByteCode(cx, frame, instructionCounting, op, state);
+                                var callState = doCallByteCode(cx, frame, state, op);
                                 if (callState instanceof ContinueLoop) {
                                     var contLoop = (ContinueLoop) callState;
                                     state.stackTop = contLoop.stackTop;
@@ -2023,10 +2022,10 @@ public final class Interpreter extends Icode implements Evaluator {
                                 continue Loop;
                             }
                         case Token.TYPEOF:
-                            doTypeOf(frame.stack, frame.sDbl, state);
+                            doTypeOf(cx, frame, state, op);
                             continue Loop;
                         case Icode_TYPEOFNAME:
-                            doTypeOfName(frame, frame.stack, state);
+                            doTypeOfName(cx, frame, state, op);
                             continue Loop;
                         case Token.STRING:
                             doString(frame.stack, state);
@@ -2599,13 +2598,13 @@ public final class Interpreter extends Icode implements Evaluator {
         stack[++state.stackTop] = state.stringReg;
     }
 
-    private static void doTypeOfName(
-            CallFrame frame, final Object[] stack, final InterpreterState state) {
-        stack[++state.stackTop] = ScriptRuntime.typeofName(frame.scope, state.stringReg);
+    private static void doTypeOfName(Context cx, CallFrame frame, InterpreterState state, int op) {
+        frame.stack[++state.stackTop] = ScriptRuntime.typeofName(frame.scope, state.stringReg);
     }
 
-    private static void doTypeOf(
-            final Object[] stack, final double[] sDbl, final InterpreterState state) {
+    private static void doTypeOf(Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object[] stack = frame.stack;
+        double[] sDbl = frame.sDbl;
         Object lhs = stack[state.stackTop];
         if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         stack[state.stackTop] = ScriptRuntime.typeof(lhs);
@@ -3040,7 +3039,9 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void valueAndThisOptional(
-            Context cx, final Object[] stack, final double[] sDbl, InterpreterState state) {
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object[] stack = frame.stack;
+        double[] sDbl = frame.sDbl;
         Object value = stack[state.stackTop];
         if (value == DOUBLE_MARK) value = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         stack[state.stackTop] = ScriptRuntime.getValueAndThisOptional(value, cx);
@@ -3204,18 +3205,14 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static NewState doCallByteCode(
-            Context cx,
-            CallFrame frame,
-            boolean instructionCounting,
-            int op,
-            InterpreterState state) {
+            Context cx, CallFrame frame, InterpreterState state, int op) {
 
         Object[] stack = frame.stack;
         double[] sDbl = frame.sDbl;
         Object[] boundArgs = null;
         int blen = 0;
 
-        if (instructionCounting) {
+        if (state.instructionCounting) {
             cx.instructionCount += INVOCATION_COST;
         }
         // stack change: lookup_result arg0 .. argN -> result
@@ -3701,14 +3698,12 @@ public final class Interpreter extends Icode implements Evaluator {
         ++frame.pc;
     }
 
-    private static void doCallSpecial(
-            Context cx,
-            CallFrame frame,
-            Object[] stack,
-            double[] sDbl,
-            InterpreterState state,
-            byte[] iCode,
-            boolean isOptionalChainingCall) {
+    private static void doCallSpecial(Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object[] stack = frame.stack;
+        double[] sDbl = frame.sDbl;
+        byte[] iCode = frame.idata.itsICode;
+        boolean isOptionalChainingCall = (op == Icode_CALLSPECIAL_OPTIONAL);
+
         if (state.instructionCounting) {
             cx.instructionCount += INVOCATION_COST;
         }
