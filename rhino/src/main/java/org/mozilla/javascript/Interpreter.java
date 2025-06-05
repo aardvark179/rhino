@@ -2034,7 +2034,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             doShortNumber(cx, frame, state, 0);
                             continue Loop;
                         case Icode_INTNUMBER:
-                            DoIntNumber(frame, frame.stack, frame.sDbl, iCode, state);
+                            DoIntNumber(cx, frame, state, 0);
                             continue Loop;
                         case Token.NUMBER:
                             doNumber(frame.stack, frame.sDbl, frame.idata, state);
@@ -2570,15 +2570,10 @@ public final class Interpreter extends Icode implements Evaluator {
         sDbl[state.stackTop] = iData.itsDoubleTable[state.indexReg];
     }
 
-    private static void DoIntNumber(
-            CallFrame frame,
-            final Object[] stack,
-            final double[] sDbl,
-            final byte[] iCode,
-            final InterpreterState state) {
+    private static void DoIntNumber(Context cx, CallFrame frame, InterpreterState state, int op) {
         ++state.stackTop;
-        stack[state.stackTop] = DOUBLE_MARK;
-        sDbl[state.stackTop] = getInt(iCode, frame.pc);
+        frame.stack[state.stackTop] = DOUBLE_MARK;
+        frame.sDbl[state.stackTop] = getInt(frame.idata.itsICode, frame.pc);
         frame.pc += 4;
     }
 
