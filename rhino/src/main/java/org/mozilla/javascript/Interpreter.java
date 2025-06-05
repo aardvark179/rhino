@@ -2028,7 +2028,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             doTypeOfName(cx, frame, state, op);
                             continue Loop;
                         case Token.STRING:
-                            doString(frame.stack, state);
+                            doString(cx, frame, state, 0);
                             continue Loop;
                         case Icode_SHORTNUMBER:
                             doShortNumber(frame, frame.stack, frame.sDbl, iCode, state);
@@ -2594,8 +2594,8 @@ public final class Interpreter extends Icode implements Evaluator {
         frame.pc += 2;
     }
 
-    private static void doString(final Object[] stack, final InterpreterState state) {
-        stack[++state.stackTop] = state.stringReg;
+    private static void doString(Context cx, CallFrame frame, InterpreterState state, int op) {
+        frame.stack[++state.stackTop] = state.stringReg;
     }
 
     private static void doTypeOfName(Context cx, CallFrame frame, InterpreterState state, int op) {
