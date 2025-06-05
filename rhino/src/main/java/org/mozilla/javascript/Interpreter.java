@@ -1936,7 +1936,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             propAndThis(cx, frame, state, op);
                             continue Loop;
                         case Icode_PROP_AND_THIS_OPTIONAL:
-                            propAndThisOptional(cx, frame, frame.stack, frame.sDbl, state);
+                            propAndThisOptional(cx, frame, state, op);
                             continue Loop;
                         case Icode_ELEM_AND_THIS:
                             elemAndThis(cx, frame, frame.stack, frame.sDbl, state);
@@ -3082,9 +3082,10 @@ public final class Interpreter extends Icode implements Evaluator {
     private static void propAndThisOptional(
             Context cx,
             CallFrame frame,
-            final Object[] stack,
-            final double[] sDbl,
-            InterpreterState state) {
+            InterpreterState state,
+            int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
         Object obj = stack[state.stackTop];
         if (obj == DOUBLE_MARK) obj = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         // stringReg: property
