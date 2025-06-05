@@ -1862,75 +1862,75 @@ public final class Interpreter extends Icode implements Evaluator {
                             continue Loop;
                         case Token.STRICT_SETNAME:
                         case Token.SETNAME:
-                            setName(cx, frame, frame.stack, frame.sDbl, state, op);
+                            setName(cx, frame, state, op);
                             continue Loop;
                         case Icode_SETCONST:
-                            setConst(cx, frame.stack, frame.sDbl, state);
+                            setConst(cx, frame, state, op);
                             continue Loop;
                         case Token.DELPROP:
                         case Icode_DELNAME:
-                            doDelName(cx, frame, op, frame.stack, frame.sDbl, state);
+                            doDelName(cx, frame, state, op);
                             continue Loop;
                         case Icode_DELPROP_SUPER:
-                            doDelPropSuper(frame.stack, state);
+                            doDelPropSuper(cx, frame, state, op);
                             continue Loop;
                         case Token.GETPROPNOWARN:
-                            getPropNoWarn(cx, frame, frame.stack, frame.sDbl, state);
+                            getPropNoWarn(cx, frame, state, op);
                             continue Loop;
                         case Token.GETPROP:
-                            getProp(cx, frame, frame.stack, frame.sDbl, state);
+                            getProp(cx, frame, state, op);
                             continue Loop;
                         case Token.GETPROP_SUPER:
                         case Token.GETPROPNOWARN_SUPER:
-                            getPropSuper(cx, frame, frame.stack, state, op);
+                            getPropSuper(cx, frame, state, op);
                             continue Loop;
                         case Token.SETPROP:
-                            setProp(cx, frame, frame.stack, frame.sDbl, state);
+                            setProp(cx, frame, state, op);
                             continue Loop;
                         case Token.SETPROP_SUPER:
-                            setPropSuper(cx, frame, frame.stack, frame.sDbl, state);
+                            setPropSuper(cx, frame, state, op);
                             continue Loop;
                         case Icode_PROP_INC_DEC:
-                            propIncDec(cx, frame, frame.stack, frame.sDbl, iCode, state);
+                            propIncDec(cx, frame, state, op);
                             continue Loop;
                         case Token.GETELEM:
-                            doGetElem(cx, frame, frame.stack, frame.sDbl, state);
+                            doGetElem(cx, frame, state, op);
                             continue Loop;
                         case Token.GETELEM_SUPER:
-                            doGetElemSuper(cx, frame, frame.stack, frame.sDbl, state);
+                            doGetElemSuper(cx, frame, state, op);
                             continue Loop;
                         case Token.SETELEM:
-                            doSetElem(cx, frame, frame.stack, frame.sDbl, state);
+                            doSetElem(cx, frame, state, op);
                             continue Loop;
                         case Token.SETELEM_SUPER:
-                            doSetElemSuper(cx, frame, frame.stack, frame.sDbl, state);
+                            doSetElemSuper(cx, frame, state, op);
                             continue Loop;
                         case Icode_ELEM_INC_DEC:
-                            doElemIncDec(cx, frame, iCode, frame.stack, frame.sDbl, state);
+                            doElemIncDec(cx, frame, state, op);
                             continue Loop;
                         case Token.GET_REF:
-                            getRef(cx, frame.stack, state);
+                            getRef(cx, frame, state, op);
                             continue Loop;
                         case Token.SET_REF:
-                            setRef(cx, frame, frame.stack, frame.sDbl, state);
+                            setRef(cx, frame, state, op);
                             continue Loop;
                         case Token.DEL_REF:
-                            delRef(cx, frame.stack, state);
+                            delRef(cx, frame, state, op);
                             continue Loop;
                         case Icode_REF_INC_DEC:
-                            refIncDec(cx, frame, frame.stack, iCode, state);
+                            refIncDec(cx, frame, state, op);
                             continue Loop;
                         case Token.LOCAL_LOAD:
-                            localLoad(frame.stack, frame.sDbl, frame.idata, state);
+                            localLoad(cx, frame, state, op);
                             continue Loop;
                         case Icode_LOCAL_CLEAR:
-                            localClear(frame.stack, frame.idata, state);
+                            localClear(cx, frame, state, op);
                             continue Loop;
                         case Icode_NAME_AND_THIS:
-                            nameAndThis(cx, frame, frame.stack, state);
+                            nameAndThis(cx, frame, state, op);
                             continue Loop;
                         case Icode_NAME_AND_THIS_OPTIONAL:
-                            nameAndThisOptional(cx, frame, frame.stack, state);
+                            nameAndThisOptional(cx, frame, state, op);
                             continue Loop;
                         case Icode_PROP_AND_THIS:
                             propAndThis(cx, frame, frame.stack, frame.sDbl, state);
@@ -2611,45 +2611,46 @@ public final class Interpreter extends Icode implements Evaluator {
         stack[state.stackTop] = ScriptRuntime.typeof(lhs);
     }
 
-    private static void localClear(
-            final Object[] stack, final InterpreterData iData, final InterpreterState state) {
+    private static void localClear(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final InterpreterData iData = frame.idata;
         state.indexReg += iData.itsMaxVars;
         stack[state.indexReg] = null;
     }
 
-    private static void localLoad(
-            final Object[] stack,
-            final double[] sDbl,
-            final InterpreterData iData,
-            final InterpreterState state) {
+    private static void localLoad(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
+        final InterpreterData iData = frame.idata;
         ++state.stackTop;
         state.indexReg += iData.itsMaxVars;
         stack[state.stackTop] = stack[state.indexReg];
         sDbl[state.stackTop] = sDbl[state.indexReg];
     }
 
-    private static void refIncDec(
-            Context cx,
-            CallFrame frame,
-            final Object[] stack,
-            final byte[] iCode,
-            final InterpreterState state) {
+    private static void refIncDec(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final byte[] iCode = frame.idata.itsICode;
         Ref ref = (Ref) stack[state.stackTop];
         stack[state.stackTop] = ScriptRuntime.refIncrDecr(ref, cx, frame.scope, iCode[frame.pc]);
         ++frame.pc;
     }
 
-    private static void delRef(Context cx, final Object[] stack, final InterpreterState state) {
+    private static void delRef(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
         Ref ref = (Ref) stack[state.stackTop];
         stack[state.stackTop] = ScriptRuntime.refDel(ref, cx);
     }
 
-    private static void getRef(Context cx, final Object[] stack, final InterpreterState state) {
+    private static void getRef(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
         Ref ref = (Ref) stack[state.stackTop];
         stack[state.stackTop] = ScriptRuntime.refGet(ref, cx);
     }
 
-    private static void doDelPropSuper(final Object[] stack, final InterpreterState state) {
+    private static void doDelPropSuper(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
         state.stackTop -= 1;
         stack[state.stackTop] = Boolean.FALSE;
         ScriptRuntime.throwDeleteOnSuperPropertyNotAllowed();
@@ -2882,36 +2883,31 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void nameAndThisOptional(
-            Context cx, CallFrame frame, final Object[] stack, InterpreterState state) {
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
         stack[++state.stackTop] =
                 ScriptRuntime.getNameAndThisOptional(state.stringReg, cx, frame.scope);
     }
 
-    private static void nameAndThis(
-            Context cx, CallFrame frame, final Object[] stack, InterpreterState state) {
+    private static void nameAndThis(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
         // stringReg: name
         stack[++state.stackTop] = ScriptRuntime.getNameAndThis(state.stringReg, cx, frame.scope);
     }
 
-    private static void setRef(
-            Context cx,
-            CallFrame frame,
-            final Object[] stack,
-            final double[] sDbl,
-            InterpreterState state) {
+    private static void setRef(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
         Object value = stack[state.stackTop];
         if (value == DOUBLE_MARK) value = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         Ref ref = (Ref) stack[state.stackTop - 1];
         stack[--state.stackTop] = ScriptRuntime.refSet(ref, value, cx, frame.scope);
     }
 
-    private static void propIncDec(
-            Context cx,
-            CallFrame frame,
-            final Object[] stack,
-            final double[] sDbl,
-            final byte[] iCode,
-            InterpreterState state) {
+    private static void propIncDec(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
+        final byte[] iCode = frame.idata.itsICode;
         Object lhs = stack[state.stackTop];
         if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         stack[state.stackTop] =
@@ -2919,12 +2915,9 @@ public final class Interpreter extends Icode implements Evaluator {
         ++frame.pc;
     }
 
-    private static void setProp(
-            Context cx,
-            CallFrame frame,
-            final Object[] stack,
-            final double[] sDbl,
-            InterpreterState state) {
+    private static void setProp(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
         Object rhs = stack[state.stackTop];
         if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         Object lhs = stack[state.stackTop - 1];
@@ -2933,8 +2926,9 @@ public final class Interpreter extends Icode implements Evaluator {
                 ScriptRuntime.setObjectProp(lhs, state.stringReg, rhs, cx, frame.scope);
     }
 
-    private static void setConst(
-            Context cx, final Object[] stack, final double[] sDbl, InterpreterState state) {
+    private static void setConst(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
         Object rhs = stack[state.stackTop];
         if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         Scriptable lhs = (Scriptable) stack[state.stackTop - 1];
@@ -2942,23 +2936,17 @@ public final class Interpreter extends Icode implements Evaluator {
         --state.stackTop;
     }
 
-    private static void getProp(
-            Context cx,
-            CallFrame frame,
-            final Object[] stack,
-            final double[] sDbl,
-            InterpreterState state) {
+    private static void getProp(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
         Object lhs = stack[state.stackTop];
         if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         stack[state.stackTop] = ScriptRuntime.getObjectProp(lhs, state.stringReg, cx, frame.scope);
     }
 
-    private static void getPropNoWarn(
-            Context cx,
-            CallFrame frame,
-            final Object[] stack,
-            final double[] sDbl,
-            InterpreterState state) {
+    private static void getPropNoWarn(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
         Object lhs = stack[state.stackTop];
         if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         stack[state.stackTop] =
@@ -3116,12 +3104,9 @@ public final class Interpreter extends Icode implements Evaluator {
         stack[state.stackTop] = ScriptRuntime.getPropAndThis(obj, state.stringReg, cx, frame.scope);
     }
 
-    private static void setPropSuper(
-            Context cx,
-            CallFrame frame,
-            final Object[] stack,
-            final double[] sDbl,
-            InterpreterState state) {
+    private static void setPropSuper(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
         Object rhs = stack[state.stackTop];
         if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         Object superObject = stack[state.stackTop - 1];
@@ -3131,8 +3116,8 @@ public final class Interpreter extends Icode implements Evaluator {
                         superObject, state.stringReg, rhs, cx, frame.scope, frame.thisObj);
     }
 
-    private static void getPropSuper(
-            Context cx, CallFrame frame, final Object[] stack, InterpreterState state, int op) {
+    private static void getPropSuper(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
         Object superObject = stack[state.stackTop];
         if (superObject == DOUBLE_MARK) Kit.codeBug();
         stack[state.stackTop] =
@@ -3145,13 +3130,9 @@ public final class Interpreter extends Icode implements Evaluator {
                         op == Token.GETPROPNOWARN_SUPER);
     }
 
-    private static void setName(
-            Context cx,
-            CallFrame frame,
-            final Object[] stack,
-            final double[] sDbl,
-            InterpreterState state,
-            int op) {
+    private static void setName(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
         Object rhs = stack[state.stackTop];
         if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         Scriptable lhs = (Scriptable) stack[state.stackTop - 1];
@@ -3619,13 +3600,9 @@ public final class Interpreter extends Icode implements Evaluator {
         }
     }
 
-    private static void doDelName(
-            Context cx,
-            CallFrame frame,
-            int op,
-            Object[] stack,
-            double[] sDbl,
-            InterpreterState state) {
+    private static void doDelName(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
         Object rhs = stack[state.stackTop];
         if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         --state.stackTop;
@@ -3635,8 +3612,9 @@ public final class Interpreter extends Icode implements Evaluator {
                 ScriptRuntime.delete(lhs, rhs, cx, frame.scope, op == Icode_DELNAME);
     }
 
-    private static void doGetElem(
-            Context cx, CallFrame frame, Object[] stack, double[] sDbl, InterpreterState state) {
+    private static void doGetElem(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
         Object lhs = stack[--state.stackTop];
         if (lhs == DOUBLE_MARK) {
             lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
@@ -3653,7 +3631,9 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void doGetElemSuper(
-            Context cx, CallFrame frame, Object[] stack, double[] sDbl, InterpreterState state) {
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
         Object superObject = stack[--state.stackTop];
         if (superObject == DOUBLE_MARK) Kit.codeBug();
         Object value;
@@ -3667,8 +3647,9 @@ public final class Interpreter extends Icode implements Evaluator {
         stack[state.stackTop] = value;
     }
 
-    private static void doSetElem(
-            Context cx, CallFrame frame, Object[] stack, double[] sDbl, InterpreterState state) {
+    private static void doSetElem(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
         Object rhs = stack[state.stackTop];
         if (rhs == DOUBLE_MARK) {
             rhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
@@ -3690,7 +3671,9 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void doSetElemSuper(
-            Context cx, CallFrame frame, Object[] stack, double[] sDbl, InterpreterState state) {
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
         Object rhs = stack[state.stackTop];
         if (rhs == DOUBLE_MARK) {
             rhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
@@ -3713,13 +3696,10 @@ public final class Interpreter extends Icode implements Evaluator {
         stack[state.stackTop] = value;
     }
 
-    private static void doElemIncDec(
-            Context cx,
-            CallFrame frame,
-            byte[] iCode,
-            Object[] stack,
-            double[] sDbl,
-            InterpreterState state) {
+    private static void doElemIncDec(Context cx, CallFrame frame, InterpreterState state, int op) {
+        final Object[] stack = frame.stack;
+        final double[] sDbl = frame.sDbl;
+        final byte[] iCode = frame.idata.itsICode;
         Object rhs = stack[state.stackTop];
         if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         --state.stackTop;
