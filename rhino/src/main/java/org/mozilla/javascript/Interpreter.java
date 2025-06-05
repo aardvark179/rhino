@@ -1802,6 +1802,103 @@ public final class Interpreter extends Icode implements Evaluator {
                                 }
                                 continue Loop;
                             }
+                        case Token.CALL:
+                        case Icode_CALL_ON_SUPER:
+                        case Icode_TAIL_CALL:
+                        case Token.REF_CALL:
+                            {
+                                var callState = doCallByteCode(cx, frame, state, op);
+                                if (callState instanceof ContinueLoop) {
+                                    var contLoop = (ContinueLoop) callState;
+                                    state.stackTop = contLoop.stackTop;
+                                    state.indexReg = contLoop.indexReg;
+                                    continue Loop;
+                                } else if (callState instanceof StateContinue) {
+                                    return new StateContinueResult(
+                                            ((StateContinue) callState).frame, state.indexReg);
+                                } else if (callState instanceof NewThrowable) {
+                                    state.throwable = ((NewThrowable) callState).throwable;
+                                    break withoutExceptions;
+                                } else {
+                                    Kit.codeBug();
+                                    break;
+                                }
+                            }
+                        case Token.NEW:
+                            {
+                                if (instructionCounting) {
+                                    cx.instructionCount += INVOCATION_COST;
+                                }
+                                // stack change: function arg0 .. argN -> newResult
+                                // state.indexReg: number of arguments
+                                state.stackTop -= state.indexReg;
+
+                                Object lhs = frame.stack[state.stackTop];
+                                if (lhs instanceof InterpretedFunction) {
+                                    InterpretedFunction f = (InterpretedFunction) lhs;
+                                    if (frame.fnOrScript.securityDomain == f.securityDomain) {
+                                        return doNewByteCode(
+                                                cx, frame, state, frame.stack, frame.sDbl, op, f);
+                                    }
+                                }
+                                if (!(lhs instanceof Constructable)) {
+                                    if (lhs == DOUBLE_MARK)
+                                        lhs = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
+                                    throw ScriptRuntime.notFunctionError(lhs);
+                                }
+                                Constructable ctor = (Constructable) lhs;
+
+                                if (ctor instanceof IdFunctionObject) {
+                                    IdFunctionObject ifun = (IdFunctionObject) ctor;
+                                    if (NativeContinuation.isContinuationConstructor(ifun)) {
+                                        frame.stack[state.stackTop] =
+                                                captureContinuation(cx, frame.parentFrame, false);
+                                        continue Loop;
+                                    }
+                                }
+
+                                Object[] outArgs =
+                                        getArgsArray(
+                                                frame.stack,
+                                                frame.sDbl,
+                                                state.stackTop + 1,
+                                                state.indexReg);
+                                frame.stack[state.stackTop] =
+                                        ctor.construct(cx, frame.scope, outArgs);
+                                continue Loop;
+                            }
+                        case Icode_SETCONSTVAR1:
+                            state.indexReg = iCode[frame.pc++];
+                        // fallthrough
+                        case Icode_SETCONSTVAR:
+                            doSetConstVar(cx, frame, state, op);
+                            continue Loop;
+                        case Icode_SETVAR1:
+                            state.indexReg = iCode[frame.pc++];
+                        // fallthrough
+                        case Token.SETVAR:
+                            doSetVar(cx, frame, state, op);
+                            continue Loop;
+                        case Icode_GETVAR1:
+                            state.indexReg = iCode[frame.pc++];
+                        // fallthrough
+                        case Token.GETVAR:
+                            doGetVar(cx, frame, state, op);
+                            continue Loop;
+                        case Icode_LEAVEDQ:
+                            {
+                                boolean valBln = stack_boolean(frame, state.stackTop);
+                                Object x = ScriptRuntime.updateDotQuery(valBln, frame.scope);
+                                if (x != null) {
+                                    frame.stack[state.stackTop] = x;
+                                    frame.scope = ScriptRuntime.leaveDotQuery(frame.scope);
+                                    frame.pc += 2;
+                                    continue Loop;
+                                }
+                                // reset stack and PC to code after ENTERDQ
+                                --state.stackTop;
+                                break jumplessRun;
+                            }
                         case Icode_POP:
                             pop(cx, frame, state, op);
                             continue Loop;
@@ -1956,71 +2053,6 @@ public final class Interpreter extends Icode implements Evaluator {
                         case Icode_CALLSPECIAL_OPTIONAL:
                             doCallSpecial(cx, frame, state, op);
                             continue Loop;
-                        case Token.CALL:
-                        case Icode_CALL_ON_SUPER:
-                        case Icode_TAIL_CALL:
-                        case Token.REF_CALL:
-                            {
-                                var callState = doCallByteCode(cx, frame, state, op);
-                                if (callState instanceof ContinueLoop) {
-                                    var contLoop = (ContinueLoop) callState;
-                                    state.stackTop = contLoop.stackTop;
-                                    state.indexReg = contLoop.indexReg;
-                                    continue Loop;
-                                } else if (callState instanceof StateContinue) {
-                                    return new StateContinueResult(
-                                            ((StateContinue) callState).frame, state.indexReg);
-                                } else if (callState instanceof NewThrowable) {
-                                    state.throwable = ((NewThrowable) callState).throwable;
-                                    break withoutExceptions;
-                                } else {
-                                    Kit.codeBug();
-                                    break;
-                                }
-                            }
-                        case Token.NEW:
-                            {
-                                if (instructionCounting) {
-                                    cx.instructionCount += INVOCATION_COST;
-                                }
-                                // stack change: function arg0 .. argN -> newResult
-                                // state.indexReg: number of arguments
-                                state.stackTop -= state.indexReg;
-
-                                Object lhs = frame.stack[state.stackTop];
-                                if (lhs instanceof InterpretedFunction) {
-                                    InterpretedFunction f = (InterpretedFunction) lhs;
-                                    if (frame.fnOrScript.securityDomain == f.securityDomain) {
-                                        return doNewByteCode(
-                                                cx, frame, state, frame.stack, frame.sDbl, op, f);
-                                    }
-                                }
-                                if (!(lhs instanceof Constructable)) {
-                                    if (lhs == DOUBLE_MARK)
-                                        lhs = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
-                                    throw ScriptRuntime.notFunctionError(lhs);
-                                }
-                                Constructable ctor = (Constructable) lhs;
-
-                                if (ctor instanceof IdFunctionObject) {
-                                    IdFunctionObject ifun = (IdFunctionObject) ctor;
-                                    if (NativeContinuation.isContinuationConstructor(ifun)) {
-                                        frame.stack[state.stackTop] =
-                                                captureContinuation(cx, frame.parentFrame, false);
-                                        continue Loop;
-                                    }
-                                }
-
-                                Object[] outArgs =
-                                        getArgsArray(
-                                                frame.stack,
-                                                frame.sDbl,
-                                                state.stackTop + 1,
-                                                state.indexReg);
-                                frame.stack[state.stackTop] =
-                                        ctor.construct(cx, frame.scope, outArgs);
-                                continue Loop;
-                            }
                         case Token.TYPEOF:
                             doTypeOf(cx, frame, state, op);
                             continue Loop;
@@ -2048,29 +2080,9 @@ public final class Interpreter extends Icode implements Evaluator {
                         case Icode_NAME_INC_DEC:
                             doNameIncDec(cx, frame, state, op);
                             continue Loop;
-                        case Icode_SETCONSTVAR1:
-                            state.indexReg = iCode[frame.pc++];
-                        // fallthrough
-                        case Icode_SETCONSTVAR:
-                            doSetConstVar(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_SETVAR1:
-                            state.indexReg = iCode[frame.pc++];
-                        // fallthrough
-                        case Token.SETVAR:
-                            doSetVar(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_GETVAR1:
-                            state.indexReg = iCode[frame.pc++];
-                        // fallthrough
-                        case Token.GETVAR:
-                            doGetVar(cx, frame, state, op);
-                            continue Loop;
                         case Icode_VAR_INC_DEC:
-                            {
-                                doVarIncDec(cx, frame, state, op);
-                                continue Loop;
-                            }
+                            doVarIncDec(cx, frame, state, op);
+                            continue Loop;
                         case Icode_ZERO:
                             doZero(cx, frame, state, op);
                             continue Loop;
@@ -2181,20 +2193,6 @@ public final class Interpreter extends Icode implements Evaluator {
                         case Icode_ENTERDQ:
                             enterDotQuery(cx, frame, state, op);
                             continue Loop;
-                        case Icode_LEAVEDQ:
-                            {
-                                boolean valBln = stack_boolean(frame, state.stackTop);
-                                Object x = ScriptRuntime.updateDotQuery(valBln, frame.scope);
-                                if (x != null) {
-                                    frame.stack[state.stackTop] = x;
-                                    frame.scope = ScriptRuntime.leaveDotQuery(frame.scope);
-                                    frame.pc += 2;
-                                    continue Loop;
-                                }
-                                // reset stack and PC to code after ENTERDQ
-                                --state.stackTop;
-                                break jumplessRun;
-                            }
                         case Token.DEFAULTNAMESPACE:
                             doDefaultNamespace(cx, frame, state, op);
                             continue Loop;
