@@ -1942,7 +1942,7 @@ public final class Interpreter extends Icode implements Evaluator {
                             elemAndThis(cx, frame, state, op);
                             continue Loop;
                         case Icode_ELEM_AND_THIS_OPTIONAL:
-                            elemAndThisOptional(cx, frame, frame.stack, frame.sDbl, state);
+                            elemAndThisOptional(cx, frame, state, op);
                             continue Loop;
                         case Icode_VALUE_AND_THIS:
                             valueAndThis(cx, frame.stack, frame.sDbl, state);
@@ -3054,17 +3054,18 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void elemAndThisOptional(
-            Context cx,
-            CallFrame frame,
-            final Object[] stack,
-            final double[] sDbl,
-            InterpreterState state) {
-        Object obj = stack[state.stackTop - 1];
-        if (obj == DOUBLE_MARK) obj = ScriptRuntime.wrapNumber(sDbl[state.stackTop - 1]);
-        Object id = stack[state.stackTop];
-        if (id == DOUBLE_MARK) id = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
-        stack[--state.stackTop] = ScriptRuntime.getElemAndThisOptional(obj, id, cx, frame.scope);
-    }
+        Context cx,
+        CallFrame frame,
+        InterpreterState state,
+        int op) {
+    final Object[] stack = frame.stack;
+    final double[] sDbl = frame.sDbl;
+    Object obj = stack[state.stackTop - 1];
+    if (obj == DOUBLE_MARK) obj = ScriptRuntime.wrapNumber(sDbl[state.stackTop - 1]);
+    Object id = stack[state.stackTop];
+    if (id == DOUBLE_MARK) id = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+    stack[--state.stackTop] = ScriptRuntime.getElemAndThisOptional(obj, id, cx, frame.scope);
+}
 
     private static void elemAndThis(
             Context cx,
