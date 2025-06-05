@@ -2178,39 +2178,38 @@ public final class Interpreter extends Icode implements Evaluator {
                             initFunction(cx, frame.scope, frame.fnOrScript, state);
                             continue Loop;
                         case Token.REGEXP:
-                            doRegExp(cx, frame, frame.stack, frame.idata, state);
+                            doRegExp(cx, frame, state, op);
                             continue Loop;
                         case Icode_TEMPLATE_LITERAL_CALLSITE:
-                            doTemplateLiteralCallSite(cx, frame, frame.stack, frame.idata, state);
+                            doTemplateLiteralCallSite(cx, frame, state, op);
                             continue Loop;
                         case Icode_LITERAL_NEW_OBJECT:
-                            literalNewObject(
-                                    cx, frame, state, frame.stack, frame.sDbl, frame.idata, iCode);
+                            literalNewObject(cx, frame, state, op);
                             continue Loop;
                         case Icode_LITERAL_NEW_ARRAY:
-                            newArrayLit(state, frame.stack, frame.sDbl);
+                            newArrayLit(cx, frame, state, op);
                             continue Loop;
                         case Icode_LITERAL_SET:
-                            literalSet(frame.stack, frame.sDbl, state);
+                            literalSet(cx, frame, state, op);
                             continue Loop;
                         case Icode_LITERAL_GETTER:
-                            literalGetter(frame.stack, frame.sDbl, state);
+                            literalGetter(cx, frame, state, op);
                             continue Loop;
                         case Icode_LITERAL_SETTER:
-                            literalSetter(frame.stack, frame.sDbl, state);
+                            literalSetter(cx, frame, state, op);
                             continue Loop;
                         case Icode_LITERAL_KEY_SET:
-                            literalKeySet(frame.stack, frame.sDbl, state);
+                            literalKeySet(cx, frame, state, op);
                             continue Loop;
                         case Token.OBJECTLIT:
-                            objectLit(cx, frame, frame.stack, state);
+                            objectLit(cx, frame, state, op);
                             continue Loop;
                         case Token.ARRAYLIT:
                         case Icode_SPARE_ARRAYLIT:
-                            arrayLiteral(cx, frame, state, frame.stack, frame.idata, op);
+                            arrayLiteral(cx, frame, state, op);
                             continue Loop;
                         case Icode_ENTERDQ:
-                            enterDotQuery(frame, frame.stack, frame.sDbl, state);
+                            enterDotQuery(cx, frame, state, op);
                             continue Loop;
                         case Icode_LEAVEDQ:
                             {
@@ -2227,7 +2226,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                 break jumplessRun;
                             }
                         case Token.DEFAULTNAMESPACE:
-                            doDefaultNamespace(cx, frame.stack, frame.sDbl, state);
+                            doDefaultNamespace(cx, frame, state, op);
                             continue Loop;
                         case Token.ESCXMLATTR:
                             doEscXMLAttr(cx, frame, state, op);
@@ -2430,16 +2429,14 @@ public final class Interpreter extends Icode implements Evaluator {
         }
     }
 
-    private static void doEscXMLText(
-        Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static void doEscXMLText(Context cx, CallFrame frame, InterpreterState state, int op) {
         Object value = frame.stack[state.stackTop];
         if (value != DOUBLE_MARK) {
             frame.stack[state.stackTop] = ScriptRuntime.escapeTextValue(value, cx);
         }
     }
 
-    private static void doEscXMLAttr(
-        Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static void doEscXMLAttr(Context cx, CallFrame frame, InterpreterState state, int op) {
         Object value = frame.stack[state.stackTop];
         if (value != DOUBLE_MARK) {
             frame.stack[state.stackTop] = ScriptRuntime.escapeAttributeValue(value, cx);
@@ -2447,32 +2444,23 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void doDefaultNamespace(
-            Context cx, final Object[] stack, final double[] sDbl, final InterpreterState state) {
-        Object value = stack[state.stackTop];
-        if (value == DOUBLE_MARK) value = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
-        stack[state.stackTop] = ScriptRuntime.setDefaultNamespace(value, cx);
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object value = frame.stack[state.stackTop];
+        if (value == DOUBLE_MARK) value = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
+        frame.stack[state.stackTop] = ScriptRuntime.setDefaultNamespace(value, cx);
     }
 
     private static void doTemplateLiteralCallSite(
-            Context cx,
-            CallFrame frame,
-            final Object[] stack,
-            final InterpreterData iData,
-            final InterpreterState state) {
-        Object[] templateLiterals = iData.itsTemplateLiterals;
-        stack[++state.stackTop] =
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object[] templateLiterals = frame.idata.itsTemplateLiterals;
+        frame.stack[++state.stackTop] =
                 ScriptRuntime.getTemplateLiteralCallSite(
                         cx, frame.scope, templateLiterals, state.indexReg);
     }
 
-    private static void doRegExp(
-            Context cx,
-            CallFrame frame,
-            final Object[] stack,
-            final InterpreterData iData,
-            final InterpreterState state) {
-        Object re = iData.itsRegExpLiterals[state.indexReg];
-        stack[++state.stackTop] = ScriptRuntime.wrapRegExp(cx, frame.scope, re);
+    private static void doRegExp(Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object re = frame.idata.itsRegExpLiterals[state.indexReg];
+        frame.stack[++state.stackTop] = ScriptRuntime.wrapRegExp(cx, frame.scope, re);
     }
 
     private static void doStoreHomeObject(final Object[] stack, final InterpreterState state) {
@@ -2792,84 +2780,71 @@ public final class Interpreter extends Icode implements Evaluator {
         }
     }
 
-    private static void enterDotQuery(
-            CallFrame frame, final Object[] stack, final double[] sDbl, InterpreterState state) {
-        Object lhs = stack[state.stackTop];
-        if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
+    private static void enterDotQuery(Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object lhs = frame.stack[state.stackTop];
+        if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         frame.scope = ScriptRuntime.enterDotQuery(lhs, frame.scope);
         state.stackTop--;
     }
 
-    private static void arrayLiteral(
-            Context cx,
-            CallFrame frame,
-            InterpreterState state,
-            final Object[] stack,
-            final InterpreterData iData,
-            int op) {
-        Object[] data = (Object[]) stack[state.stackTop--];
+    private static void arrayLiteral(Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object[] data = (Object[]) frame.stack[state.stackTop--];
         Object val;
 
         int[] skipIndexces = null;
         if (op == Icode_SPARE_ARRAYLIT) {
-            skipIndexces = (int[]) iData.literalIds[state.indexReg];
+            skipIndexces = (int[]) frame.idata.literalIds[state.indexReg];
         }
         val = ScriptRuntime.newArrayLiteral(data, skipIndexces, cx, frame.scope);
 
-        stack[state.stackTop] = val;
+        frame.stack[state.stackTop] = val;
     }
 
-    private static void objectLit(
-            Context cx, CallFrame frame, final Object[] stack, InterpreterState state) {
-        Object[] values = (Object[]) stack[state.stackTop];
-        int[] getterSetters = (int[]) stack[--state.stackTop];
-        Object[] keys = (Object[]) stack[--state.stackTop];
-        Scriptable object = (Scriptable) stack[--state.stackTop];
+    private static void objectLit(Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object[] values = (Object[]) frame.stack[state.stackTop];
+        int[] getterSetters = (int[]) frame.stack[--state.stackTop];
+        Object[] keys = (Object[]) frame.stack[--state.stackTop];
+        Scriptable object = (Scriptable) frame.stack[--state.stackTop];
         ScriptRuntime.fillObjectLiteral(object, keys, values, getterSetters, cx, frame.scope);
     }
 
-    private static void literalKeySet(
-            final Object[] stack, final double[] sDbl, InterpreterState state) {
-        Object key = stack[state.stackTop];
-        if (key == DOUBLE_MARK) key = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
-        Object[] ids = (Object[]) stack[state.stackTop - 3];
-        int i = (int) sDbl[--state.stackTop];
+    private static void literalKeySet(Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object key = frame.stack[state.stackTop];
+        if (key == DOUBLE_MARK) key = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
+        Object[] ids = (Object[]) frame.stack[state.stackTop - 3];
+        int i = (int) frame.sDbl[--state.stackTop];
         ids[i] = key;
     }
 
-    private static void literalSetter(
-            final Object[] stack, final double[] sDbl, InterpreterState state) {
-        Object value = stack[state.stackTop];
-        int i = (int) sDbl[--state.stackTop];
-        ((Object[]) stack[state.stackTop])[i] = value;
-        ((int[]) stack[--state.stackTop])[i] = 1;
-        sDbl[++state.stackTop] = i + 1;
+    private static void literalSetter(Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object value = frame.stack[state.stackTop];
+        int i = (int) frame.sDbl[--state.stackTop];
+        ((Object[]) frame.stack[state.stackTop])[i] = value;
+        ((int[]) frame.stack[--state.stackTop])[i] = 1;
+        frame.sDbl[++state.stackTop] = i + 1;
     }
 
-    private static void literalGetter(
-            final Object[] stack, final double[] sDbl, InterpreterState state) {
-        Object value = stack[state.stackTop];
-        int i = (int) sDbl[--state.stackTop];
-        ((Object[]) stack[state.stackTop])[i] = value;
-        ((int[]) stack[--state.stackTop])[i] = -1;
-        sDbl[++state.stackTop] = i + 1;
+    private static void literalGetter(Context cs, CallFrame frame, InterpreterState state, int op) {
+        Object value = frame.stack[state.stackTop];
+        int i = (int) frame.sDbl[--state.stackTop];
+        ((Object[]) frame.stack[state.stackTop])[i] = value;
+        ((int[]) frame.stack[--state.stackTop])[i] = -1;
+        frame.sDbl[++state.stackTop] = i + 1;
     }
 
-    private static void literalSet(
-            final Object[] stack, final double[] sDbl, InterpreterState state) {
-        Object value = stack[state.stackTop];
-        if (value == DOUBLE_MARK) value = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
-        int i = (int) sDbl[--state.stackTop];
-        ((Object[]) stack[state.stackTop])[i] = value;
-        sDbl[state.stackTop] = i + 1;
+    private static void literalSet(Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object value = frame.stack[state.stackTop];
+        if (value == DOUBLE_MARK) value = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
+        int i = (int) frame.sDbl[--state.stackTop];
+        ((Object[]) frame.stack[state.stackTop])[i] = value;
+        frame.sDbl[state.stackTop] = i + 1;
     }
 
-    private static void newArrayLit(
-            InterpreterState state, final Object[] stack, final double[] sDbl) {
+    private static void newArrayLit(Context cx, CallFrame frame, InterpreterState state, int op) {
         // indexReg: number of values in the literal
-        stack[++state.stackTop] = new int[state.indexReg];
-        stack[++state.stackTop] = new Object[state.indexReg];
-        sDbl[state.stackTop] = 0;
+        frame.stack[++state.stackTop] = new int[state.indexReg];
+        frame.stack[++state.stackTop] = new Object[state.indexReg];
+        frame.sDbl[state.stackTop] = 0;
     }
 
     private static void closureExpr(
@@ -3025,22 +3000,16 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private static void literalNewObject(
-            Context cx,
-            CallFrame frame,
-            InterpreterState state,
-            final Object[] stack,
-            final double[] sDbl,
-            final InterpreterData iData,
-            final byte[] iCode) {
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         // indexReg: index of constant with the keys
-        Object[] ids = (Object[]) iData.literalIds[state.indexReg];
-        boolean copyArray = iCode[frame.pc] != 0;
+        Object[] ids = (Object[]) frame.idata.literalIds[state.indexReg];
+        boolean copyArray = frame.idata.itsICode[frame.pc] != 0;
         ++frame.pc;
-        stack[++state.stackTop] = cx.newObject(frame.scope);
-        stack[++state.stackTop] = copyArray ? Arrays.copyOf(ids, ids.length) : ids;
-        stack[++state.stackTop] = new int[ids.length];
-        stack[++state.stackTop] = new Object[ids.length];
-        sDbl[state.stackTop] = 0;
+        frame.stack[++state.stackTop] = cx.newObject(frame.scope);
+        frame.stack[++state.stackTop] = copyArray ? Arrays.copyOf(ids, ids.length) : ids;
+        frame.stack[++state.stackTop] = new int[ids.length];
+        frame.stack[++state.stackTop] = new Object[ids.length];
+        frame.sDbl[state.stackTop] = 0;
     }
 
     private static void enumInit(
