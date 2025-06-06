@@ -638,9 +638,9 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     static void dumpICode(InterpreterData idata) {
-        if (!Token.printICode) {
-            return;
-        }
+        // if (!Token.printICode) {
+        //     return;
+        // }
 
         byte[] iCode = idata.itsICode;
         int iCodeLength = iCode.length;
@@ -1186,8 +1186,10 @@ public final class Interpreter extends Icode implements Evaluator {
                 cx, scope, fn, fn.idata.itsFunctionType, parent.idata.evalScriptFlag);
     }
 
-    private static void initFunction(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState initFunction(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         initFunction(cx, frame.scope, frame.fnOrScript, state.indexReg);
+        return null;
     }
 
     static Object interpret(
@@ -1297,33 +1299,7 @@ public final class Interpreter extends Icode implements Evaluator {
 
     private static class NewState {}
 
-    private static final class StateContinue extends NewState {
-        private final CallFrame frame;
-
-        private StateContinue(CallFrame frame) {
-            this.frame = frame;
-        }
-    }
-
-    private static final class NewThrowable extends NewState {
-        private final Object throwable;
-
-        private NewThrowable(Object throwable) {
-            this.throwable = throwable;
-        }
-    }
-
-    private static final class ContinueLoop extends NewState {
-        private final int stackTop;
-        private final int indexReg;
-
-        private ContinueLoop(int stackTop, int indexReg) {
-            this.stackTop = stackTop;
-            this.indexReg = indexReg;
-        }
-    }
-
-    private abstract static class InterpreterResult {}
+    private abstract static class InterpreterResult extends NewState {}
 
     private static class YieldResult extends InterpreterResult {
         private final Object yielding;
@@ -1360,6 +1336,12 @@ public final class Interpreter extends Icode implements Evaluator {
             this.throwable = throwable;
         }
     }
+
+    private static final NewState BREAK_LOOP = new NewState() {};
+
+    private static final NewState BREAK_JUMPLESSRUN = new NewState() {};
+
+    private static final NewState BREAK_WITHOUT_EXTENSION = new NewState() {};
 
     private static Object interpretLoop(Context cx, CallFrame frame, Object throwable) {
         // throwable holds exception object to rethrow or catch
@@ -1642,645 +1624,103 @@ public final class Interpreter extends Icode implements Evaluator {
                 int op = iCode[frame.pc++];
                 jumplessRun:
                 {
-
-                    // Back indent to ease implementation reading
-                    switch (op) {
-                        case Icode_GENERATOR:
-                            {
-                                if (!frame.frozen) {
-                                    // First time encountering this opcode: create new generator
-                                    // object and return
-                                    generatorCreate(cx, frame);
-                                    break Loop;
-                                }
-                                // We are now resuming execution. Fall through to YIELD case.
-                            }
-                        // fall through...
-                        case Token.YIELD:
-                        case Icode_YIELD_STAR:
-                            {
-                                /* This is both where we yield
-                                 * from and re-enter the
-                                 * generator. */
-                                if (!frame.frozen) {
-                                    return new YieldResult(
-                                            freezeGenerator(
-                                                    cx,
-                                                    frame,
-                                                    state,
-                                                    state.generatorState,
-                                                    op == Icode_YIELD_STAR));
-                                }
-                                Object obj = thawGenerator(frame, state, state.generatorState, op);
-                                if (obj != Scriptable.NOT_FOUND) {
-                                    state.throwable = obj;
-                                    break withoutExceptions;
-                                }
+                    if (op == Token.THROW) {
+                        state.throwable =
+                                throwObject(
+                                        frame, frame.stack, frame.sDbl, frame.idata, iCode, state);
+                        --state.stackTop;
+                        break withoutExceptions;
+                    } else if (op == Token.RETHROW) {
+                        state.indexReg += frame.idata.itsMaxVars;
+                        state.throwable = frame.stack[state.indexReg];
+                        break withoutExceptions;
+                    } else if (op == Token.IFNE) {
+                        if (stack_boolean(frame, state.stackTop--)) {
+                            frame.pc += 2;
+                            continue Loop;
+                        }
+                        break jumplessRun;
+                    } else if (op == Token.IFEQ) {
+                        if (!stack_boolean(frame, state.stackTop--)) {
+                            frame.pc += 2;
+                            continue Loop;
+                        }
+                        break jumplessRun;
+                    } else if (op == Icode_IFEQ_POP) {
+                        if (!stack_boolean(frame, state.stackTop--)) {
+                            frame.pc += 2;
+                            continue Loop;
+                        }
+                        frame.stack[state.stackTop--] = null;
+                        break jumplessRun;
+                    } else if (op == Icode_IF_NULL_UNDEF) {
+                        Object val = frame.stack[state.stackTop];
+                        --state.stackTop;
+                        if (val != null && !Undefined.isUndefined(val)) {
+                            frame.pc += 2;
+                            continue Loop;
+                        }
+                        break jumplessRun;
+                    } else if (op == Icode_IF_NOT_NULL_UNDEF) {
+                        Object val = frame.stack[state.stackTop];
+                        --state.stackTop;
+                        if (val == null || Undefined.isUndefined(val)) {
+                            frame.pc += 2;
+                            continue Loop;
+                        }
+                        break jumplessRun;
+                    } else if (op == Token.GOTO) {
+                        break jumplessRun;
+                    } else if (op == Icode_GOSUB) {
+                        ++state.stackTop;
+                        frame.stack[state.stackTop] = DOUBLE_MARK;
+                        frame.sDbl[state.stackTop] = frame.pc + 2;
+                        break jumplessRun;
+                    } else if (op == Icode_RETSUB) {
+                        // state.indexReg: local to store return address
+                        if (instructionCounting) {
+                            addInstructionCount(cx, frame, 0);
+                        }
+                        state.indexReg += frame.idata.itsMaxVars;
+                        Object value = frame.stack[state.indexReg];
+                        if (value != DOUBLE_MARK) {
+                            // Invocation from exception handler, restore object to
+                            // rethrow
+                            state.throwable = value;
+                            break withoutExceptions;
+                        }
+                        // Normal return from GOSUB
+                        frame.pc = (int) frame.sDbl[state.indexReg];
+                        if (instructionCounting) {
+                            frame.pcPrevBranch = frame.pc;
+                        }
+                        continue Loop;
+                    } else {
+                        var insn = instructionObjs[-MIN_ICODE + op];
+                        if (insn != null) {
+                            var nextState = insn.execute(cx, frame, state, op);
+                            if (nextState == null) {
                                 continue Loop;
-                            }
-                        case Icode_GENERATOR_END:
-                            {
-                                generatorEnd(frame, state.generatorState, frame.idata, iCode);
+                            } else if (nextState == BREAK_LOOP) {
                                 break Loop;
-                            }
-                        case Icode_GENERATOR_RETURN:
-                            {
-                                generatorReturn(
-                                        frame,
-                                        state.generatorState,
-                                        frame.stack,
-                                        frame.sDbl,
-                                        frame.idata,
-                                        iCode,
-                                        state);
-                                break Loop;
-                            }
-                        case Token.THROW:
-                            {
-                                state.throwable =
-                                        throwObject(
-                                                frame,
-                                                frame.stack,
-                                                frame.sDbl,
-                                                frame.idata,
-                                                iCode,
-                                                state);
-                                --state.stackTop;
+                            } else if (nextState == BREAK_JUMPLESSRUN) {
+                                break jumplessRun;
+                            } else if (nextState == BREAK_WITHOUT_EXTENSION) {
                                 break withoutExceptions;
+                            } else {
+                                return (InterpreterResult) nextState;
                             }
-                        case Token.RETHROW:
-                            {
-                                state.indexReg += frame.idata.itsMaxVars;
-                                state.throwable = frame.stack[state.indexReg];
-                                break withoutExceptions;
-                            }
-                        case Token.GE:
-                        case Token.LE:
-                        case Token.GT:
-                        case Token.LT:
-                            doCompare(cx, frame, state, op);
-                            continue Loop;
-                        case Token.IN:
-                        case Token.INSTANCEOF:
-                            doInOrInstanceof(cx, frame, state, op);
-                            continue Loop;
-                        case Token.EQ:
-                        case Token.NE:
-                            doEquals(cx, frame, state, op);
-                            continue Loop;
-                        case Token.SHEQ:
-                        case Token.SHNE:
-                            doShallowEquals(cx, frame, state, op);
-                            continue Loop;
-                        case Token.IFNE:
-                            if (stack_boolean(frame, state.stackTop--)) {
-                                frame.pc += 2;
-                                continue Loop;
-                            }
-                            break jumplessRun;
-                        case Token.IFEQ:
-                            if (!stack_boolean(frame, state.stackTop--)) {
-                                frame.pc += 2;
-                                continue Loop;
-                            }
-                            break jumplessRun;
-                        case Icode_IFEQ_POP:
-                            if (!stack_boolean(frame, state.stackTop--)) {
-                                frame.pc += 2;
-                                continue Loop;
-                            }
-                            frame.stack[state.stackTop--] = null;
-                            break jumplessRun;
-                        case Icode_IF_NULL_UNDEF:
-                            {
-                                Object val = frame.stack[state.stackTop];
-                                --state.stackTop;
-                                if (val != null && !Undefined.isUndefined(val)) {
-                                    frame.pc += 2;
-                                    continue Loop;
-                                }
-                                break jumplessRun;
-                            }
-                        case Icode_IF_NOT_NULL_UNDEF:
-                            {
-                                Object val = frame.stack[state.stackTop];
-                                --state.stackTop;
-                                if (val == null || Undefined.isUndefined(val)) {
-                                    frame.pc += 2;
-                                    continue Loop;
-                                }
-                                break jumplessRun;
-                            }
-                        case Token.GOTO:
-                            break jumplessRun;
-                        case Icode_GOSUB:
-                            ++state.stackTop;
-                            frame.stack[state.stackTop] = DOUBLE_MARK;
-                            frame.sDbl[state.stackTop] = frame.pc + 2;
-                            break jumplessRun;
-                        case Icode_STARTSUB:
-                            startSub(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_RETSUB:
-                            {
-                                // state.indexReg: local to store return address
-                                if (instructionCounting) {
-                                    addInstructionCount(cx, frame, 0);
-                                }
-                                state.indexReg += frame.idata.itsMaxVars;
-                                Object value = frame.stack[state.indexReg];
-                                if (value != DOUBLE_MARK) {
-                                    // Invocation from exception handler, restore object to
-                                    // rethrow
-                                    state.throwable = value;
-                                    break withoutExceptions;
-                                }
-                                // Normal return from GOSUB
-                                frame.pc = (int) frame.sDbl[state.indexReg];
-                                if (instructionCounting) {
-                                    frame.pcPrevBranch = frame.pc;
-                                }
-                                continue Loop;
-                            }
-                        case Token.CALL:
-                        case Icode_CALL_ON_SUPER:
-                        case Icode_TAIL_CALL:
-                        case Token.REF_CALL:
-                            {
-                                var callState = doCallByteCode(cx, frame, state, op);
-                                if (callState instanceof ContinueLoop) {
-                                    var contLoop = (ContinueLoop) callState;
-                                    state.stackTop = contLoop.stackTop;
-                                    state.indexReg = contLoop.indexReg;
-                                    continue Loop;
-                                } else if (callState instanceof StateContinue) {
-                                    return new StateContinueResult(
-                                            ((StateContinue) callState).frame, state.indexReg);
-                                } else if (callState instanceof NewThrowable) {
-                                    state.throwable = ((NewThrowable) callState).throwable;
-                                    break withoutExceptions;
-                                } else {
-                                    Kit.codeBug();
-                                    break;
-                                }
-                            }
-                        case Token.NEW:
-                            {
-                                if (instructionCounting) {
-                                    cx.instructionCount += INVOCATION_COST;
-                                }
-                                // stack change: function arg0 .. argN -> newResult
-                                // state.indexReg: number of arguments
-                                state.stackTop -= state.indexReg;
-
-                                Object lhs = frame.stack[state.stackTop];
-                                if (lhs instanceof InterpretedFunction) {
-                                    InterpretedFunction f = (InterpretedFunction) lhs;
-                                    if (frame.fnOrScript.securityDomain == f.securityDomain) {
-                                        return doNewByteCode(
-                                                cx, frame, state, frame.stack, frame.sDbl, op, f);
-                                    }
-                                }
-                                if (!(lhs instanceof Constructable)) {
-                                    if (lhs == DOUBLE_MARK)
-                                        lhs = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
-                                    throw ScriptRuntime.notFunctionError(lhs);
-                                }
-                                Constructable ctor = (Constructable) lhs;
-
-                                if (ctor instanceof IdFunctionObject) {
-                                    IdFunctionObject ifun = (IdFunctionObject) ctor;
-                                    if (NativeContinuation.isContinuationConstructor(ifun)) {
-                                        frame.stack[state.stackTop] =
-                                                captureContinuation(cx, frame.parentFrame, false);
-                                        continue Loop;
-                                    }
-                                }
-
-                                Object[] outArgs =
-                                        getArgsArray(
-                                                frame.stack,
-                                                frame.sDbl,
-                                                state.stackTop + 1,
-                                                state.indexReg);
-                                frame.stack[state.stackTop] =
-                                        ctor.construct(cx, frame.scope, outArgs);
-                                continue Loop;
-                            }
-                        case Icode_SETCONSTVAR1:
-                            state.indexReg = iCode[frame.pc++];
-                        // fallthrough
-                        case Icode_SETCONSTVAR:
-                            doSetConstVar(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_SETVAR1:
-                            state.indexReg = iCode[frame.pc++];
-                        // fallthrough
-                        case Token.SETVAR:
-                            doSetVar(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_GETVAR1:
-                            state.indexReg = iCode[frame.pc++];
-                        // fallthrough
-                        case Token.GETVAR:
-                            doGetVar(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_LEAVEDQ:
-                            {
-                                boolean valBln = stack_boolean(frame, state.stackTop);
-                                Object x = ScriptRuntime.updateDotQuery(valBln, frame.scope);
-                                if (x != null) {
-                                    frame.stack[state.stackTop] = x;
-                                    frame.scope = ScriptRuntime.leaveDotQuery(frame.scope);
-                                    frame.pc += 2;
-                                    continue Loop;
-                                }
-                                // reset stack and PC to code after ENTERDQ
-                                --state.stackTop;
-                                break jumplessRun;
-                            }
-                        case Icode_POP:
-                            pop(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_POP_RESULT:
-                            popResult(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_DUP:
-                            dup(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_DUP2:
-                            dup2(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_SWAP:
-                            swap(cx, frame, state, op);
-                            continue Loop;
-                        case Token.RETURN:
-                            doReturn(cx, frame, state, op);
-                            break Loop;
-                        case Token.RETURN_RESULT:
-                            break Loop;
-                        case Icode_RETUNDEF:
-                            frame.result = undefined;
-                            break Loop;
-                        case Token.BITNOT:
-                            doBitNOT(cx, frame, state, op);
-                            continue Loop;
-                        case Token.BITAND:
-                        case Token.BITOR:
-                        case Token.BITXOR:
-                        case Token.LSH:
-                        case Token.RSH:
-                            doBitOp(cx, frame, state, op);
-                            continue Loop;
-                        case Token.URSH:
-                            unsignedRightShift(cx, frame, state, op);
-                            continue Loop;
-                        case Token.POS:
-                            toPositive(cx, frame, state, op);
-                            continue Loop;
-                        case Token.NEG:
-                            toNegative(cx, frame, state, op);
-                            continue Loop;
-                        case Token.ADD:
-                            doAdd(cx, frame, state, op);
-                            continue Loop;
-                        case Token.SUB:
-                        case Token.MUL:
-                        case Token.DIV:
-                        case Token.MOD:
-                        case Token.EXP:
-                            doArithmetic(cx, frame, state, op);
-                            continue Loop;
-                        case Token.NOT:
-                            doNot(cx, frame, state, op);
-                            continue Loop;
-                        case Token.BINDNAME:
-                            doBindName(cx, frame, state, op);
-                            continue Loop;
-                        case Token.STRICT_SETNAME:
-                        case Token.SETNAME:
-                            setName(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_SETCONST:
-                            setConst(cx, frame, state, op);
-                            continue Loop;
-                        case Token.DELPROP:
-                        case Icode_DELNAME:
-                            doDelName(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_DELPROP_SUPER:
-                            doDelPropSuper(cx, frame, state, op);
-                            continue Loop;
-                        case Token.GETPROPNOWARN:
-                            getPropNoWarn(cx, frame, state, op);
-                            continue Loop;
-                        case Token.GETPROP:
-                            getProp(cx, frame, state, op);
-                            continue Loop;
-                        case Token.GETPROP_SUPER:
-                        case Token.GETPROPNOWARN_SUPER:
-                            getPropSuper(cx, frame, state, op);
-                            continue Loop;
-                        case Token.SETPROP:
-                            setProp(cx, frame, state, op);
-                            continue Loop;
-                        case Token.SETPROP_SUPER:
-                            setPropSuper(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_PROP_INC_DEC:
-                            propIncDec(cx, frame, state, op);
-                            continue Loop;
-                        case Token.GETELEM:
-                            doGetElem(cx, frame, state, op);
-                            continue Loop;
-                        case Token.GETELEM_SUPER:
-                            doGetElemSuper(cx, frame, state, op);
-                            continue Loop;
-                        case Token.SETELEM:
-                            doSetElem(cx, frame, state, op);
-                            continue Loop;
-                        case Token.SETELEM_SUPER:
-                            doSetElemSuper(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_ELEM_INC_DEC:
-                            doElemIncDec(cx, frame, state, op);
-                            continue Loop;
-                        case Token.GET_REF:
-                            getRef(cx, frame, state, op);
-                            continue Loop;
-                        case Token.SET_REF:
-                            setRef(cx, frame, state, op);
-                            continue Loop;
-                        case Token.DEL_REF:
-                            delRef(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REF_INC_DEC:
-                            refIncDec(cx, frame, state, op);
-                            continue Loop;
-                        case Token.LOCAL_LOAD:
-                            localLoad(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_LOCAL_CLEAR:
-                            localClear(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_NAME_AND_THIS:
-                            nameAndThis(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_NAME_AND_THIS_OPTIONAL:
-                            nameAndThisOptional(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_PROP_AND_THIS:
-                            propAndThis(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_PROP_AND_THIS_OPTIONAL:
-                            propAndThisOptional(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_ELEM_AND_THIS:
-                            elemAndThis(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_ELEM_AND_THIS_OPTIONAL:
-                            elemAndThisOptional(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_VALUE_AND_THIS:
-                            valueAndThis(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_VALUE_AND_THIS_OPTIONAL:
-                            valueAndThisOptional(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_CALLSPECIAL:
-                            doCallSpecial(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_CALLSPECIAL_OPTIONAL:
-                            doCallSpecial(cx, frame, state, op);
-                            continue Loop;
-                        case Token.TYPEOF:
-                            doTypeOf(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_TYPEOFNAME:
-                            doTypeOfName(cx, frame, state, op);
-                            continue Loop;
-                        case Token.STRING:
-                            doString(cx, frame, state, 0);
-                            continue Loop;
-                        case Icode_SHORTNUMBER:
-                            doShortNumber(cx, frame, state, 0);
-                            continue Loop;
-                        case Icode_INTNUMBER:
-                            doIntNumber(cx, frame, state, 0);
-                            continue Loop;
-                        case Token.NUMBER:
-                            doNumber(cx, frame, state, op);
-                            continue Loop;
-                        case Token.BIGINT:
-                            doBigInt(cx, frame, state, op);
-                            continue Loop;
-                        case Token.NAME:
-                            doName(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_NAME_INC_DEC:
-                            doNameIncDec(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_VAR_INC_DEC:
-                            doVarIncDec(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_ZERO:
-                            doZero(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_ONE:
-                            doOne(cx, frame, state, op);
-                            continue Loop;
-                        case Token.NULL:
-                            doNull(cx, frame, state, op);
-                            continue Loop;
-                        case Token.THIS:
-                            doThis(cx, frame, state, op);
-                            continue Loop;
-                        case Token.SUPER:
-                            doSuper(cx, frame, state, op);
-                            continue Loop;
-                        case Token.THISFN:
-                            doThisFunction(cx, frame, state, op);
-                            continue Loop;
-                        case Token.FALSE:
-                            doFalse(cx, frame, state, op);
-                            continue Loop;
-                        case Token.TRUE:
-                            doTrue(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_UNDEF:
-                            doUndef(cx, frame, state, op);
-                            continue Loop;
-                        case Token.ENTERWITH:
-                            enterWith(cx, frame, state, op);
-                            continue Loop;
-                        case Token.LEAVEWITH:
-                            doLeaveWith(cx, frame, state, op);
-                            continue Loop;
-                        case Token.CATCH_SCOPE:
-                            catchScope(cx, frame, state, op);
-                            continue Loop;
-                        case Token.ENUM_INIT_KEYS:
-                        case Token.ENUM_INIT_VALUES:
-                        case Token.ENUM_INIT_ARRAY:
-                        case Token.ENUM_INIT_VALUES_IN_ORDER:
-                            enumInit(cx, frame, state, op);
-                            continue Loop;
-                        case Token.ENUM_NEXT:
-                        case Token.ENUM_ID:
-                            enumOp(cx, frame, state, op);
-                            continue Loop;
-                        case Token.REF_SPECIAL:
-                            refSpecial(cx, frame, state, op);
-                            continue Loop;
-                        case Token.REF_MEMBER:
-                            doRefMember(cx, frame, state, op);
-                            continue Loop;
-                        case Token.REF_NS_MEMBER:
-                            doRefNsMember(cx, frame, state, op);
-                            continue Loop;
-                        case Token.REF_NAME:
-                            refName(cx, frame, state, op);
-                            continue Loop;
-                        case Token.REF_NS_NAME:
-                            doRefNsName(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_SCOPE_LOAD:
-                            doScopeLoad(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_SCOPE_SAVE:
-                            doScopeSave(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_CLOSURE_EXPR:
-                            closureExpr(cx, frame, state, op);
-                            continue Loop;
-                        case ICode_FN_STORE_HOME_OBJECT:
-                            doStoreHomeObject(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_CLOSURE_STMT:
-                            initFunction(cx, frame, state, op);
-                            continue Loop;
-                        case Token.REGEXP:
-                            doRegExp(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_TEMPLATE_LITERAL_CALLSITE:
-                            doTemplateLiteralCallSite(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_LITERAL_NEW_OBJECT:
-                            literalNewObject(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_LITERAL_NEW_ARRAY:
-                            newArrayLit(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_LITERAL_SET:
-                            literalSet(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_LITERAL_GETTER:
-                            literalGetter(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_LITERAL_SETTER:
-                            literalSetter(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_LITERAL_KEY_SET:
-                            literalKeySet(cx, frame, state, op);
-                            continue Loop;
-                        case Token.OBJECTLIT:
-                            objectLit(cx, frame, state, op);
-                            continue Loop;
-                        case Token.ARRAYLIT:
-                        case Icode_SPARE_ARRAYLIT:
-                            arrayLiteral(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_ENTERDQ:
-                            enterDotQuery(cx, frame, state, op);
-                            continue Loop;
-                        case Token.DEFAULTNAMESPACE:
-                            doDefaultNamespace(cx, frame, state, op);
-                            continue Loop;
-                        case Token.ESCXMLATTR:
-                            doEscXMLAttr(cx, frame, state, op);
-                            continue Loop;
-                        case Token.ESCXMLTEXT:
-                            doEscXMLText(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_DEBUGGER:
-                            doDebug(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_LINE:
-                            doLineChange(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_IND_C0:
-                            doIndexCn(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_IND_C1:
-                            doIndexCn(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_IND_C2:
-                            doIndexCn(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_IND_C3:
-                            doIndexCn(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_IND_C4:
-                            doIndexCn(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_IND_C5:
-                            doIndexCn(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_IND1:
-                            doRegIndex1(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_IND2:
-                            doRegIndex2(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_IND4:
-                            doRegIndex4(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_STR_C0:
-                            doStringCn(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_STR_C1:
-                            doStringCn(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_STR_C2:
-                            doStringCn(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_STR_C3:
-                            doStringCn(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_STR1:
-                            doRegString1(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_STR2:
-                            doRegString2(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_STR4:
-                            doRegString4(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_BIGINT_C0:
-                            doBigIntCn(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_BIGINT_C1:
-                            doBigIntCn(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_BIGINT_C2:
-                            doBigIntCn(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_BIGINT_C3:
-                            doBigIntCn(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_BIGINT1:
-                            doRegBigInt1(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_BIGINT2:
-                            doRegBigInt2(cx, frame, state, op);
-                            continue Loop;
-                        case Icode_REG_BIGINT4:
-                            doRegBigInt4(cx, frame, state, op);
-                            continue Loop;
-                        default:
-                            dumpICode(frame.idata);
-                            throw new RuntimeException(
-                                    "Unknown icode : " + op + " @ pc : " + (frame.pc - 1));
+                        }
+                        dumpICode(frame.idata);
+                        throw new RuntimeException(
+                                "Unknown icode : "
+                                        + op
+                                        + "(min is) "
+                                        + MIN_ICODE
+                                        + " test is "
+                                        + Icode_GENERATOR
+                                        + " @ pc : "
+                                        + (frame.pc - 1));
                     } // end of interpreter switch
                 } // end of jumplessRun label block
 
@@ -2326,299 +1766,451 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     private interface Instruction {
-        void execute(Context cx, CallFrame frame, InterpreterState state, int op);
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op);
     }
 
     private static final Instruction[] instructionObjs;
 
     static {
-        instructionObjs = new Instruction[Token.LAST_BYTECODE_TOKEN - MIN_ICODE];
+        instructionObjs = new Instruction[Token.LAST_BYTECODE_TOKEN + 1 - MIN_ICODE];
         int base = -MIN_ICODE;
         instructionObjs[base + Icode_POP] = Interpreter::pop;
-        instructionObjs[Icode_POP_RESULT] = Interpreter::popResult;
-        instructionObjs[Icode_DUP] = Interpreter::dup;
-        instructionObjs[Icode_DUP2] = Interpreter::dup2;
-        instructionObjs[Icode_SWAP] = Interpreter::swap;
-        instructionObjs[Token.RETURN] = Interpreter::doReturn;
-        instructionObjs[Token.BITNOT] = Interpreter::doBitNOT;
-        instructionObjs[Token.BITAND] = Interpreter::doBitOp;
-        instructionObjs[Token.BITOR] = Interpreter::doBitOp;
-        instructionObjs[Token.BITXOR] = Interpreter::doBitOp;
-        instructionObjs[Token.LSH] = Interpreter::doBitOp;
-        instructionObjs[Token.RSH] = Interpreter::doBitOp;
-        instructionObjs[Token.URSH] = Interpreter::unsignedRightShift;
-        instructionObjs[Token.POS] = Interpreter::toPositive;
-        instructionObjs[Token.NEG] = Interpreter::toNegative;
-        instructionObjs[Token.ADD] = Interpreter::doAdd;
-        instructionObjs[Token.SUB] = Interpreter::doArithmetic;
-        instructionObjs[Token.MUL] = Interpreter::doArithmetic;
-        instructionObjs[Token.DIV] = Interpreter::doArithmetic;
-        instructionObjs[Token.MOD] = Interpreter::doArithmetic;
-        instructionObjs[Token.EXP] = Interpreter::doArithmetic;
-        instructionObjs[Token.NOT] = Interpreter::doNot;
-        instructionObjs[Token.BINDNAME] = Interpreter::doBindName;
-        instructionObjs[Token.STRICT_SETNAME] = Interpreter::setName;
-        instructionObjs[Token.SETNAME] = Interpreter::setName;
-        instructionObjs[Icode_SETCONST] = Interpreter::setConst;
-        instructionObjs[Token.DELPROP] = Interpreter::doDelName;
-        instructionObjs[Icode_DELNAME] = Interpreter::doDelName;
-        instructionObjs[Icode_DELPROP_SUPER] = Interpreter::doDelPropSuper;
-        instructionObjs[Token.GETPROPNOWARN] = Interpreter::getPropNoWarn;
-        instructionObjs[Token.GETPROP] = Interpreter::getProp;
-        instructionObjs[Token.GETPROP_SUPER] = Interpreter::getPropSuper;
-        instructionObjs[Token.GETPROPNOWARN_SUPER] = Interpreter::getPropSuper;
-        instructionObjs[Token.SETPROP] = Interpreter::setProp;
-        instructionObjs[Token.SETPROP_SUPER] = Interpreter::setPropSuper;
-        instructionObjs[Icode_PROP_INC_DEC] = Interpreter::propIncDec;
-        instructionObjs[Token.GETELEM] = Interpreter::doGetElem;
-        instructionObjs[Token.GETELEM_SUPER] = Interpreter::doGetElemSuper;
-        instructionObjs[Token.SETELEM] = Interpreter::doSetElem;
-        instructionObjs[Token.SETELEM_SUPER] = Interpreter::doSetElemSuper;
-        instructionObjs[Icode_ELEM_INC_DEC] = Interpreter::doElemIncDec;
-        instructionObjs[Token.GET_REF] = Interpreter::getRef;
-        instructionObjs[Token.SET_REF] = Interpreter::setRef;
-        instructionObjs[Token.DEL_REF] = Interpreter::delRef;
-        instructionObjs[Icode_REF_INC_DEC] = Interpreter::refIncDec;
-        instructionObjs[Token.LOCAL_LOAD] = Interpreter::localLoad;
-        instructionObjs[Icode_LOCAL_CLEAR] = Interpreter::localClear;
-        instructionObjs[Icode_NAME_AND_THIS] = Interpreter::nameAndThis;
-        instructionObjs[Icode_NAME_AND_THIS_OPTIONAL] = Interpreter::nameAndThisOptional;
-        instructionObjs[Icode_PROP_AND_THIS] = Interpreter::propAndThis;
-        instructionObjs[Icode_PROP_AND_THIS_OPTIONAL] = Interpreter::propAndThisOptional;
-        instructionObjs[Icode_ELEM_AND_THIS] = Interpreter::elemAndThis;
-        instructionObjs[Icode_ELEM_AND_THIS_OPTIONAL] = Interpreter::elemAndThisOptional;
-        instructionObjs[Icode_VALUE_AND_THIS] = Interpreter::valueAndThis;
-        instructionObjs[Icode_VALUE_AND_THIS_OPTIONAL] = Interpreter::valueAndThisOptional;
-        instructionObjs[Icode_CALLSPECIAL] = Interpreter::doCallSpecial;
-        instructionObjs[Icode_CALLSPECIAL_OPTIONAL] = Interpreter::doCallSpecial;
-        instructionObjs[Token.TYPEOF] = Interpreter::doTypeOf;
-        instructionObjs[Icode_TYPEOFNAME] = Interpreter::doTypeOfName;
-        instructionObjs[Token.STRING] = Interpreter::doString;
-        instructionObjs[Icode_SHORTNUMBER] = Interpreter::doShortNumber;
-        instructionObjs[Icode_INTNUMBER] = Interpreter::doIntNumber;
-        instructionObjs[Token.NUMBER] = Interpreter::doNumber;
-        instructionObjs[Token.BIGINT] = Interpreter::doBigInt;
-        instructionObjs[Token.NAME] = Interpreter::doName;
-        instructionObjs[Icode_NAME_INC_DEC] = Interpreter::doNameIncDec;
-        instructionObjs[Icode_VAR_INC_DEC] = Interpreter::doVarIncDec;
-        instructionObjs[Icode_ZERO] = Interpreter::doZero;
-        instructionObjs[Icode_ONE] = Interpreter::doOne;
-        instructionObjs[Token.NULL] = Interpreter::doNull;
-        instructionObjs[Token.THIS] = Interpreter::doThis;
-        instructionObjs[Token.SUPER] = Interpreter::doSuper;
-        instructionObjs[Token.THISFN] = Interpreter::doThisFunction;
-        instructionObjs[Token.FALSE] = Interpreter::doFalse;
-        instructionObjs[Token.TRUE] = Interpreter::doTrue;
-        instructionObjs[Icode_UNDEF] = Interpreter::doUndef;
-        instructionObjs[Token.ENTERWITH] = Interpreter::enterWith;
-        instructionObjs[Token.LEAVEWITH] = Interpreter::doLeaveWith;
-        instructionObjs[Token.CATCH_SCOPE] = Interpreter::catchScope;
-        instructionObjs[Token.ENUM_INIT_KEYS] = Interpreter::enumInit;
-        instructionObjs[Token.ENUM_INIT_VALUES] = Interpreter::enumInit;
-        instructionObjs[Token.ENUM_INIT_ARRAY] = Interpreter::enumInit;
-        instructionObjs[Token.ENUM_INIT_VALUES_IN_ORDER] = Interpreter::enumInit;
-        instructionObjs[Token.ENUM_INIT_VALUES_IN_ORDER] = Interpreter::enumInit;
-        instructionObjs[Token.ENUM_NEXT] = Interpreter::enumOp;
-        instructionObjs[Token.ENUM_ID] = Interpreter::enumOp;
-        instructionObjs[Token.REF_SPECIAL] = Interpreter::refSpecial;
-        instructionObjs[Token.REF_MEMBER] = Interpreter::doRefMember;
-        instructionObjs[Token.REF_NS_MEMBER] = Interpreter::doRefNsMember;
-        instructionObjs[Token.REF_NAME] = Interpreter::refName;
-        instructionObjs[Token.REF_NS_NAME] = Interpreter::doRefNsName;
-        instructionObjs[Icode_SCOPE_LOAD] = Interpreter::doScopeLoad;
-        instructionObjs[Icode_SCOPE_SAVE] = Interpreter::doScopeSave;
-        instructionObjs[Icode_CLOSURE_EXPR] = Interpreter::closureExpr;
-        instructionObjs[ICode_FN_STORE_HOME_OBJECT] = Interpreter::doStoreHomeObject;
-        instructionObjs[Icode_CLOSURE_STMT] = Interpreter::initFunction;
-        instructionObjs[Token.REGEXP] = Interpreter::doRegExp;
-        instructionObjs[Icode_TEMPLATE_LITERAL_CALLSITE] = Interpreter::doTemplateLiteralCallSite;
-        instructionObjs[Icode_LITERAL_NEW_OBJECT] = Interpreter::literalNewObject;
-        instructionObjs[Icode_LITERAL_NEW_ARRAY] = Interpreter::newArrayLit;
-        instructionObjs[Icode_LITERAL_SET] = Interpreter::literalSet;
-        instructionObjs[Icode_LITERAL_GETTER] = Interpreter::literalGetter;
-        instructionObjs[Icode_LITERAL_SETTER] = Interpreter::literalSetter;
-        instructionObjs[Icode_LITERAL_KEY_SET] = Interpreter::literalKeySet;
-        instructionObjs[Token.OBJECTLIT] = Interpreter::objectLit;
-        instructionObjs[Token.ARRAYLIT] = Interpreter::arrayLiteral;
-        instructionObjs[Icode_SPARE_ARRAYLIT] = Interpreter::arrayLiteral;
-        instructionObjs[Icode_ENTERDQ] = Interpreter::enterDotQuery;
-        instructionObjs[Token.DEFAULTNAMESPACE] = Interpreter::doDefaultNamespace;
-        instructionObjs[Token.ESCXMLATTR] = Interpreter::doEscXMLAttr;
-        instructionObjs[Token.ESCXMLTEXT] = Interpreter::doEscXMLText;
-        instructionObjs[Icode_DEBUGGER] = Interpreter::doDebug;
-        instructionObjs[Icode_LINE] = Interpreter::doLineChange;
-        instructionObjs[Icode_REG_IND_C0] = Interpreter::doIndexCn;
-        instructionObjs[Icode_REG_IND_C1] = Interpreter::doIndexCn;
-        instructionObjs[Icode_REG_IND_C2] = Interpreter::doIndexCn;
-        instructionObjs[Icode_REG_IND_C3] = Interpreter::doIndexCn;
-        instructionObjs[Icode_REG_IND_C4] = Interpreter::doIndexCn;
-        instructionObjs[Icode_REG_IND_C5] = Interpreter::doIndexCn;
-        instructionObjs[Icode_REG_IND1] = Interpreter::doRegIndex1;
-        instructionObjs[Icode_REG_IND2] = Interpreter::doRegIndex2;
-        instructionObjs[Icode_REG_IND4] = Interpreter::doRegIndex4;
-        instructionObjs[Icode_REG_STR_C0] = Interpreter::doStringCn;
-        instructionObjs[Icode_REG_STR_C1] = Interpreter::doStringCn;
-        instructionObjs[Icode_REG_STR_C2] = Interpreter::doStringCn;
-        instructionObjs[Icode_REG_STR_C3] = Interpreter::doStringCn;
-        instructionObjs[Icode_REG_STR1] = Interpreter::doRegString1;
-        instructionObjs[Icode_REG_STR2] = Interpreter::doRegString2;
-        instructionObjs[Icode_REG_STR4] = Interpreter::doRegString4;
-        instructionObjs[Icode_REG_BIGINT_C0] = Interpreter::doBigIntCn;
-        instructionObjs[Icode_REG_BIGINT_C1] = Interpreter::doBigIntCn;
-        instructionObjs[Icode_REG_BIGINT_C2] = Interpreter::doBigIntCn;
-        instructionObjs[Icode_REG_BIGINT_C3] = Interpreter::doBigIntCn;
-        instructionObjs[Icode_REG_BIGINT1] = Interpreter::doRegBigInt1;
-        instructionObjs[Icode_REG_BIGINT2] = Interpreter::doRegBigInt2;
-        instructionObjs[Icode_REG_BIGINT4] = Interpreter::doRegBigInt4;
+        instructionObjs[base + Icode_POP_RESULT] = Interpreter::popResult;
+        instructionObjs[base + Icode_DUP] = Interpreter::dup;
+        instructionObjs[base + Icode_DUP2] = Interpreter::dup2;
+        instructionObjs[base + Icode_SWAP] = Interpreter::swap;
+        instructionObjs[base + Token.BITNOT] = Interpreter::doBitNOT;
+        instructionObjs[base + Token.BITAND] = Interpreter::doBitOp;
+        instructionObjs[base + Token.BITOR] = Interpreter::doBitOp;
+        instructionObjs[base + Token.BITXOR] = Interpreter::doBitOp;
+        instructionObjs[base + Token.LSH] = Interpreter::doBitOp;
+        instructionObjs[base + Token.RSH] = Interpreter::doBitOp;
+        instructionObjs[base + Token.URSH] = Interpreter::unsignedRightShift;
+        instructionObjs[base + Token.POS] = Interpreter::toPositive;
+        instructionObjs[base + Token.NEG] = Interpreter::toNegative;
+        instructionObjs[base + Token.ADD] = Interpreter::doAdd;
+        instructionObjs[base + Token.SUB] = Interpreter::doArithmetic;
+        instructionObjs[base + Token.MUL] = Interpreter::doArithmetic;
+        instructionObjs[base + Token.DIV] = Interpreter::doArithmetic;
+        instructionObjs[base + Token.MOD] = Interpreter::doArithmetic;
+        instructionObjs[base + Token.EXP] = Interpreter::doArithmetic;
+        instructionObjs[base + Token.NOT] = Interpreter::doNot;
+        instructionObjs[base + Token.BINDNAME] = Interpreter::doBindName;
+        instructionObjs[base + Token.STRICT_SETNAME] = Interpreter::setName;
+        instructionObjs[base + Token.SETNAME] = Interpreter::setName;
+        instructionObjs[base + Icode_SETCONST] = Interpreter::setConst;
+        instructionObjs[base + Token.DELPROP] = Interpreter::doDelName;
+        instructionObjs[base + Icode_DELNAME] = Interpreter::doDelName;
+        instructionObjs[base + Icode_DELPROP_SUPER] = Interpreter::doDelPropSuper;
+        instructionObjs[base + Token.GETPROPNOWARN] = Interpreter::getPropNoWarn;
+        instructionObjs[base + Token.GETPROP] = Interpreter::getProp;
+        instructionObjs[base + Token.GETPROP_SUPER] = Interpreter::getPropSuper;
+        instructionObjs[base + Token.GETPROPNOWARN_SUPER] = Interpreter::getPropSuper;
+        instructionObjs[base + Token.SETPROP] = Interpreter::setProp;
+        instructionObjs[base + Token.SETPROP_SUPER] = Interpreter::setPropSuper;
+        instructionObjs[base + Icode_PROP_INC_DEC] = Interpreter::propIncDec;
+        instructionObjs[base + Token.GETELEM] = Interpreter::doGetElem;
+        instructionObjs[base + Token.GETELEM_SUPER] = Interpreter::doGetElemSuper;
+        instructionObjs[base + Token.SETELEM] = Interpreter::doSetElem;
+        instructionObjs[base + Token.SETELEM_SUPER] = Interpreter::doSetElemSuper;
+        instructionObjs[base + Icode_ELEM_INC_DEC] = Interpreter::doElemIncDec;
+        instructionObjs[base + Token.GET_REF] = Interpreter::getRef;
+        instructionObjs[base + Token.SET_REF] = Interpreter::setRef;
+        instructionObjs[base + Token.DEL_REF] = Interpreter::delRef;
+        instructionObjs[base + Icode_REF_INC_DEC] = Interpreter::refIncDec;
+        instructionObjs[base + Token.LOCAL_LOAD] = Interpreter::localLoad;
+        instructionObjs[base + Icode_LOCAL_CLEAR] = Interpreter::localClear;
+        instructionObjs[base + Icode_NAME_AND_THIS] = Interpreter::nameAndThis;
+        instructionObjs[base + Icode_NAME_AND_THIS_OPTIONAL] = Interpreter::nameAndThisOptional;
+        instructionObjs[base + Icode_PROP_AND_THIS] = Interpreter::propAndThis;
+        instructionObjs[base + Icode_PROP_AND_THIS_OPTIONAL] = Interpreter::propAndThisOptional;
+        instructionObjs[base + Icode_ELEM_AND_THIS] = Interpreter::elemAndThis;
+        instructionObjs[base + Icode_ELEM_AND_THIS_OPTIONAL] = Interpreter::elemAndThisOptional;
+        instructionObjs[base + Icode_VALUE_AND_THIS] = Interpreter::valueAndThis;
+        instructionObjs[base + Icode_VALUE_AND_THIS_OPTIONAL] = Interpreter::valueAndThisOptional;
+        instructionObjs[base + Icode_CALLSPECIAL] = Interpreter::doCallSpecial;
+        instructionObjs[base + Icode_CALLSPECIAL_OPTIONAL] = Interpreter::doCallSpecial;
+        instructionObjs[base + Token.TYPEOF] = Interpreter::doTypeOf;
+        instructionObjs[base + Icode_TYPEOFNAME] = Interpreter::doTypeOfName;
+        instructionObjs[base + Token.STRING] = Interpreter::doString;
+        instructionObjs[base + Icode_SHORTNUMBER] = Interpreter::doShortNumber;
+        instructionObjs[base + Icode_INTNUMBER] = Interpreter::doIntNumber;
+        instructionObjs[base + Token.NUMBER] = Interpreter::doNumber;
+        instructionObjs[base + Token.BIGINT] = Interpreter::doBigInt;
+        instructionObjs[base + Token.NAME] = Interpreter::doName;
+        instructionObjs[base + Icode_NAME_INC_DEC] = Interpreter::doNameIncDec;
+        instructionObjs[base + Icode_VAR_INC_DEC] = Interpreter::doVarIncDec;
+        instructionObjs[base + Icode_ZERO] = Interpreter::doZero;
+        instructionObjs[base + Icode_ONE] = Interpreter::doOne;
+        instructionObjs[base + Token.NULL] = Interpreter::doNull;
+        instructionObjs[base + Token.THIS] = Interpreter::doThis;
+        instructionObjs[base + Token.SUPER] = Interpreter::doSuper;
+        instructionObjs[base + Token.THISFN] = Interpreter::doThisFunction;
+        instructionObjs[base + Token.FALSE] = Interpreter::doFalse;
+        instructionObjs[base + Token.TRUE] = Interpreter::doTrue;
+        instructionObjs[base + Icode_UNDEF] = Interpreter::doUndef;
+        instructionObjs[base + Token.ENTERWITH] = Interpreter::enterWith;
+        instructionObjs[base + Token.LEAVEWITH] = Interpreter::doLeaveWith;
+        instructionObjs[base + Token.CATCH_SCOPE] = Interpreter::catchScope;
+        instructionObjs[base + Token.ENUM_INIT_KEYS] = Interpreter::enumInit;
+        instructionObjs[base + Token.ENUM_INIT_VALUES] = Interpreter::enumInit;
+        instructionObjs[base + Token.ENUM_INIT_ARRAY] = Interpreter::enumInit;
+        instructionObjs[base + Token.ENUM_INIT_VALUES_IN_ORDER] = Interpreter::enumInit;
+        instructionObjs[base + Token.ENUM_INIT_VALUES_IN_ORDER] = Interpreter::enumInit;
+        instructionObjs[base + Token.ENUM_NEXT] = Interpreter::enumOp;
+        instructionObjs[base + Token.ENUM_ID] = Interpreter::enumOp;
+        instructionObjs[base + Token.REF_SPECIAL] = Interpreter::refSpecial;
+        instructionObjs[base + Token.REF_MEMBER] = Interpreter::doRefMember;
+        instructionObjs[base + Token.REF_NS_MEMBER] = Interpreter::doRefNsMember;
+        instructionObjs[base + Token.REF_NAME] = Interpreter::refName;
+        instructionObjs[base + Token.REF_NS_NAME] = Interpreter::doRefNsName;
+        instructionObjs[base + Icode_SCOPE_LOAD] = Interpreter::doScopeLoad;
+        instructionObjs[base + Icode_SCOPE_SAVE] = Interpreter::doScopeSave;
+        instructionObjs[base + Icode_CLOSURE_EXPR] = Interpreter::closureExpr;
+        instructionObjs[base + ICode_FN_STORE_HOME_OBJECT] = Interpreter::doStoreHomeObject;
+        instructionObjs[base + Icode_CLOSURE_STMT] = Interpreter::initFunction;
+        instructionObjs[base + Token.REGEXP] = Interpreter::doRegExp;
+        instructionObjs[base + Icode_TEMPLATE_LITERAL_CALLSITE] =
+                Interpreter::doTemplateLiteralCallSite;
+        instructionObjs[base + Icode_LITERAL_NEW_OBJECT] = Interpreter::literalNewObject;
+        instructionObjs[base + Icode_LITERAL_NEW_ARRAY] = Interpreter::newArrayLit;
+        instructionObjs[base + Icode_LITERAL_SET] = Interpreter::literalSet;
+        instructionObjs[base + Icode_LITERAL_GETTER] = Interpreter::literalGetter;
+        instructionObjs[base + Icode_LITERAL_SETTER] = Interpreter::literalSetter;
+        instructionObjs[base + Icode_LITERAL_KEY_SET] = Interpreter::literalKeySet;
+        instructionObjs[base + Token.OBJECTLIT] = Interpreter::objectLit;
+        instructionObjs[base + Token.ARRAYLIT] = Interpreter::arrayLiteral;
+        instructionObjs[base + Icode_SPARE_ARRAYLIT] = Interpreter::arrayLiteral;
+        instructionObjs[base + Icode_ENTERDQ] = Interpreter::enterDotQuery;
+        instructionObjs[base + Token.DEFAULTNAMESPACE] = Interpreter::doDefaultNamespace;
+        instructionObjs[base + Token.ESCXMLATTR] = Interpreter::doEscXMLAttr;
+        instructionObjs[base + Token.ESCXMLTEXT] = Interpreter::doEscXMLText;
+        instructionObjs[base + Icode_DEBUGGER] = Interpreter::doDebug;
+        instructionObjs[base + Icode_LINE] = Interpreter::doLineChange;
+        instructionObjs[base + Icode_REG_IND_C0] = Interpreter::doIndexCn;
+        instructionObjs[base + Icode_REG_IND_C1] = Interpreter::doIndexCn;
+        instructionObjs[base + Icode_REG_IND_C2] = Interpreter::doIndexCn;
+        instructionObjs[base + Icode_REG_IND_C3] = Interpreter::doIndexCn;
+        instructionObjs[base + Icode_REG_IND_C4] = Interpreter::doIndexCn;
+        instructionObjs[base + Icode_REG_IND_C5] = Interpreter::doIndexCn;
+        instructionObjs[base + Icode_REG_IND1] = Interpreter::doRegIndex1;
+        instructionObjs[base + Icode_REG_IND2] = Interpreter::doRegIndex2;
+        instructionObjs[base + Icode_REG_IND4] = Interpreter::doRegIndex4;
+        instructionObjs[base + Icode_REG_STR_C0] = Interpreter::doStringCn;
+        instructionObjs[base + Icode_REG_STR_C1] = Interpreter::doStringCn;
+        instructionObjs[base + Icode_REG_STR_C2] = Interpreter::doStringCn;
+        instructionObjs[base + Icode_REG_STR_C3] = Interpreter::doStringCn;
+        instructionObjs[base + Icode_REG_STR1] = Interpreter::doRegString1;
+        instructionObjs[base + Icode_REG_STR2] = Interpreter::doRegString2;
+        instructionObjs[base + Icode_REG_STR4] = Interpreter::doRegString4;
+        instructionObjs[base + Icode_REG_BIGINT_C0] = Interpreter::doBigIntCn;
+        instructionObjs[base + Icode_REG_BIGINT_C1] = Interpreter::doBigIntCn;
+        instructionObjs[base + Icode_REG_BIGINT_C2] = Interpreter::doBigIntCn;
+        instructionObjs[base + Icode_REG_BIGINT_C3] = Interpreter::doBigIntCn;
+        instructionObjs[base + Icode_REG_BIGINT1] = Interpreter::doRegBigInt1;
+        instructionObjs[base + Icode_REG_BIGINT2] = Interpreter::doRegBigInt2;
+        instructionObjs[base + Icode_REG_BIGINT4] = Interpreter::doRegBigInt4;
+        instructionObjs[base + Token.GE] = Interpreter::doCompare;
+        instructionObjs[base + Token.LE] = Interpreter::doCompare;
+        instructionObjs[base + Token.GT] = Interpreter::doCompare;
+        instructionObjs[base + Token.LT] = Interpreter::doCompare;
+        instructionObjs[base + Token.IN] = Interpreter::doInOrInstanceof;
+        instructionObjs[base + Token.INSTANCEOF] = Interpreter::doInOrInstanceof;
+        instructionObjs[base + Token.EQ] = Interpreter::doEquals;
+        instructionObjs[base + Token.NE] = Interpreter::doEquals;
+        instructionObjs[base + Token.SHEQ] = Interpreter::doShallowEquals;
+        instructionObjs[base + Token.SHNE] = Interpreter::doShallowEquals;
+        instructionObjs[base + Icode_SETCONSTVAR1] = Interpreter::doSetConstVar1;
+        instructionObjs[base + Icode_SETCONSTVAR] = Interpreter::doSetConstVar;
+        instructionObjs[base + Icode_SETVAR1] = Interpreter::doSetVar1;
+        instructionObjs[base + Token.SETVAR] = Interpreter::doSetVar;
+        instructionObjs[base + Icode_GETVAR1] = Interpreter::doGetVar1;
+        instructionObjs[base + Token.GETVAR] = Interpreter::doGetVar;
+        instructionObjs[base + Icode_STARTSUB] = Interpreter::startSub;
+        instructionObjs[base + Icode_GENERATOR] = Interpreter::doGenerator;
+        instructionObjs[base + Token.YIELD] = Interpreter::doYield;
+        instructionObjs[base + Icode_YIELD_STAR] = Interpreter::doYield;
+        instructionObjs[base + Icode_GENERATOR_END] = Interpreter::generatorEnd;
+        instructionObjs[base + Icode_GENERATOR_RETURN] = Interpreter::generatorReturn;
+        instructionObjs[base + Token.NEW] = Interpreter::doNew;
+        instructionObjs[base + Token.RETURN] = Interpreter::doReturn;
+        instructionObjs[base + Token.RETURN_RESULT] = Interpreter::doReturnResult;
+        instructionObjs[base + Icode_RETUNDEF] = Interpreter::doReturnUndef;
+        instructionObjs[base + Token.CALL] = Interpreter::doCallByteCode;
+        instructionObjs[base + Icode_CALL_ON_SUPER] = Interpreter::doCallByteCode;
+        instructionObjs[base + Icode_TAIL_CALL] = Interpreter::doCallByteCode;
+        instructionObjs[base + Token.REF_CALL] = Interpreter::doCallByteCode;
+        instructionObjs[base + Icode_LEAVEDQ] = Interpreter::doLeaveDQ;
     }
 
-    private static void doRegBigInt4(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doLeaveDQ(Context cx, CallFrame frame, InterpreterState state, int op) {
+        boolean valBln = stack_boolean(frame, state.stackTop);
+        Object x = ScriptRuntime.updateDotQuery(valBln, frame.scope);
+        if (x != null) {
+            frame.stack[state.stackTop] = x;
+            frame.scope = ScriptRuntime.leaveDotQuery(frame.scope);
+            frame.pc += 2;
+            return null;
+        }
+        // reset stack and PC to code after ENTERDQ
+        --state.stackTop;
+        return BREAK_JUMPLESSRUN;
+    }
+
+    private static NewState doNew(Context cx, CallFrame frame, InterpreterState state, int op) {
+        if (state.instructionCounting) {
+            cx.instructionCount += INVOCATION_COST;
+        }
+        // stack change: function arg0 .. argN -> newResult
+        // state.indexReg: number of arguments
+        state.stackTop -= state.indexReg;
+
+        Object lhs = frame.stack[state.stackTop];
+        if (lhs instanceof InterpretedFunction) {
+            InterpretedFunction f = (InterpretedFunction) lhs;
+            if (frame.fnOrScript.securityDomain == f.securityDomain) {
+                return doNewByteCode(cx, frame, state, frame.stack, frame.sDbl, op, f);
+            }
+        }
+        if (!(lhs instanceof Constructable)) {
+            if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
+            throw ScriptRuntime.notFunctionError(lhs);
+        }
+        Constructable ctor = (Constructable) lhs;
+
+        if (ctor instanceof IdFunctionObject) {
+            IdFunctionObject ifun = (IdFunctionObject) ctor;
+            if (NativeContinuation.isContinuationConstructor(ifun)) {
+                frame.stack[state.stackTop] = captureContinuation(cx, frame.parentFrame, false);
+                return null;
+            }
+        }
+
+        Object[] outArgs =
+                getArgsArray(frame.stack, frame.sDbl, state.stackTop + 1, state.indexReg);
+        frame.stack[state.stackTop] = ctor.construct(cx, frame.scope, outArgs);
+        return null;
+    }
+
+    private static NewState doGenerator(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        if (!frame.frozen) {
+            // First time encountering this opcode: create new generator
+            // object and return
+            generatorCreate(cx, frame);
+            return BREAK_LOOP;
+        }
+        return doYield(cx, frame, state, op);
+    }
+
+    private static NewState doYield(Context cx, CallFrame frame, InterpreterState state, int op) {
+        /* This is both where we yield from and re-enter the
+         * generator.
+         */
+        if (!frame.frozen) {
+            return new YieldResult(
+                    freezeGenerator(
+                            cx, frame, state, state.generatorState, op == Icode_YIELD_STAR));
+        }
+        Object obj = thawGenerator(frame, state, state.generatorState, op);
+        if (obj != Scriptable.NOT_FOUND) {
+            state.throwable = obj;
+            return BREAK_WITHOUT_EXTENSION;
+        }
+        return null;
+    }
+
+    private static NewState doRegBigInt4(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         state.bigIntReg = frame.idata.itsBigIntTable[getInt(frame.idata.itsICode, frame.pc)];
         frame.pc += 4;
+        return null;
     }
 
-    private static void doRegBigInt2(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doRegBigInt2(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         state.bigIntReg = frame.idata.itsBigIntTable[getIndex(frame.idata.itsICode, frame.pc)];
         frame.pc += 2;
+        return null;
     }
 
-    private static void doRegBigInt1(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doRegBigInt1(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         state.bigIntReg = frame.idata.itsBigIntTable[0xFF & frame.idata.itsICode[frame.pc]];
         ++frame.pc;
+        return null;
     }
 
-    private static void doBigIntCn(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doBigIntCn(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         state.bigIntReg = frame.idata.itsBigIntTable[Icode_REG_BIGINT_C0 - op];
+        return null;
     }
 
-    private static void doRegString4(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doRegString4(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         state.stringReg = frame.idata.itsStringTable[getInt(frame.idata.itsICode, frame.pc)];
         frame.pc += 4;
+        return null;
     }
 
-    private static void doRegString2(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doRegString2(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         state.stringReg = frame.idata.itsStringTable[getIndex(frame.idata.itsICode, frame.pc)];
         frame.pc += 2;
+        return null;
     }
 
-    private static void doRegString1(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doRegString1(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         state.stringReg = frame.idata.itsStringTable[0xFF & frame.idata.itsICode[frame.pc]];
         ++frame.pc;
+        return null;
     }
 
-    private static void doStringCn(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doStringCn(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         state.stringReg = frame.idata.itsStringTable[Icode_REG_STR_C0 - op];
+        return null;
     }
 
-    private static void doRegIndex4(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doRegIndex4(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         state.indexReg = getInt(frame.idata.itsICode, frame.pc);
         frame.pc += 4;
+        return null;
     }
 
-    private static void doRegIndex2(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doRegIndex2(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         state.indexReg = getIndex(frame.idata.itsICode, frame.pc);
         frame.pc += 2;
+        return null;
     }
 
-    private static void doRegIndex1(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doRegIndex1(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         state.indexReg = 0xFF & frame.idata.itsICode[frame.pc];
         ++frame.pc;
+        return null;
     }
 
-    private static void doIndexCn(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doIndexCn(Context cx, CallFrame frame, InterpreterState state, int op) {
         state.indexReg = Icode_REG_IND_C0 - op;
+        return null;
     }
 
-    private static void doLineChange(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doLineChange(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         frame.pcSourceLineStart = frame.pc;
         if (frame.debuggerFrame != null) {
             int line = getIndex(frame.idata.itsICode, frame.pc);
             frame.debuggerFrame.onLineChange(cx, line);
         }
         frame.pc += 2;
+        return null;
     }
 
-    private static void doDebug(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doDebug(Context cx, CallFrame frame, InterpreterState state, int op) {
         if (frame.debuggerFrame != null) {
             frame.debuggerFrame.onDebuggerStatement(cx);
         }
+        return null;
     }
 
-    private static void doEscXMLText(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doEscXMLText(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         Object value = frame.stack[state.stackTop];
         if (value != DOUBLE_MARK) {
             frame.stack[state.stackTop] = ScriptRuntime.escapeTextValue(value, cx);
         }
+        return null;
     }
 
-    private static void doEscXMLAttr(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doEscXMLAttr(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         Object value = frame.stack[state.stackTop];
         if (value != DOUBLE_MARK) {
             frame.stack[state.stackTop] = ScriptRuntime.escapeAttributeValue(value, cx);
         }
+        return null;
     }
 
-    private static void doDefaultNamespace(
+    private static NewState doDefaultNamespace(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         Object value = frame.stack[state.stackTop];
         if (value == DOUBLE_MARK) value = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         frame.stack[state.stackTop] = ScriptRuntime.setDefaultNamespace(value, cx);
+        return null;
     }
 
-    private static void doTemplateLiteralCallSite(
+    private static NewState doTemplateLiteralCallSite(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         Object[] templateLiterals = frame.idata.itsTemplateLiterals;
         frame.stack[++state.stackTop] =
                 ScriptRuntime.getTemplateLiteralCallSite(
                         cx, frame.scope, templateLiterals, state.indexReg);
+        return null;
     }
 
-    private static void doRegExp(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doRegExp(Context cx, CallFrame frame, InterpreterState state, int op) {
         Object re = frame.idata.itsRegExpLiterals[state.indexReg];
         frame.stack[++state.stackTop] = ScriptRuntime.wrapRegExp(cx, frame.scope, re);
+        return null;
     }
 
-    private static void doStoreHomeObject(
+    private static NewState doStoreHomeObject(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         // Stack contains: [object, keysArray, flagsArray, valuesArray,
         // function]
         InterpretedFunction fun = (InterpretedFunction) frame.stack[state.stackTop];
         Scriptable homeObject = (Scriptable) frame.stack[state.stackTop - 4];
         fun.setHomeObject(homeObject);
+        return null;
     }
 
-    private static void doScopeSave(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doScopeSave(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         state.indexReg += frame.idata.itsMaxVars;
         frame.stack[state.indexReg] = frame.scope;
+        return null;
     }
 
-    private static void doScopeLoad(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doScopeLoad(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         state.indexReg += frame.idata.itsMaxVars;
         frame.scope = (Scriptable) frame.stack[state.indexReg];
+        return null;
     }
 
-    private static void doLeaveWith(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doLeaveWith(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         frame.scope = ScriptRuntime.leaveWith(frame.scope);
+        return null;
     }
 
-    private static void doUndef(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doUndef(Context cx, CallFrame frame, InterpreterState state, int op) {
         frame.stack[++state.stackTop] = undefined;
+        return null;
     }
 
-    private static void doTrue(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doTrue(Context cx, CallFrame frame, InterpreterState state, int op) {
         frame.stack[++state.stackTop] = Boolean.TRUE;
+        return null;
     }
 
-    private static void doFalse(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doFalse(Context cx, CallFrame frame, InterpreterState state, int op) {
         frame.stack[++state.stackTop] = Boolean.FALSE;
+        return null;
     }
 
-    private static void doThisFunction(
+    private static NewState doThisFunction(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         frame.stack[++state.stackTop] = frame.fnOrScript;
+        return null;
     }
 
-    private static void doSuper(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doSuper(Context cx, CallFrame frame, InterpreterState state, int op) {
         // If we are referring to "super", then we always have an
         // activation
         // (this is done in IrFactory). The home object is stored as
@@ -2635,85 +2227,105 @@ public final class Interpreter extends Icode implements Evaluator {
         } else {
             frame.stack[++state.stackTop] = homeObject.getPrototype();
         }
+        return null;
     }
 
-    private static void doThis(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doThis(Context cx, CallFrame frame, InterpreterState state, int op) {
         frame.stack[++state.stackTop] = frame.thisObj;
+        return null;
     }
 
-    private static void doNull(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doNull(Context cx, CallFrame frame, InterpreterState state, int op) {
         frame.stack[++state.stackTop] = null;
+        return null;
     }
 
-    private static void doOne(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doOne(Context cx, CallFrame frame, InterpreterState state, int op) {
         ++state.stackTop;
         frame.stack[state.stackTop] = Integer.valueOf(1);
+        return null;
     }
 
-    private static void doZero(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doZero(Context cx, CallFrame frame, InterpreterState state, int op) {
         ++state.stackTop;
         frame.stack[state.stackTop] = Integer.valueOf(0);
+        return null;
     }
 
-    private static void doNameIncDec(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doNameIncDec(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         frame.stack[++state.stackTop] =
                 ScriptRuntime.nameIncrDecr(
                         frame.scope, state.stringReg, cx, frame.idata.itsICode[frame.pc]);
         ++frame.pc;
+        return null;
     }
 
-    private static void doName(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doName(Context cx, CallFrame frame, InterpreterState state, int op) {
         frame.stack[++state.stackTop] = ScriptRuntime.name(cx, frame.scope, state.stringReg);
+        return null;
     }
 
-    private static void doBigInt(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doBigInt(Context cx, CallFrame frame, InterpreterState state, int op) {
         frame.stack[++state.stackTop] = state.bigIntReg;
+        return null;
     }
 
-    private static void doNumber(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doNumber(Context cx, CallFrame frame, InterpreterState state, int op) {
         ++state.stackTop;
         frame.stack[state.stackTop] = DOUBLE_MARK;
         frame.sDbl[state.stackTop] = frame.idata.itsDoubleTable[state.indexReg];
+        return null;
     }
 
-    private static void doIntNumber(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doIntNumber(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         ++state.stackTop;
         frame.stack[state.stackTop] = DOUBLE_MARK;
         frame.sDbl[state.stackTop] = getInt(frame.idata.itsICode, frame.pc);
         frame.pc += 4;
+        return null;
     }
 
-    private static void doShortNumber(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doShortNumber(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         ++state.stackTop;
         frame.stack[state.stackTop] = DOUBLE_MARK;
         frame.sDbl[state.stackTop] = getShort(frame.idata.itsICode, frame.pc);
         frame.pc += 2;
+        return null;
     }
 
-    private static void doString(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doString(Context cx, CallFrame frame, InterpreterState state, int op) {
         frame.stack[++state.stackTop] = state.stringReg;
+        return null;
     }
 
-    private static void doTypeOfName(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doTypeOfName(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         frame.stack[++state.stackTop] = ScriptRuntime.typeofName(frame.scope, state.stringReg);
+        return null;
     }
 
-    private static void doTypeOf(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doTypeOf(Context cx, CallFrame frame, InterpreterState state, int op) {
         Object[] stack = frame.stack;
         double[] sDbl = frame.sDbl;
         Object lhs = stack[state.stackTop];
         if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         stack[state.stackTop] = ScriptRuntime.typeof(lhs);
+        return null;
     }
 
-    private static void localClear(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState localClear(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final InterpreterData iData = frame.idata;
         state.indexReg += iData.itsMaxVars;
         stack[state.indexReg] = null;
+        return null;
     }
 
-    private static void localLoad(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState localLoad(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         final InterpreterData iData = frame.idata;
@@ -2721,47 +2333,56 @@ public final class Interpreter extends Icode implements Evaluator {
         state.indexReg += iData.itsMaxVars;
         stack[state.stackTop] = stack[state.indexReg];
         sDbl[state.stackTop] = sDbl[state.indexReg];
+        return null;
     }
 
-    private static void refIncDec(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState refIncDec(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final byte[] iCode = frame.idata.itsICode;
         Ref ref = (Ref) stack[state.stackTop];
         stack[state.stackTop] = ScriptRuntime.refIncrDecr(ref, cx, frame.scope, iCode[frame.pc]);
         ++frame.pc;
+        return null;
     }
 
-    private static void delRef(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState delRef(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         Ref ref = (Ref) stack[state.stackTop];
         stack[state.stackTop] = ScriptRuntime.refDel(ref, cx);
+        return null;
     }
 
-    private static void getRef(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState getRef(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         Ref ref = (Ref) stack[state.stackTop];
         stack[state.stackTop] = ScriptRuntime.refGet(ref, cx);
+        return null;
     }
 
-    private static void doDelPropSuper(
+    private static NewState doDelPropSuper(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         state.stackTop -= 1;
         stack[state.stackTop] = Boolean.FALSE;
         ScriptRuntime.throwDeleteOnSuperPropertyNotAllowed();
+        return null;
     }
 
-    private static void doBindName(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doBindName(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         stack[++state.stackTop] = ScriptRuntime.bind(cx, frame.scope, state.stringReg);
+        return null;
     }
 
-    private static void doNot(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doNot(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         stack[state.stackTop] = !stack_boolean(frame, state.stackTop);
+        return null;
     }
 
-    private static void toNegative(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState toNegative(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         Number rNum = stack_numeric(frame, state.stackTop);
@@ -2772,17 +2393,20 @@ public final class Interpreter extends Icode implements Evaluator {
             stack[state.stackTop] = DOUBLE_MARK;
             sDbl[state.stackTop] = rNegNum.doubleValue();
         }
+        return null;
     }
 
-    private static void toPositive(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState toPositive(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         double rDbl = stack_double(frame, state.stackTop);
         stack[state.stackTop] = DOUBLE_MARK;
         sDbl[state.stackTop] = rDbl;
+        return null;
     }
 
-    private static void unsignedRightShift(
+    private static NewState unsignedRightShift(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
@@ -2790,17 +2414,30 @@ public final class Interpreter extends Icode implements Evaluator {
         int rIntValue = stack_int32(frame, state.stackTop) & 0x1F;
         stack[--state.stackTop] = DOUBLE_MARK;
         sDbl[state.stackTop] = ScriptRuntime.toUint32(lDbl) >>> rIntValue;
+        return null;
     }
 
-    private static void doReturn(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doReturn(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         frame.result = stack[state.stackTop];
         frame.resultDbl = sDbl[state.stackTop];
         --state.stackTop;
+        return BREAK_LOOP;
     }
 
-    private static void swap(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doReturnResult(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        return BREAK_LOOP;
+    }
+
+    private static NewState doReturnUndef(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        frame.result = undefined;
+        return BREAK_LOOP;
+    }
+
+    private static NewState swap(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         Object o = stack[state.stackTop];
@@ -2809,9 +2446,10 @@ public final class Interpreter extends Icode implements Evaluator {
         double d = sDbl[state.stackTop];
         sDbl[state.stackTop] = sDbl[state.stackTop - 1];
         sDbl[state.stackTop - 1] = d;
+        return null;
     }
 
-    private static void dup2(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState dup2(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         stack[state.stackTop + 1] = stack[state.stackTop - 1];
@@ -2819,32 +2457,36 @@ public final class Interpreter extends Icode implements Evaluator {
         stack[state.stackTop + 2] = stack[state.stackTop];
         sDbl[state.stackTop + 2] = sDbl[state.stackTop];
         state.stackTop += 2;
+        return null;
     }
 
-    private static void dup(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState dup(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         stack[state.stackTop + 1] = stack[state.stackTop];
         sDbl[state.stackTop + 1] = sDbl[state.stackTop];
         state.stackTop++;
+        return null;
     }
 
-    private static void popResult(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState popResult(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         frame.result = stack[state.stackTop];
         frame.resultDbl = sDbl[state.stackTop];
         stack[state.stackTop] = null;
         --state.stackTop;
+        return null;
     }
 
-    private static void pop(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState pop(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         stack[state.stackTop] = null;
         state.stackTop--;
+        return null;
     }
 
-    private static void startSub(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState startSub(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         final InterpreterData iData = frame.idata;
@@ -2860,16 +2502,20 @@ public final class Interpreter extends Icode implements Evaluator {
             // in the local
             if (state.stackTop != frame.emptyStackTop) Kit.codeBug();
         }
+        return null;
     }
 
-    private static void enterDotQuery(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState enterDotQuery(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         Object lhs = frame.stack[state.stackTop];
         if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         frame.scope = ScriptRuntime.enterDotQuery(lhs, frame.scope);
         state.stackTop--;
+        return null;
     }
 
-    private static void arrayLiteral(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState arrayLiteral(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         Object[] data = (Object[]) frame.stack[state.stackTop--];
         Object val;
 
@@ -2880,56 +2526,69 @@ public final class Interpreter extends Icode implements Evaluator {
         val = ScriptRuntime.newArrayLiteral(data, skipIndexces, cx, frame.scope);
 
         frame.stack[state.stackTop] = val;
+        return null;
     }
 
-    private static void objectLit(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState objectLit(Context cx, CallFrame frame, InterpreterState state, int op) {
         Object[] values = (Object[]) frame.stack[state.stackTop];
         int[] getterSetters = (int[]) frame.stack[--state.stackTop];
         Object[] keys = (Object[]) frame.stack[--state.stackTop];
         Scriptable object = (Scriptable) frame.stack[--state.stackTop];
         ScriptRuntime.fillObjectLiteral(object, keys, values, getterSetters, cx, frame.scope);
+        return null;
     }
 
-    private static void literalKeySet(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState literalKeySet(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         Object key = frame.stack[state.stackTop];
         if (key == DOUBLE_MARK) key = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         Object[] ids = (Object[]) frame.stack[state.stackTop - 3];
         int i = (int) frame.sDbl[--state.stackTop];
         ids[i] = key;
+        return null;
     }
 
-    private static void literalSetter(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState literalSetter(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         Object value = frame.stack[state.stackTop];
         int i = (int) frame.sDbl[--state.stackTop];
         ((Object[]) frame.stack[state.stackTop])[i] = value;
         ((int[]) frame.stack[--state.stackTop])[i] = 1;
         frame.sDbl[++state.stackTop] = i + 1;
+        return null;
     }
 
-    private static void literalGetter(Context cs, CallFrame frame, InterpreterState state, int op) {
+    private static NewState literalGetter(
+            Context cs, CallFrame frame, InterpreterState state, int op) {
         Object value = frame.stack[state.stackTop];
         int i = (int) frame.sDbl[--state.stackTop];
         ((Object[]) frame.stack[state.stackTop])[i] = value;
         ((int[]) frame.stack[--state.stackTop])[i] = -1;
         frame.sDbl[++state.stackTop] = i + 1;
+        return null;
     }
 
-    private static void literalSet(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState literalSet(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         Object value = frame.stack[state.stackTop];
         if (value == DOUBLE_MARK) value = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         int i = (int) frame.sDbl[--state.stackTop];
         ((Object[]) frame.stack[state.stackTop])[i] = value;
         frame.sDbl[state.stackTop] = i + 1;
+        return null;
     }
 
-    private static void newArrayLit(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState newArrayLit(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         // indexReg: number of values in the literal
         frame.stack[++state.stackTop] = new int[state.indexReg];
         frame.stack[++state.stackTop] = new Object[state.indexReg];
         frame.sDbl[state.stackTop] = 0;
+        return null;
     }
 
-    private static void closureExpr(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState closureExpr(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         InterpretedFunction fn =
                 InterpretedFunction.createFunction(
                         cx, frame.scope, frame.fnOrScript, state.indexReg);
@@ -2944,62 +2603,73 @@ public final class Interpreter extends Icode implements Evaluator {
         } else {
             frame.stack[++state.stackTop] = fn;
         }
+        return null;
     }
 
-    private static void refName(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState refName(Context cx, CallFrame frame, InterpreterState state, int op) {
         // indexReg: flags
         Object name = frame.stack[state.stackTop];
         if (name == DOUBLE_MARK) name = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         frame.stack[state.stackTop] = ScriptRuntime.nameRef(name, cx, frame.scope, state.indexReg);
+        return null;
     }
 
-    private static void refSpecial(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState refSpecial(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         // stringReg: name of special property
         Object obj = frame.stack[state.stackTop];
         if (obj == DOUBLE_MARK) obj = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         frame.stack[state.stackTop] =
                 ScriptRuntime.specialRef(obj, state.stringReg, cx, frame.scope);
+        return null;
     }
 
-    private static void enumOp(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState enumOp(Context cx, CallFrame frame, InterpreterState state, int op) {
         state.indexReg += frame.idata.itsMaxVars;
         Object val = frame.stack[state.indexReg];
         frame.stack[++state.stackTop] =
                 (op == Token.ENUM_NEXT)
                         ? ScriptRuntime.enumNext(val, cx)
                         : ScriptRuntime.enumId(val, cx);
+        return null;
     }
 
-    private static void enterWith(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState enterWith(Context cx, CallFrame frame, InterpreterState state, int op) {
         Object lhs = frame.stack[state.stackTop];
         if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         frame.scope = ScriptRuntime.enterWith(lhs, cx, frame.scope);
         state.stackTop--;
+        return null;
     }
 
-    private static void nameAndThisOptional(
+    private static NewState nameAndThisOptional(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         stack[++state.stackTop] =
                 ScriptRuntime.getNameAndThisOptional(state.stringReg, cx, frame.scope);
+        return null;
     }
 
-    private static void nameAndThis(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState nameAndThis(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         // stringReg: name
         stack[++state.stackTop] = ScriptRuntime.getNameAndThis(state.stringReg, cx, frame.scope);
+        return null;
     }
 
-    private static void setRef(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState setRef(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         Object value = stack[state.stackTop];
         if (value == DOUBLE_MARK) value = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         Ref ref = (Ref) stack[state.stackTop - 1];
         stack[--state.stackTop] = ScriptRuntime.refSet(ref, value, cx, frame.scope);
+        return null;
     }
 
-    private static void propIncDec(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState propIncDec(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         final byte[] iCode = frame.idata.itsICode;
@@ -3008,9 +2678,10 @@ public final class Interpreter extends Icode implements Evaluator {
         stack[state.stackTop] =
                 ScriptRuntime.propIncrDecr(lhs, state.stringReg, cx, frame.scope, iCode[frame.pc]);
         ++frame.pc;
+        return null;
     }
 
-    private static void setProp(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState setProp(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         Object rhs = stack[state.stackTop];
@@ -3019,9 +2690,10 @@ public final class Interpreter extends Icode implements Evaluator {
         if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop - 1]);
         stack[--state.stackTop] =
                 ScriptRuntime.setObjectProp(lhs, state.stringReg, rhs, cx, frame.scope);
+        return null;
     }
 
-    private static void setConst(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState setConst(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         Object rhs = stack[state.stackTop];
@@ -3029,26 +2701,30 @@ public final class Interpreter extends Icode implements Evaluator {
         Scriptable lhs = (Scriptable) stack[state.stackTop - 1];
         stack[state.stackTop - 1] = ScriptRuntime.setConst(lhs, rhs, cx, state.stringReg);
         --state.stackTop;
+        return null;
     }
 
-    private static void getProp(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState getProp(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         Object lhs = stack[state.stackTop];
         if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         stack[state.stackTop] = ScriptRuntime.getObjectProp(lhs, state.stringReg, cx, frame.scope);
+        return null;
     }
 
-    private static void getPropNoWarn(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState getPropNoWarn(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         Object lhs = stack[state.stackTop];
         if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         stack[state.stackTop] =
                 ScriptRuntime.getObjectPropNoWarn(lhs, state.stringReg, cx, frame.scope);
+        return null;
     }
 
-    private static void literalNewObject(
+    private static NewState literalNewObject(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         // indexReg: index of constant with the keys
         Object[] ids = (Object[]) frame.idata.literalIds[state.indexReg];
@@ -3059,9 +2735,10 @@ public final class Interpreter extends Icode implements Evaluator {
         frame.stack[++state.stackTop] = new int[ids.length];
         frame.stack[++state.stackTop] = new Object[ids.length];
         frame.sDbl[state.stackTop] = 0;
+        return null;
     }
 
-    private static void enumInit(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState enumInit(Context cx, CallFrame frame, InterpreterState state, int op) {
         Object lhs = frame.stack[state.stackTop];
         if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         state.indexReg += frame.idata.itsMaxVars;
@@ -3075,6 +2752,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                         : ScriptRuntime.ENUMERATE_ARRAY;
         frame.stack[state.indexReg] = ScriptRuntime.enumInit(lhs, cx, frame.scope, enumType);
         --state.stackTop;
+        return null;
     }
 
     private static InterpreterResult doNewByteCode(
@@ -3112,7 +2790,8 @@ public final class Interpreter extends Icode implements Evaluator {
         return new StateContinueResult(calleeFrame, state.indexReg);
     }
 
-    private static void catchScope(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState catchScope(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
 
         // stack top: exception object
         // state.stringReg: name of exception variable
@@ -3132,26 +2811,30 @@ public final class Interpreter extends Icode implements Evaluator {
                 ScriptRuntime.newCatchScope(
                         caughtException, lastCatchScope, state.stringReg, cx, frame.scope);
         ++frame.pc;
+        return null;
     }
 
-    private static void valueAndThisOptional(
+    private static NewState valueAndThisOptional(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         Object[] stack = frame.stack;
         double[] sDbl = frame.sDbl;
         Object value = stack[state.stackTop];
         if (value == DOUBLE_MARK) value = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         stack[state.stackTop] = ScriptRuntime.getValueAndThisOptional(value, cx);
+        return null;
     }
 
-    private static void valueAndThis(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState valueAndThis(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         Object value = stack[state.stackTop];
         if (value == DOUBLE_MARK) value = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         stack[state.stackTop] = ScriptRuntime.getValueAndThis(value, cx);
+        return null;
     }
 
-    private static void elemAndThisOptional(
+    private static NewState elemAndThisOptional(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
@@ -3160,9 +2843,11 @@ public final class Interpreter extends Icode implements Evaluator {
         Object id = stack[state.stackTop];
         if (id == DOUBLE_MARK) id = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         stack[--state.stackTop] = ScriptRuntime.getElemAndThisOptional(obj, id, cx, frame.scope);
+        return null;
     }
 
-    private static void elemAndThis(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState elemAndThis(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         Object obj = stack[state.stackTop - 1];
@@ -3170,9 +2855,10 @@ public final class Interpreter extends Icode implements Evaluator {
         Object id = stack[state.stackTop];
         if (id == DOUBLE_MARK) id = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         stack[--state.stackTop] = ScriptRuntime.getElemAndThis(obj, id, cx, frame.scope);
+        return null;
     }
 
-    private static void propAndThisOptional(
+    private static NewState propAndThisOptional(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
@@ -3181,18 +2867,22 @@ public final class Interpreter extends Icode implements Evaluator {
         // stringReg: property
         stack[state.stackTop] =
                 ScriptRuntime.getPropAndThisOptional(obj, state.stringReg, cx, frame.scope);
+        return null;
     }
 
-    private static void propAndThis(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState propAndThis(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         Object obj = stack[state.stackTop];
         if (obj == DOUBLE_MARK) obj = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         // stringReg: property
         stack[state.stackTop] = ScriptRuntime.getPropAndThis(obj, state.stringReg, cx, frame.scope);
+        return null;
     }
 
-    private static void setPropSuper(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState setPropSuper(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         Object rhs = stack[state.stackTop];
@@ -3202,9 +2892,11 @@ public final class Interpreter extends Icode implements Evaluator {
         stack[--state.stackTop] =
                 ScriptRuntime.setSuperProp(
                         superObject, state.stringReg, rhs, cx, frame.scope, frame.thisObj);
+        return null;
     }
 
-    private static void getPropSuper(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState getPropSuper(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         Object superObject = stack[state.stackTop];
         if (superObject == DOUBLE_MARK) Kit.codeBug();
@@ -3216,9 +2908,10 @@ public final class Interpreter extends Icode implements Evaluator {
                         frame.scope,
                         frame.thisObj,
                         op == Token.GETPROPNOWARN_SUPER);
+        return null;
     }
 
-    private static void setName(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState setName(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         Object rhs = stack[state.stackTop];
@@ -3229,6 +2922,7 @@ public final class Interpreter extends Icode implements Evaluator {
                         ? ScriptRuntime.setName(lhs, rhs, cx, frame.scope, state.stringReg)
                         : ScriptRuntime.strictSetName(lhs, rhs, cx, frame.scope, state.stringReg);
         --state.stackTop;
+        return null;
     }
 
     private static Object throwObject(
@@ -3247,18 +2941,12 @@ public final class Interpreter extends Icode implements Evaluator {
         return throwable;
     }
 
-    private static void generatorReturn(
-            CallFrame frame,
-            GeneratorState generatorState,
-            final Object[] stack,
-            final double[] sDbl,
-            final InterpreterData iData,
-            final byte[] iCode,
-            InterpreterState state) {
+    private static NewState generatorReturn(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         // throw StopIteration with the value of "return"
         frame.frozen = true;
-        frame.result = stack[state.stackTop];
-        frame.resultDbl = sDbl[state.stackTop--];
+        frame.result = frame.stack[state.stackTop];
+        frame.resultDbl = frame.sDbl[state.stackTop--];
 
         NativeIterator.StopIteration si =
                 new NativeIterator.StopIteration(
@@ -3266,24 +2954,23 @@ public final class Interpreter extends Icode implements Evaluator {
                                 ? Double.valueOf(frame.resultDbl)
                                 : frame.result);
 
-        int sourceLine = getIndex(iCode, frame.pc);
-        generatorState.returnedException =
-                new JavaScriptException(si, iData.itsSourceFile, sourceLine);
+        int sourceLine = getIndex(frame.idata.itsICode, frame.pc);
+        state.generatorState.returnedException =
+                new JavaScriptException(si, frame.idata.itsSourceFile, sourceLine);
+        return BREAK_LOOP;
     }
 
-    private static void generatorEnd(
-            CallFrame frame,
-            GeneratorState generatorState,
-            final InterpreterData iData,
-            final byte[] iCode) {
+    private static NewState generatorEnd(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         // throw StopIteration
         frame.frozen = true;
-        int sourceLine = getIndex(iCode, frame.pc);
-        generatorState.returnedException =
+        int sourceLine = getIndex(frame.idata.itsICode, frame.pc);
+        state.generatorState.returnedException =
                 new JavaScriptException(
                         NativeIterator.getStopIterationObject(frame.scope),
-                        iData.itsSourceFile,
+                        frame.idata.itsSourceFile,
                         sourceLine);
+        return BREAK_LOOP;
     }
 
     private static void generatorCreate(Context cx, CallFrame frame) {
@@ -3335,7 +3022,7 @@ public final class Interpreter extends Icode implements Evaluator {
                     ScriptRuntime.callRef(
                             fun, funThisObj,
                             outArgs, cx);
-            return new ContinueLoop(state.stackTop, state.indexReg);
+            return null;
         }
         Scriptable calleeScope = frame.scope;
         if (frame.useActivation) {
@@ -3490,7 +3177,7 @@ public final class Interpreter extends Icode implements Evaluator {
                     frame.savedStackTop = state.stackTop;
                     frame.savedCallOp = op;
                 }
-                return new StateContinue(calleeFrame);
+                return new StateContinueResult(calleeFrame, state.indexReg);
             }
         }
 
@@ -3509,14 +3196,15 @@ public final class Interpreter extends Icode implements Evaluator {
             }
 
             // Start the real unwind job
-            return new NewThrowable(cjump);
+            state.throwable = cjump;
+            return BREAK_WITHOUT_EXTENSION;
         }
 
         if (fun instanceof IdFunctionObject) {
             IdFunctionObject ifun = (IdFunctionObject) fun;
             if (NativeContinuation.isContinuationConstructor(ifun)) {
                 frame.stack[state.stackTop] = captureContinuation(cx, frame.parentFrame, false);
-                return new ContinueLoop(state.stackTop, state.indexReg);
+                return null;
             }
         }
 
@@ -3530,7 +3218,7 @@ public final class Interpreter extends Icode implements Evaluator {
                         getArgsArray(
                                 stack, sDbl, boundArgs, blen, state.stackTop + 1, state.indexReg));
 
-        return new ContinueLoop(state.stackTop, state.indexReg);
+        return null;
     }
 
     private static Object[] appendBoundArgs(Object[] boundArgs, Object[] newArgs) {
@@ -3553,7 +3241,7 @@ public final class Interpreter extends Icode implements Evaluator {
         }
     }
 
-    private static void doInOrInstanceof(
+    private static NewState doInOrInstanceof(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         Object[] stack = frame.stack;
         double[] sDbl = frame.sDbl;
@@ -3568,9 +3256,10 @@ public final class Interpreter extends Icode implements Evaluator {
             valBln = ScriptRuntime.instanceOf(lhs, rhs, cx);
         }
         stack[state.stackTop] = valBln;
+        return null;
     }
 
-    private static void doCompare(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doCompare(Context cx, CallFrame frame, InterpreterState state, int op) {
         Object[] stack = frame.stack;
         double[] sDbl = frame.sDbl;
         Object rhs = stack[state.stackTop];
@@ -3579,7 +3268,7 @@ public final class Interpreter extends Icode implements Evaluator {
         if (lhs == DOUBLE_MARK && rhs == DOUBLE_MARK) {
             valBln = ScriptRuntime.compareTo(sDbl[state.stackTop], sDbl[state.stackTop + 1], op);
             stack[state.stackTop] = valBln;
-            return;
+            return null;
         }
         object_compare:
         {
@@ -3601,9 +3290,11 @@ public final class Interpreter extends Icode implements Evaluator {
             valBln = ScriptRuntime.compare(lhs, rhs, op);
         }
         stack[state.stackTop] = valBln;
+        return null;
     }
 
-    private static void doFastBitOp(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doFastBitOp(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         Object[] stack = frame.stack;
         double[] sDbl = frame.sDbl;
         double lValue = sDbl[state.stackTop - 1];
@@ -3631,14 +3322,15 @@ public final class Interpreter extends Icode implements Evaluator {
 
         stack[state.stackTop] = DOUBLE_MARK;
         sDbl[state.stackTop] = result;
+        return null;
     }
 
-    private static void doBitOp(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doBitOp(Context cx, CallFrame frame, InterpreterState state, int op) {
         Object[] stack = frame.stack;
         double[] sDbl = frame.sDbl;
         if (stack[state.stackTop] == DOUBLE_MARK && stack[state.stackTop - 1] == DOUBLE_MARK) {
             doFastBitOp(cx, frame, state, op);
-            return;
+            return null;
         }
         Number lValue = stack_numeric(frame, state.stackTop - 1);
         Number rValue = stack_numeric(frame, state.stackTop);
@@ -3669,9 +3361,10 @@ public final class Interpreter extends Icode implements Evaluator {
             stack[state.stackTop] = DOUBLE_MARK;
             sDbl[state.stackTop] = result.doubleValue();
         }
+        return null;
     }
 
-    private static void doBitNOT(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doBitNOT(Context cx, CallFrame frame, InterpreterState state, int op) {
         Object[] stack = frame.stack;
         double[] sDbl = frame.sDbl;
         Number value = stack_numeric(frame, state.stackTop);
@@ -3682,9 +3375,10 @@ public final class Interpreter extends Icode implements Evaluator {
             stack[state.stackTop] = DOUBLE_MARK;
             sDbl[state.stackTop] = result.doubleValue();
         }
+        return null;
     }
 
-    private static void doDelName(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doDelName(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         Object rhs = stack[state.stackTop];
@@ -3694,9 +3388,10 @@ public final class Interpreter extends Icode implements Evaluator {
         if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
         stack[state.stackTop] =
                 ScriptRuntime.delete(lhs, rhs, cx, frame.scope, op == Icode_DELNAME);
+        return null;
     }
 
-    private static void doGetElem(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doGetElem(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         Object lhs = stack[--state.stackTop];
@@ -3712,9 +3407,10 @@ public final class Interpreter extends Icode implements Evaluator {
             value = ScriptRuntime.getObjectIndex(lhs, d, cx, frame.scope);
         }
         stack[state.stackTop] = value;
+        return null;
     }
 
-    private static void doGetElemSuper(
+    private static NewState doGetElemSuper(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
@@ -3729,9 +3425,10 @@ public final class Interpreter extends Icode implements Evaluator {
             value = ScriptRuntime.getSuperIndex(superObject, d, cx, frame.scope, frame.thisObj);
         }
         stack[state.stackTop] = value;
+        return null;
     }
 
-    private static void doSetElem(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doSetElem(Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         Object rhs = stack[state.stackTop];
@@ -3752,9 +3449,10 @@ public final class Interpreter extends Icode implements Evaluator {
             value = ScriptRuntime.setObjectIndex(lhs, d, rhs, cx, frame.scope);
         }
         stack[state.stackTop] = value;
+        return null;
     }
 
-    private static void doSetElemSuper(
+    private static NewState doSetElemSuper(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
@@ -3778,9 +3476,11 @@ public final class Interpreter extends Icode implements Evaluator {
                             superObject, d, rhs, cx, frame.scope, frame.thisObj);
         }
         stack[state.stackTop] = value;
+        return null;
     }
 
-    private static void doElemIncDec(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doElemIncDec(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         final Object[] stack = frame.stack;
         final double[] sDbl = frame.sDbl;
         final byte[] iCode = frame.idata.itsICode;
@@ -3792,9 +3492,11 @@ public final class Interpreter extends Icode implements Evaluator {
         stack[state.stackTop] =
                 ScriptRuntime.elemIncrDecr(lhs, rhs, cx, frame.scope, iCode[frame.pc]);
         ++frame.pc;
+        return null;
     }
 
-    private static void doCallSpecial(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doCallSpecial(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         Object[] stack = frame.stack;
         double[] sDbl = frame.sDbl;
         byte[] iCode = frame.idata.itsICode;
@@ -3840,9 +3542,17 @@ public final class Interpreter extends Icode implements Evaluator {
                             isOptionalChainingCall);
         }
         frame.pc += 4;
+        return null;
     }
 
-    private static void doSetConstVar(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doSetConstVar1(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        state.indexReg = frame.idata.itsICode[frame.pc++];
+        return doSetConstVar(cx, frame, state, op);
+    }
+
+    private static NewState doSetConstVar(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         var varAttributes = frame.varSource.stackAttributes;
         var vars = frame.varSource.stack;
         var varDbls = frame.varSource.sDbl;
@@ -3865,9 +3575,15 @@ public final class Interpreter extends Icode implements Evaluator {
                 cp.putConst(stringReg, frame.scope, val);
             } else throw Kit.codeBug();
         }
+        return null;
     }
 
-    private static void doSetVar(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doSetVar1(Context cx, CallFrame frame, InterpreterState state, int op) {
+        state.indexReg = frame.idata.itsICode[frame.pc++];
+        return doSetVar(cx, frame, state, op);
+    }
+
+    private static NewState doSetVar(Context cx, CallFrame frame, InterpreterState state, int op) {
         var varAttributes = frame.varSource.stackAttributes;
         var vars = frame.varSource.stack;
         var varDbls = frame.varSource.sDbl;
@@ -3882,9 +3598,15 @@ public final class Interpreter extends Icode implements Evaluator {
             String stringReg = frame.idata.argNames[state.indexReg];
             frame.scope.put(stringReg, frame.scope, val);
         }
+        return null;
     }
 
-    private static void doGetVar(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doGetVar1(Context cx, CallFrame frame, InterpreterState state, int op) {
+        state.indexReg = frame.idata.itsICode[frame.pc++];
+        return doGetVar(cx, frame, state, op);
+    }
+
+    private static NewState doGetVar(Context cx, CallFrame frame, InterpreterState state, int op) {
         var vars = frame.varSource.stack;
         var varDbls = frame.varSource.sDbl;
         ++state.stackTop;
@@ -3895,9 +3617,11 @@ public final class Interpreter extends Icode implements Evaluator {
             String stringReg = frame.idata.argNames[state.indexReg];
             frame.stack[state.stackTop] = frame.scope.get(stringReg, frame.scope);
         }
+        return null;
     }
 
-    private static void doVarIncDec(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doVarIncDec(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         var varAttributes = frame.varSource.stackAttributes;
         var vars = frame.varSource.stack;
         var varDbls = frame.varSource.sDbl;
@@ -3964,18 +3688,22 @@ public final class Interpreter extends Icode implements Evaluator {
                     ScriptRuntime.nameIncrDecr(frame.scope, varName, cx, incrDecrMask);
         }
         ++frame.pc;
+        return null;
     }
 
-    private static void doRefMember(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doRefMember(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         Object elem = frame.stack[state.stackTop];
         if (elem == DOUBLE_MARK) elem = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         --state.stackTop;
         Object obj = frame.stack[state.stackTop];
         if (obj == DOUBLE_MARK) obj = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         frame.stack[state.stackTop] = ScriptRuntime.memberRef(obj, elem, cx, state.indexReg);
+        return null;
     }
 
-    private static void doRefNsMember(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doRefNsMember(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         Object elem = frame.stack[state.stackTop];
         if (elem == DOUBLE_MARK) elem = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         --state.stackTop;
@@ -3985,9 +3713,11 @@ public final class Interpreter extends Icode implements Evaluator {
         Object obj = frame.stack[state.stackTop];
         if (obj == DOUBLE_MARK) obj = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         frame.stack[state.stackTop] = ScriptRuntime.memberRef(obj, ns, elem, cx, state.indexReg);
+        return null;
     }
 
-    private static void doRefNsName(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doRefNsName(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         Object name = frame.stack[state.stackTop];
         if (name == DOUBLE_MARK) name = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         --state.stackTop;
@@ -3995,9 +3725,10 @@ public final class Interpreter extends Icode implements Evaluator {
         if (ns == DOUBLE_MARK) ns = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
         frame.stack[state.stackTop] =
                 ScriptRuntime.nameRef(ns, name, cx, frame.scope, state.indexReg);
+        return null;
     }
 
-    private static void doEquals(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doEquals(Context cx, CallFrame frame, InterpreterState state, int op) {
         Object[] stack = frame.stack;
         double[] sDbl = frame.sDbl;
         final Object rhs = stack[state.stackTop--];
@@ -4015,9 +3746,10 @@ public final class Interpreter extends Icode implements Evaluator {
             res = ScriptRuntime.eq(lhs, rhs);
         }
         stack[state.stackTop] = res ^ (op == Token.NE);
+        return null;
     }
 
-    private static void doShallowEquals(
+    private static NewState doShallowEquals(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         Object[] stack = frame.stack;
         double[] sDbl = frame.sDbl;
@@ -4044,6 +3776,7 @@ public final class Interpreter extends Icode implements Evaluator {
             res = ScriptRuntime.shallowEq(lhs, rhs);
         }
         stack[state.stackTop] = res ^ (op == Token.SHNE);
+        return null;
     }
 
     private static CallFrame processThrowable(
@@ -4430,7 +4163,7 @@ public final class Interpreter extends Icode implements Evaluator {
         }
     }
 
-    private static void doAdd(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doAdd(Context cx, CallFrame frame, InterpreterState state, int op) {
         Object rhs = frame.stack[state.stackTop];
         Object lhs = frame.stack[--state.stackTop];
         double d;
@@ -4439,7 +4172,7 @@ public final class Interpreter extends Icode implements Evaluator {
             d = frame.sDbl[state.stackTop + 1];
             if (lhs == DOUBLE_MARK) {
                 frame.sDbl[state.stackTop] += d;
-                return;
+                return null;
             }
             leftRightOrder = true;
             // fallthrough to object + number code
@@ -4479,7 +4212,7 @@ public final class Interpreter extends Icode implements Evaluator {
                     frame.sDbl[state.stackTop] = lNum.doubleValue() + rNum.doubleValue();
                 }
             }
-            return;
+            return null;
         }
 
         // handle object(lhs) + number(d) code
@@ -4507,9 +4240,10 @@ public final class Interpreter extends Icode implements Evaluator {
                 frame.sDbl[state.stackTop] = lNum.doubleValue() + d;
             }
         }
+        return null;
     }
 
-    private static void doFastArithemtic(
+    private static NewState doFastArithemtic(
             Context cx, CallFrame frame, InterpreterState state, int op) {
         Object[] stack = frame.stack;
         double[] sDbl = frame.sDbl;
@@ -4538,14 +4272,16 @@ public final class Interpreter extends Icode implements Evaluator {
 
         stack[state.stackTop] = DOUBLE_MARK;
         sDbl[state.stackTop] = result;
+        return null;
     }
 
-    private static void doArithmetic(Context cx, CallFrame frame, InterpreterState state, int op) {
+    private static NewState doArithmetic(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
         Object[] stack = frame.stack;
         double[] sDbl = frame.sDbl;
         if (stack[state.stackTop] == DOUBLE_MARK && stack[state.stackTop - 1] == DOUBLE_MARK) {
             doFastArithemtic(cx, frame, state, op);
-            return;
+            return null;
         }
 
         Number lNum = stack_numeric(frame, state.stackTop - 1);
@@ -4577,6 +4313,7 @@ public final class Interpreter extends Icode implements Evaluator {
             stack[state.stackTop] = DOUBLE_MARK;
             sDbl[state.stackTop] = result.doubleValue();
         }
+        return null;
     }
 
     private static Object[] getArgsArray(Object[] stack, double[] sDbl, int shift, int count) {
