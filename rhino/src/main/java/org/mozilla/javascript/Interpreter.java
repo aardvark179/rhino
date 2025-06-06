@@ -1624,104 +1624,31 @@ public final class Interpreter extends Icode implements Evaluator {
                 int op = iCode[frame.pc++];
                 jumplessRun:
                 {
-                    if (op == Token.THROW) {
-                        state.throwable =
-                                throwObject(
-                                        frame, frame.stack, frame.sDbl, frame.idata, iCode, state);
-                        --state.stackTop;
-                        break withoutExceptions;
-                    } else if (op == Token.RETHROW) {
-                        state.indexReg += frame.idata.itsMaxVars;
-                        state.throwable = frame.stack[state.indexReg];
-                        break withoutExceptions;
-                    } else if (op == Token.IFNE) {
-                        if (stack_boolean(frame, state.stackTop--)) {
-                            frame.pc += 2;
+                    var insn = instructionObjs[-MIN_ICODE + op];
+                    if (insn != null) {
+                        var nextState = insn.execute(cx, frame, state, op);
+                        if (nextState == null) {
                             continue Loop;
-                        }
-                        break jumplessRun;
-                    } else if (op == Token.IFEQ) {
-                        if (!stack_boolean(frame, state.stackTop--)) {
-                            frame.pc += 2;
-                            continue Loop;
-                        }
-                        break jumplessRun;
-                    } else if (op == Icode_IFEQ_POP) {
-                        if (!stack_boolean(frame, state.stackTop--)) {
-                            frame.pc += 2;
-                            continue Loop;
-                        }
-                        frame.stack[state.stackTop--] = null;
-                        break jumplessRun;
-                    } else if (op == Icode_IF_NULL_UNDEF) {
-                        Object val = frame.stack[state.stackTop];
-                        --state.stackTop;
-                        if (val != null && !Undefined.isUndefined(val)) {
-                            frame.pc += 2;
-                            continue Loop;
-                        }
-                        break jumplessRun;
-                    } else if (op == Icode_IF_NOT_NULL_UNDEF) {
-                        Object val = frame.stack[state.stackTop];
-                        --state.stackTop;
-                        if (val == null || Undefined.isUndefined(val)) {
-                            frame.pc += 2;
-                            continue Loop;
-                        }
-                        break jumplessRun;
-                    } else if (op == Token.GOTO) {
-                        break jumplessRun;
-                    } else if (op == Icode_GOSUB) {
-                        ++state.stackTop;
-                        frame.stack[state.stackTop] = DOUBLE_MARK;
-                        frame.sDbl[state.stackTop] = frame.pc + 2;
-                        break jumplessRun;
-                    } else if (op == Icode_RETSUB) {
-                        // state.indexReg: local to store return address
-                        if (instructionCounting) {
-                            addInstructionCount(cx, frame, 0);
-                        }
-                        state.indexReg += frame.idata.itsMaxVars;
-                        Object value = frame.stack[state.indexReg];
-                        if (value != DOUBLE_MARK) {
-                            // Invocation from exception handler, restore object to
-                            // rethrow
-                            state.throwable = value;
+                        } else if (nextState == BREAK_LOOP) {
+                            break Loop;
+                        } else if (nextState == BREAK_JUMPLESSRUN) {
+                            break jumplessRun;
+                        } else if (nextState == BREAK_WITHOUT_EXTENSION) {
                             break withoutExceptions;
+                        } else {
+                            return (InterpreterResult) nextState;
                         }
-                        // Normal return from GOSUB
-                        frame.pc = (int) frame.sDbl[state.indexReg];
-                        if (instructionCounting) {
-                            frame.pcPrevBranch = frame.pc;
-                        }
-                        continue Loop;
-                    } else {
-                        var insn = instructionObjs[-MIN_ICODE + op];
-                        if (insn != null) {
-                            var nextState = insn.execute(cx, frame, state, op);
-                            if (nextState == null) {
-                                continue Loop;
-                            } else if (nextState == BREAK_LOOP) {
-                                break Loop;
-                            } else if (nextState == BREAK_JUMPLESSRUN) {
-                                break jumplessRun;
-                            } else if (nextState == BREAK_WITHOUT_EXTENSION) {
-                                break withoutExceptions;
-                            } else {
-                                return (InterpreterResult) nextState;
-                            }
-                        }
-                        dumpICode(frame.idata);
-                        throw new RuntimeException(
-                                "Unknown icode : "
-                                        + op
-                                        + "(min is) "
-                                        + MIN_ICODE
-                                        + " test is "
-                                        + Icode_GENERATOR
-                                        + " @ pc : "
-                                        + (frame.pc - 1));
-                    } // end of interpreter switch
+                    }
+                    dumpICode(frame.idata);
+                    throw new RuntimeException(
+                            "Unknown icode : "
+                                    + op
+                                    + "(min is) "
+                                    + MIN_ICODE
+                                    + " test is "
+                                    + Icode_GENERATOR
+                                    + " @ pc : "
+                                    + (frame.pc - 1));
                 } // end of jumplessRun label block
 
                 // This should be reachable only for jump implementation
@@ -1941,6 +1868,109 @@ public final class Interpreter extends Icode implements Evaluator {
         instructionObjs[base + Icode_TAIL_CALL] = Interpreter::doCallByteCode;
         instructionObjs[base + Token.REF_CALL] = Interpreter::doCallByteCode;
         instructionObjs[base + Icode_LEAVEDQ] = Interpreter::doLeaveDQ;
+        instructionObjs[base + Token.THROW] = Interpreter::doThrow;
+        instructionObjs[base + Token.RETHROW] = Interpreter::doRethrow;
+        instructionObjs[base + Token.IFNE] = Interpreter::doIfNE;
+        instructionObjs[base + Token.IFEQ] = Interpreter::doIfEQ;
+        instructionObjs[base + Icode_IFEQ_POP] = Interpreter::doIfEQPop;
+        instructionObjs[base + Icode_IF_NULL_UNDEF] = Interpreter::doIfNullUndef;
+        instructionObjs[base + Icode_IF_NOT_NULL_UNDEF] = Interpreter::doIfNotNullUndef;
+        instructionObjs[base + Token.GOTO] = Interpreter::doGoto;
+        instructionObjs[base + Icode_GOSUB] = Interpreter::doGosub;
+        instructionObjs[base + Icode_RETSUB] = Interpreter::doRetsub;
+    }
+
+    private static NewState doRetsub(Context cx, CallFrame frame, InterpreterState state, int op) {
+        // state.indexReg: local to store return address
+        if (state.instructionCounting) {
+            addInstructionCount(cx, frame, 0);
+        }
+        state.indexReg += frame.idata.itsMaxVars;
+        Object value = frame.stack[state.indexReg];
+        if (value != DOUBLE_MARK) {
+            // Invocation from exception handler, restore object to
+            // rethrow
+            state.throwable = value;
+            return BREAK_WITHOUT_EXTENSION;
+        }
+        // Normal return from GOSUB
+        frame.pc = (int) frame.sDbl[state.indexReg];
+        if (state.instructionCounting) {
+            frame.pcPrevBranch = frame.pc;
+        }
+        return null;
+    }
+
+    private static NewState doGosub(Context cx, CallFrame frame, InterpreterState state, int op) {
+        ++state.stackTop;
+        frame.stack[state.stackTop] = DOUBLE_MARK;
+        frame.sDbl[state.stackTop] = frame.pc + 2;
+        return BREAK_JUMPLESSRUN;
+    }
+
+    private static NewState doGoto(Context cx, CallFrame frame, InterpreterState state, int op) {
+        return BREAK_JUMPLESSRUN;
+    }
+
+    private static NewState doIfNullUndef(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object val = frame.stack[state.stackTop];
+        --state.stackTop;
+        if (val != null && !Undefined.isUndefined(val)) {
+            frame.pc += 2;
+            return null;
+        }
+        return BREAK_JUMPLESSRUN;
+    }
+
+    private static NewState doIfNotNullUndef(
+            Context cx, CallFrame frame, InterpreterState state, int op) {
+        Object val = frame.stack[state.stackTop];
+        --state.stackTop;
+        if (val == null && Undefined.isUndefined(val)) {
+            frame.pc += 2;
+            return null;
+        }
+        return BREAK_JUMPLESSRUN;
+    }
+
+    private static NewState doIfEQPop(Context cx, CallFrame frame, InterpreterState state, int op) {
+        if (!stack_boolean(frame, state.stackTop--)) {
+            frame.pc += 2;
+            return null;
+        }
+        frame.stack[state.stackTop--] = null;
+        return BREAK_JUMPLESSRUN;
+    }
+
+    private static NewState doIfEQ(Context cx, CallFrame frame, InterpreterState state, int op) {
+        if (!stack_boolean(frame, state.stackTop--)) {
+            frame.pc += 2;
+            return null;
+        }
+        return BREAK_JUMPLESSRUN;
+    }
+
+    private static NewState doIfNE(Context cx, CallFrame frame, InterpreterState state, int op) {
+        if (stack_boolean(frame, state.stackTop--)) {
+            frame.pc += 2;
+            return null;
+        }
+        return BREAK_JUMPLESSRUN;
+    }
+
+    private static NewState doRethrow(Context cx, CallFrame frame, InterpreterState state, int op) {
+        state.indexReg += frame.idata.itsMaxVars;
+        state.throwable = frame.stack[state.indexReg];
+        return BREAK_WITHOUT_EXTENSION;
+    }
+
+    private static NewState doThrow(Context cx, CallFrame frame, InterpreterState state, int op) {
+        state.throwable =
+                throwObject(
+                        frame, frame.stack, frame.sDbl, frame.idata, frame.idata.itsICode, state);
+        --state.stackTop;
+        return BREAK_WITHOUT_EXTENSION;
     }
 
     private static NewState doLeaveDQ(Context cx, CallFrame frame, InterpreterState state, int op) {
