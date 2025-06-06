@@ -1618,56 +1618,40 @@ public final class Interpreter extends Icode implements Evaluator {
             Loop:
             for (; ; ) {
 
-                // Exception handler assumes that PC is already incremented
-                // pass the instruction start when it searches the
-                // exception handler
-                int op = iCode[frame.pc++];
-                jumplessRun:
-                {
-                    var insn = instructionObjs[-MIN_ICODE + op];
-                    if (insn != null) {
-                        var nextState = insn.execute(cx, frame, state, op);
-                        if (nextState == null) {
-                            continue Loop;
-                        } else if (nextState == BREAK_LOOP) {
-                            break Loop;
-                        } else if (nextState == BREAK_JUMPLESSRUN) {
-                            break jumplessRun;
-                        } else if (nextState == BREAK_WITHOUT_EXTENSION) {
-                            break withoutExceptions;
-                        } else {
-                            return (InterpreterResult) nextState;
-                        }
-                    }
-                    dumpICode(frame.idata);
-                    throw new RuntimeException(
-                            "Unknown icode : "
-                                    + op
-                                    + "(min is) "
-                                    + MIN_ICODE
-                                    + " test is "
-                                    + Icode_GENERATOR
-                                    + " @ pc : "
-                                    + (frame.pc - 1));
-                } // end of jumplessRun label block
+                NewState nextState;
+                do {
+                    // Exception handler assumes that PC is already incremented
+                    // pass the instruction start when it searches the
+                    // exception handler
+                    int op = iCode[frame.pc++];
 
-                // This should be reachable only for jump implementation
-                // when pc points to encoded target offset
-                if (instructionCounting) {
-                    addInstructionCount(cx, frame, 2);
-                }
-                int offset = getShort(iCode, frame.pc);
-                if (offset != 0) {
-                    // -1 accounts for pc pointing to jump opcode + 1
-                    frame.pc += offset - 1;
+                    var insn = instructionObjs[-MIN_ICODE + op];
+
+                    nextState = insn.execute(cx, frame, state, op);
+                } while (nextState == null);
+
+                if (nextState == BREAK_LOOP) {
+                    break Loop;
+                } else if (nextState == BREAK_JUMPLESSRUN) {
+                    if (instructionCounting) {
+                        addInstructionCount(cx, frame, 2);
+                    }
+                    int offset = getShort(iCode, frame.pc);
+                    if (offset != 0) {
+                        // -1 accounts for pc pointing to jump opcode + 1
+                        frame.pc += offset - 1;
+                    } else {
+                        frame.pc = frame.idata.longJumps.get(frame.pc);
+                    }
+                    if (instructionCounting) {
+                        frame.pcPrevBranch = frame.pc;
+                    }
+                } else if (nextState == BREAK_WITHOUT_EXTENSION) {
+                    break withoutExceptions;
                 } else {
-                    frame.pc = frame.idata.longJumps.get(frame.pc);
+                    return (InterpreterResult) nextState;
                 }
-                if (instructionCounting) {
-                    frame.pcPrevBranch = frame.pc;
-                }
-                continue Loop;
-            } // end of Loop: for
+            }
 
             exitFrame(cx, frame, null);
             if (frame.parentFrame != null) {
