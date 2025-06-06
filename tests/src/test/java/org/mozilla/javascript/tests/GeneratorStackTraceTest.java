@@ -31,15 +31,10 @@ public class GeneratorStackTraceTest {
         try {
             RhinoException.setStackStyle(StackStyle.RHINO);
 
-            final String source1 = "function f2() { throw 'hello'; }; f2();";
-            final String source2 = "function f2() { 'H'.toLowerCase(); throw 'hello'; }; f2();";
-            final String source3 =
-                    "function f2() { new java.lang.String('H').toLowerCase(); throw 'hello'; }; f2();";
+            final String source1 =     "function* f2() { yield 1; throw 'hello'; yield 3; }; var g = f2(); g.next(); g.next();";
             final String result = "\tat test.js:0 (f2)" + LS + "\tat test.js:0" + LS;
 
             runWithExpectedStackTrace(source1, result);
-            runWithExpectedStackTrace(source2, result);
-            runWithExpectedStackTrace(source3, result);
         } finally {
             RhinoException.setStackStyle(stackStyle);
         }
@@ -54,7 +49,7 @@ public class GeneratorStackTraceTest {
         final StackStyle stackStyle = RhinoException.getStackStyle();
         try {
             RhinoException.setStackStyle(StackStyle.MOZILLA);
-            final String source1 =     "function f2() { yield 1; throw 'hello'; yield 3; }; var g = f2(); g.next(); g.next();";
+            final String source1 =     "function* f2() { yield 1; throw 'hello'; yield 3; }; var g = f2(); g.next(); g.next();";
             final String result = "f2()@test.js:0" + LS + "@test.js:0" + LS;
 
             runWithExpectedStackTrace(source1, result);
@@ -73,7 +68,7 @@ public class GeneratorStackTraceTest {
         try {
             RhinoException.setStackStyle(StackStyle.MOZILLA_LF);
 
-            final String source1 =     "function f2() { yield 1; throw 'hello'; yield 3; }; var g = f2(); g.next(); g.next();";
+            final String source1 =     "function* f2() { yield 1; throw 'hello'; yield 3; }; var g = f2(); g.next(); g.next();";
             final String result = "f2()@test.js:0\n@test.js:0\n";
 
             runWithExpectedStackTrace(source1, result);
@@ -92,7 +87,7 @@ public class GeneratorStackTraceTest {
         try {
             RhinoException.setStackStyle(StackStyle.V8);
 
-            final String source1 =    "function f2() { yield 1; throw 'hello'; yield 3; }; var g = f2(); g.next(); g.next();";;
+            final String source1 =    "function* f2() { yield 1; throw 'hello'; yield 3; }; var g = f2(); g.next(); g.next();";;
             final String result =
                     "hello" + LS + "    at f2 (test.js:0:0)" + LS + "    at test.js:0:0" + LS;
 
