@@ -1821,9 +1821,9 @@ public final class Interpreter extends Icode implements Evaluator {
         instructionObjs[base + Token.IN] = new DoInOrInstanceof();
         instructionObjs[base + Token.INSTANCEOF] = new DoInOrInstanceof();
         instructionObjs[base + Token.EQ] = new DoEquals();
-        instructionObjs[base + Token.NE] = new DoEquals();
+        instructionObjs[base + Token.NE] = new DoNotEquals();
         instructionObjs[base + Token.SHEQ] = new DoShallowEquals();
-        instructionObjs[base + Token.SHNE] = new DoShallowEquals();
+        instructionObjs[base + Token.SHNE] = new DoShallowNotEquals();
         instructionObjs[base + Icode_SETCONSTVAR1] = new DoSetConstVar1();
         instructionObjs[base + Icode_SETCONSTVAR] = new DoSetConstVar();
         instructionObjs[base + Icode_SETVAR1] = new DoSetVar1();
@@ -4157,23 +4157,40 @@ public final class Interpreter extends Icode implements Evaluator {
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
             Object[] stack = frame.stack;
             double[] sDbl = frame.sDbl;
-            final Object rhs = stack[state.stackTop--];
-            final Object lhs = stack[state.stackTop];
-            final boolean res;
-            if (rhs == DOUBLE_MARK) {
-                if (lhs == DOUBLE_MARK) {
-                    res = (sDbl[state.stackTop] == sDbl[state.stackTop + 1]);
-                } else {
-                    res = ScriptRuntime.eqNumber(sDbl[state.stackTop + 1], lhs);
-                }
-            } else if (lhs == DOUBLE_MARK) {
-                res = ScriptRuntime.eqNumber(sDbl[state.stackTop], rhs);
-            } else {
-                res = ScriptRuntime.eq(lhs, rhs);
-            }
-            stack[state.stackTop] = res ^ (op == Token.NE);
+            final boolean res = doEquals(state, stack, sDbl);
+            stack[state.stackTop] = res;
             return null;
         }
+    }
+
+    private static class DoNotEquals extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            Object[] stack = frame.stack;
+            double[] sDbl = frame.sDbl;
+            final boolean res = doEquals(state, stack, sDbl);
+            stack[state.stackTop] = !res;
+            return null;
+        }
+
+    }
+
+    private static boolean doEquals(InterpreterState state, Object[] stack, double[] sDbl) {
+        final Object rhs = stack[state.stackTop--];
+        final Object lhs = stack[state.stackTop];
+        final boolean res;
+        if (rhs == DOUBLE_MARK) {
+            if (lhs == DOUBLE_MARK) {
+                res = (sDbl[state.stackTop] == sDbl[state.stackTop + 1]);
+            } else {
+                res = ScriptRuntime.eqNumber(sDbl[state.stackTop + 1], lhs);
+            }
+        } else if (lhs == DOUBLE_MARK) {
+            res = ScriptRuntime.eqNumber(sDbl[state.stackTop], rhs);
+        } else {
+            res = ScriptRuntime.eq(lhs, rhs);
+        }
+        return res;
     }
 
     private static class DoShallowEquals extends InstructionClass {
@@ -4181,29 +4198,45 @@ public final class Interpreter extends Icode implements Evaluator {
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
             Object[] stack = frame.stack;
             double[] sDbl = frame.sDbl;
-            final Object rhs = stack[state.stackTop--];
-            final Object lhs = stack[state.stackTop];
-            final boolean res;
-            if (rhs == DOUBLE_MARK) {
-                double rDbl = sDbl[state.stackTop + 1];
-                if (lhs == DOUBLE_MARK) {
-                    res = rDbl == sDbl[state.stackTop];
-                } else if (lhs instanceof Number && !(lhs instanceof BigInteger)) {
-                    res = rDbl == ((Number) lhs).doubleValue();
-                } else {
-                    res = false;
-                }
-            } else if (lhs == DOUBLE_MARK) {
-                double ldbl = sDbl[state.stackTop];
-                if (rhs instanceof Number && !(rhs instanceof BigInteger)) {
-                    res = ldbl == ((Number) rhs).doubleValue();
-                } else {
-                    res = false;
-                }
+            final boolean res = doShallowEquals(state, stack, sDbl);
+            stack[state.stackTop] = res;
+            return null;
+        }
+    }
+
+    private static boolean doShallowEquals(InterpreterState state, Object[] stack, double[] sDbl) {
+        final Object rhs = stack[state.stackTop--];
+        final Object lhs = stack[state.stackTop];
+        final boolean res;
+        if (rhs == DOUBLE_MARK) {
+            double rDbl = sDbl[state.stackTop + 1];
+            if (lhs == DOUBLE_MARK) {
+                res = rDbl == sDbl[state.stackTop];
+            } else if (lhs instanceof Number && !(lhs instanceof BigInteger)) {
+                res = rDbl == ((Number) lhs).doubleValue();
             } else {
-                res = ScriptRuntime.shallowEq(lhs, rhs);
+                res = false;
             }
-            stack[state.stackTop] = res ^ (op == Token.SHNE);
+        } else if (lhs == DOUBLE_MARK) {
+            double ldbl = sDbl[state.stackTop];
+            if (rhs instanceof Number && !(rhs instanceof BigInteger)) {
+                res = ldbl == ((Number) rhs).doubleValue();
+            } else {
+                res = false;
+            }
+        } else {
+            res = ScriptRuntime.shallowEq(lhs, rhs);
+        }
+        return res;
+    }
+
+    private static class DoShallowNotEquals extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            Object[] stack = frame.stack;
+            double[] sDbl = frame.sDbl;
+            final boolean res = doShallowEquals(state, stack, sDbl);
+            stack[state.stackTop] = !res;
             return null;
         }
     }
