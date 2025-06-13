@@ -1249,13 +1249,9 @@ public class NativeArray extends IdScriptableObject implements List {
 
                     } else {
                         if (toLocale) {
-                            Callable fun;
-                            Scriptable funThis;
-                            fun =
-                                    ScriptRuntime.getPropFunctionAndThis(
-                                            elem, "toLocaleString", cx, scope);
-                            funThis = ScriptRuntime.lastStoredScriptable(cx);
-                            elem = fun.call(cx, scope, funThis, ScriptRuntime.emptyArgs);
+                            var fun =
+                                    ScriptRuntime.getPropAndThis(elem, "toLocaleString", cx, scope);
+                            elem = fun.call(cx, scope, ScriptRuntime.emptyArgs);
                         }
                         result.append(ScriptRuntime.toString(elem));
                     }
