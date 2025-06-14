@@ -196,7 +196,9 @@ public final class Interpreter extends Icode implements Evaluator {
             this.previousInterpreterFrame = previousInterpreterFrame;
             if (parentFrame == null) {
                 frameIndex = 0;
-                parentPC = -1;
+                parentPC = previousInterpreterFrame == null ?
+                    -1 :
+                    previousInterpreterFrame.pcSourceLineStart;
             } else {
                 frameIndex = original.frameIndex;
                 parentPC = parentFrame.pcSourceLineStart;
