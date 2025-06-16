@@ -109,7 +109,14 @@ public final class Interpreter extends Icode implements Evaluator {
             this.thisObj = thisObj;
 
             this.parentFrame = parentFrame;
-            this.parentPC = parentFrame == null ? -1 : parentFrame.pcSourceLineStart;
+            if (parentFrame == null) {
+                this.parentPC =
+                        previousInterpreterFrame == null
+                                ? -1
+                                : previousInterpreterFrame.pcSourceLineStart;
+            } else {
+                this.parentPC = parentFrame.pcSourceLineStart;
+            }
             this.previousInterpreterFrame = previousInterpreterFrame;
             frameIndex = (short) ((parentFrame == null) ? 0 : parentFrame.frameIndex + 1);
             if (frameIndex > cx.getMaximumInterpreterStackDepth()) {
@@ -147,7 +154,10 @@ public final class Interpreter extends Icode implements Evaluator {
             this.previousInterpreterFrame = previousInterpreterFrame;
             if (parentFrame == null) {
                 frameIndex = 0;
-                parentPC = -1;
+                parentPC =
+                        previousInterpreterFrame == null
+                                ? -1
+                                : previousInterpreterFrame.pcSourceLineStart;
             } else {
                 frameIndex = original.frameIndex;
                 parentPC = parentFrame.pcSourceLineStart;
@@ -196,9 +206,10 @@ public final class Interpreter extends Icode implements Evaluator {
             this.previousInterpreterFrame = previousInterpreterFrame;
             if (parentFrame == null) {
                 frameIndex = 0;
-                parentPC = previousInterpreterFrame == null ?
-                    -1 :
-                    previousInterpreterFrame.pcSourceLineStart;
+                parentPC =
+                        previousInterpreterFrame == null
+                                ? -1
+                                : previousInterpreterFrame.pcSourceLineStart;
             } else {
                 frameIndex = original.frameIndex;
                 parentPC = parentFrame.pcSourceLineStart;
