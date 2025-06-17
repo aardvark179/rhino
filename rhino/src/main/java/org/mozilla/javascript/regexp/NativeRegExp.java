@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import org.mozilla.javascript.AbstractEcmaObjectOperations;
 import org.mozilla.javascript.AbstractEcmaStringOperations;
+import org.mozilla.javascript.AbstractEcmaStringOperations.ReplacementOperation;
 import org.mozilla.javascript.Callable;
 import org.mozilla.javascript.Constructable;
 import org.mozilla.javascript.Context;
@@ -3602,8 +3603,13 @@ public class NativeRegExp extends IdScriptableObject {
         int lengthS = s.length();
         Object replaceValue = args.length > 1 ? args[1] : Undefined.instance;
         boolean functionalReplace = replaceValue instanceof Callable;
+        List<ReplacementOperation> replaceOps;
         if (!functionalReplace) {
-            replaceValue = ScriptRuntime.toString(replaceValue);
+            replaceOps =
+                    AbstractEcmaStringOperations.buildReplacementList(
+                            ScriptRuntime.toString(replaceValue));
+        } else {
+            replaceOps = List.of();
         }
         String flags = ScriptRuntime.toString(ScriptRuntime.getObjectProp(thisObj, "flags", cx));
         boolean global = flags.indexOf('g') != -1;
@@ -3638,7 +3644,6 @@ public class NativeRegExp extends IdScriptableObject {
         int nextSourcePosition = 0;
         for (ExecResult result : results) {
             long resultLength = result.matches.size();
-            long nCaptures = Math.max(resultLength - 1, 0);
             String matched = result.matches.get(0);
             int matchLength = matched.length();
             double positionDbl = result.index;
@@ -3668,7 +3673,7 @@ public class NativeRegExp extends IdScriptableObject {
                             position,
                             s,
                             namedCaptures,
-                            replaceValue);
+                            functionalReplace ? replaceValue : replaceOps);
 
             if (position >= nextSourcePosition) {
                 accumulatedResult.append(s.substring(nextSourcePosition, position));
@@ -3722,8 +3727,13 @@ public class NativeRegExp extends IdScriptableObject {
         int lengthS = s.length();
         Object replaceValue = args.length > 1 ? args[1] : Undefined.instance;
         boolean functionalReplace = replaceValue instanceof Callable;
+        List<ReplacementOperation> replaceOps;
         if (!functionalReplace) {
-            replaceValue = ScriptRuntime.toString(replaceValue);
+            replaceOps =
+                    AbstractEcmaStringOperations.buildReplacementList(
+                            ScriptRuntime.toString(replaceValue));
+        } else {
+            replaceOps = List.of();
         }
         String flags = ScriptRuntime.toString(ScriptRuntime.getObjectProp(thisObj, "flags", cx));
         boolean global = flags.indexOf('g') != -1;
@@ -3794,7 +3804,7 @@ public class NativeRegExp extends IdScriptableObject {
                             position,
                             s,
                             namedCaptures,
-                            replaceValue);
+                            functionalReplace ? replaceValue : replaceOps);
 
             if (position >= nextSourcePosition) {
                 accumulatedResult.append(s.substring(nextSourcePosition, position));
@@ -3853,7 +3863,7 @@ public class NativeRegExp extends IdScriptableObject {
                     position,
                     captures,
                     namedCaptures,
-                    (String) replaceValue);
+                    (List<ReplacementOperation>) replaceValue);
         }
     }
 
@@ -3870,10 +3880,10 @@ public class NativeRegExp extends IdScriptableObject {
 
         if (functionalReplace) {
             Object[] replacerArgs =
-                    new Object[captures.size() + (Undefined.isUndefined(namedCaptures) ? 3 : 4)];
+                    new Object[captures.size() + (Undefined.isUndefined(namedCaptures) ? 2 : 3)];
             replacerArgs[0] = matched;
             int i = 1;
-            for (; i <= captures.size(); i++) {
+            for (; i < captures.size(); i++) {
                 var capture = captures.get(i);
                 replacerArgs[i] = capture == null ? Undefined.instance : capture;
             }
@@ -3901,7 +3911,7 @@ public class NativeRegExp extends IdScriptableObject {
                     position,
                     captures,
                     namedCaptures,
-                    (String) replaceValue);
+                    (List<ReplacementOperation>) replaceValue);
         }
     }
 
