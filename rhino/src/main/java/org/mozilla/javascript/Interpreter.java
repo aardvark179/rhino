@@ -1342,6 +1342,7 @@ public final class Interpreter extends Icode implements Evaluator {
         // It is also used for continuation restart in which case
         // it holds ContinuationJump
 
+        final Object oldFrame = cx.lastInterpreterFrame;
         final boolean instructionCounting = cx.instructionThreshold != 0;
 
         int indexReg = -1;
@@ -1353,221 +1354,218 @@ public final class Interpreter extends Icode implements Evaluator {
         // catch bugs with using indeReg to access array elements before
         // initializing indexReg.
 
-        GeneratorState generatorState = null;
-        if (throwable != null) {
-            if (throwable instanceof GeneratorState) {
-                generatorState = (GeneratorState) throwable;
+        try {
+            GeneratorState generatorState = null;
+            if (throwable != null) {
+                if (throwable instanceof GeneratorState) {
+                    generatorState = (GeneratorState) throwable;
 
-                // reestablish this call frame
-                enterFrame(cx, frame, ScriptRuntime.emptyArgs, true);
-                throwable = null;
-            } else if (!(throwable instanceof ContinuationJump)) {
-                // It should be continuation
-                Kit.codeBug();
-            }
-        }
-
-        Object interpreterResult = null;
-        double interpreterResultDbl = 0.0;
-
-        StateLoop:
-        for (; ; ) {
-
-            Withoutexceptions:
-            try {
-
-                if (throwable != null) {
-                    // Need to return both 'frame' and 'throwable' from
-                    // 'processThrowable', so just added a 'throwable'
-                    // member in 'frame'.
-                    frame = processThrowable(cx, throwable, frame, indexReg, instructionCounting);
-                    throwable = frame.throwable;
-                    frame.throwable = null;
-                } else {
-                    if (generatorState == null && frame.frozen) Kit.codeBug();
-                }
-
-                InterpreterResult result =
-                        interpretFunction(
-                                cx,
-                                frame,
-                                throwable,
-                                generatorState,
-                                indexReg,
-                                instructionCounting);
-                if (result instanceof StateContinueResult) {
-                    StateContinueResult scr = (StateContinueResult) result;
-                    frame = scr.frame;
-                    indexReg = scr.indexReg;
-                    continue StateLoop;
-                } else if (result instanceof StateBreakResult) {
-                    StateBreakResult sbr = (StateBreakResult) result;
-                    frame = sbr.frame;
-                    interpreterResult = frame.result;
-                    interpreterResultDbl = frame.resultDbl;
-                    break StateLoop;
-                } else if (result instanceof YieldResult) {
-                    return ((YieldResult) result).yielding;
-                } else if (result instanceof ThrowableResult) {
-                    ThrowableResult tr = (ThrowableResult) result;
-                    frame = tr.frame;
-                    throwable = tr.throwable;
-                    break Withoutexceptions;
-                } else {
+                    // reestablish this call frame
+                    enterFrame(cx, frame, ScriptRuntime.emptyArgs, true);
+                    throwable = null;
+                } else if (!(throwable instanceof ContinuationJump)) {
+                    // It should be continuation
                     Kit.codeBug();
                 }
-            } // end of interpreter withoutExceptions: try
-            catch (Throwable ex) {
-                if (throwable != null) {
-                    // This is serious bug and it is better to track it ASAP
-                    ex.printStackTrace(System.err);
-                    throw new IllegalStateException();
-                }
-                throwable = ex;
             }
 
-            // This should be reachable only after above catch or from
-            // finally when it needs to propagate exception or from
-            // explicit throw
-            if (throwable == null) Kit.codeBug();
+            Object interpreterResult = null;
+            double interpreterResultDbl = 0.0;
 
-            // Exception type
-            final int EX_CATCH_STATE = 2; // Can execute JS catch
-            final int EX_FINALLY_STATE = 1; // Can execute JS finally
-            final int EX_NO_JS_STATE = 0; // Terminate JS execution
-
-            int exState;
-            ContinuationJump cjump = null;
-
-            if (generatorState != null
-                    && generatorState.operation == NativeGenerator.GENERATOR_CLOSE
-                    && throwable == generatorState.value) {
-                exState = EX_FINALLY_STATE;
-            } else if (throwable instanceof JavaScriptException) {
-                exState = EX_CATCH_STATE;
-            } else if (throwable instanceof EcmaError) {
-                // an offical ECMA error object,
-                exState = EX_CATCH_STATE;
-            } else if (throwable instanceof EvaluatorException) {
-                exState = EX_CATCH_STATE;
-            } else if (throwable instanceof ContinuationPending) {
-                exState = EX_NO_JS_STATE;
-            } else if (throwable instanceof RuntimeException) {
-                exState =
-                        cx.hasFeature(Context.FEATURE_ENHANCED_JAVA_ACCESS)
-                                ? EX_CATCH_STATE
-                                : EX_FINALLY_STATE;
-            } else if (throwable instanceof Error) {
-                exState =
-                        cx.hasFeature(Context.FEATURE_ENHANCED_JAVA_ACCESS)
-                                ? EX_CATCH_STATE
-                                : EX_NO_JS_STATE;
-            } else if (throwable instanceof ContinuationJump) {
-                // It must be ContinuationJump
-                exState = EX_FINALLY_STATE;
-                cjump = (ContinuationJump) throwable;
-            } else {
-                exState =
-                        cx.hasFeature(Context.FEATURE_ENHANCED_JAVA_ACCESS)
-                                ? EX_CATCH_STATE
-                                : EX_FINALLY_STATE;
-            }
-
-            if (instructionCounting) {
-                try {
-                    addInstructionCount(cx, frame, EXCEPTION_COST);
-                } catch (RuntimeException ex) {
-                    throwable = ex;
-                    exState = EX_FINALLY_STATE;
-                } catch (Error ex) {
-                    // Error from instruction counting
-                    //     => unconditionally terminate JS
-                    throwable = ex;
-                    cjump = null;
-                    exState = EX_NO_JS_STATE;
-                }
-            }
-            if (frame.debuggerFrame != null && throwable instanceof RuntimeException) {
-                // Call debugger only for RuntimeException
-                RuntimeException rex = (RuntimeException) throwable;
-                try {
-                    frame.debuggerFrame.onExceptionThrown(cx, rex);
-                } catch (Throwable ex) {
-                    // Any exception from debugger
-                    //     => unconditionally terminate JS
-                    throwable = ex;
-                    cjump = null;
-                    exState = EX_NO_JS_STATE;
-                }
-            }
-
+            StateLoop:
             for (; ; ) {
-                if (exState != EX_NO_JS_STATE) {
-                    boolean onlyFinally = (exState != EX_CATCH_STATE);
-                    indexReg = getExceptionHandler(frame, onlyFinally);
-                    if (indexReg >= 0) {
-                        // We caught an exception, restart the loop
-                        // with exception pending the processing at the loop
-                        // start
+
+                Withoutexceptions:
+                try {
+
+                    if (throwable != null) {
+                        // Need to return both 'frame' and 'throwable' from
+                        // 'processThrowable', so just added a 'throwable'
+                        // member in 'frame'.
+                        frame =
+                                processThrowable(
+                                        cx, throwable, frame, indexReg, instructionCounting);
+                        throwable = frame.throwable;
+                        frame.throwable = null;
+                    } else {
+                        if (generatorState == null && frame.frozen) Kit.codeBug();
+                    }
+
+                    InterpreterResult result =
+                            interpretFunction(
+                                    cx,
+                                    frame,
+                                    throwable,
+                                    generatorState,
+                                    indexReg,
+                                    instructionCounting);
+                    if (result instanceof StateContinueResult) {
+                        StateContinueResult scr = (StateContinueResult) result;
+                        frame = scr.frame;
+                        indexReg = scr.indexReg;
+                        continue StateLoop;
+                    } else if (result instanceof StateBreakResult) {
+                        StateBreakResult sbr = (StateBreakResult) result;
+                        frame = sbr.frame;
+                        interpreterResult = frame.result;
+                        interpreterResultDbl = frame.resultDbl;
+                        break StateLoop;
+                    } else if (result instanceof YieldResult) {
+                        return ((YieldResult) result).yielding;
+                    } else if (result instanceof ThrowableResult) {
+                        ThrowableResult tr = (ThrowableResult) result;
+                        frame = tr.frame;
+                        throwable = tr.throwable;
+                        break Withoutexceptions;
+                    } else {
+                        Kit.codeBug();
+                    }
+                } // end of interpreter withoutExceptions: try
+                catch (Throwable ex) {
+                    if (throwable != null) {
+                        // This is serious bug and it is better to track it ASAP
+                        ex.printStackTrace(System.err);
+                        throw new IllegalStateException();
+                    }
+                    throwable = ex;
+                }
+
+                // This should be reachable only after above catch or from
+                // finally when it needs to propagate exception or from
+                // explicit throw
+                if (throwable == null) Kit.codeBug();
+
+                // Exception type
+                final int EX_CATCH_STATE = 2; // Can execute JS catch
+                final int EX_FINALLY_STATE = 1; // Can execute JS finally
+                final int EX_NO_JS_STATE = 0; // Terminate JS execution
+
+                int exState;
+                ContinuationJump cjump = null;
+
+                if (generatorState != null
+                        && generatorState.operation == NativeGenerator.GENERATOR_CLOSE
+                        && throwable == generatorState.value) {
+                    exState = EX_FINALLY_STATE;
+                } else if (throwable instanceof JavaScriptException) {
+                    exState = EX_CATCH_STATE;
+                } else if (throwable instanceof EcmaError) {
+                    // an offical ECMA error object,
+                    exState = EX_CATCH_STATE;
+                } else if (throwable instanceof EvaluatorException) {
+                    exState = EX_CATCH_STATE;
+                } else if (throwable instanceof ContinuationPending) {
+                    exState = EX_NO_JS_STATE;
+                } else if (throwable instanceof RuntimeException) {
+                    exState =
+                            cx.hasFeature(Context.FEATURE_ENHANCED_JAVA_ACCESS)
+                                    ? EX_CATCH_STATE
+                                    : EX_FINALLY_STATE;
+                } else if (throwable instanceof Error) {
+                    exState =
+                            cx.hasFeature(Context.FEATURE_ENHANCED_JAVA_ACCESS)
+                                    ? EX_CATCH_STATE
+                                    : EX_NO_JS_STATE;
+                } else if (throwable instanceof ContinuationJump) {
+                    // It must be ContinuationJump
+                    exState = EX_FINALLY_STATE;
+                    cjump = (ContinuationJump) throwable;
+                } else {
+                    exState =
+                            cx.hasFeature(Context.FEATURE_ENHANCED_JAVA_ACCESS)
+                                    ? EX_CATCH_STATE
+                                    : EX_FINALLY_STATE;
+                }
+
+                if (instructionCounting) {
+                    try {
+                        addInstructionCount(cx, frame, EXCEPTION_COST);
+                    } catch (RuntimeException ex) {
+                        throwable = ex;
+                        exState = EX_FINALLY_STATE;
+                    } catch (Error ex) {
+                        // Error from instruction counting
+                        //     => unconditionally terminate JS
+                        throwable = ex;
+                        cjump = null;
+                        exState = EX_NO_JS_STATE;
+                    }
+                }
+                if (frame.debuggerFrame != null && throwable instanceof RuntimeException) {
+                    // Call debugger only for RuntimeException
+                    RuntimeException rex = (RuntimeException) throwable;
+                    try {
+                        frame.debuggerFrame.onExceptionThrown(cx, rex);
+                    } catch (Throwable ex) {
+                        // Any exception from debugger
+                        //     => unconditionally terminate JS
+                        throwable = ex;
+                        cjump = null;
+                        exState = EX_NO_JS_STATE;
+                    }
+                }
+
+                for (; ; ) {
+                    if (exState != EX_NO_JS_STATE) {
+                        boolean onlyFinally = (exState != EX_CATCH_STATE);
+                        indexReg = getExceptionHandler(frame, onlyFinally);
+                        if (indexReg >= 0) {
+                            // We caught an exception, restart the loop
+                            // with exception pending the processing at the loop
+                            // start
+                            continue StateLoop;
+                        }
+                    }
+                    // No allowed exception handlers in this frame, unwind
+                    // to parent and try to look there
+
+                    exitFrame(cx, frame, throwable);
+
+                    frame = frame.parentFrame;
+                    if (frame == null) {
+                        break;
+                    }
+                    if (cjump != null && Objects.equals(cjump.branchFrame, frame)) {
+                        // Continuation branch point was hit,
+                        // restart the state loop to reenter continuation
+                        indexReg = -1;
                         continue StateLoop;
                     }
                 }
-                // No allowed exception handlers in this frame, unwind
-                // to parent and try to look there
 
-                exitFrame(cx, frame, throwable);
+                // No more frames, rethrow the exception or deal with continuation
+                if (cjump != null) {
+                    if (cjump.branchFrame != null) {
+                        // The above loop should locate the top frame
+                        Kit.codeBug();
+                    }
+                    if (cjump.capturedFrame != null) {
+                        // Restarting detached continuation
+                        indexReg = -1;
+                        continue StateLoop;
+                    }
+                    // Return continuation result to the caller
+                    interpreterResult = cjump.result;
+                    interpreterResultDbl = cjump.resultDbl;
+                    throwable = null;
+                }
+                break StateLoop;
+            } // end of StateLoop: for(;;)
 
-                frame = frame.parentFrame;
-                if (frame == null) {
-                    break;
+            if (throwable != null) {
+                if (throwable instanceof RuntimeException) {
+                    throw (RuntimeException) throwable;
                 }
-                if (cjump != null && Objects.equals(cjump.branchFrame, frame)) {
-                    // Continuation branch point was hit,
-                    // restart the state loop to reenter continuation
-                    indexReg = -1;
-                    continue StateLoop;
-                }
+                // Must be instance of Error or code bug
+                throw (Error) throwable;
             }
 
-            // No more frames, rethrow the exception or deal with continuation
-            if (cjump != null) {
-                if (cjump.branchFrame != null) {
-                    // The above loop should locate the top frame
-                    Kit.codeBug();
-                }
-                if (cjump.capturedFrame != null) {
-                    // Restarting detached continuation
-                    indexReg = -1;
-                    continue StateLoop;
-                }
-                // Return continuation result to the caller
-                interpreterResult = cjump.result;
-                interpreterResultDbl = cjump.resultDbl;
-                throwable = null;
-            }
-            break StateLoop;
-        } // end of StateLoop: for(;;)
-
-        // Do cleanups/restorations before the final return or throw
-
-        if (frame != null) {
-            cx.lastInterpreterFrame =
-                    frame.parentFrame == null ? frame.previousInterpreterFrame : frame.parentFrame;
-        } else {
-            cx.lastInterpreterFrame = null;
+            return (interpreterResult != DOUBLE_MARK)
+                    ? interpreterResult
+                    : ScriptRuntime.wrapNumber(interpreterResultDbl);
+        } finally {
+            cx.lastInterpreterFrame = oldFrame;
         }
-
-        if (throwable != null) {
-            if (throwable instanceof RuntimeException) {
-                throw (RuntimeException) throwable;
-            }
-            // Must be instance of Error or code bug
-            throw (Error) throwable;
-        }
-
-        return (interpreterResult != DOUBLE_MARK)
-                ? interpreterResult
-                : ScriptRuntime.wrapNumber(interpreterResultDbl);
     }
 
     private static class InterpreterState {
@@ -4172,7 +4170,6 @@ public final class Interpreter extends Icode implements Evaluator {
             stack[state.stackTop] = !res;
             return null;
         }
-
     }
 
     private static boolean doEquals(InterpreterState state, Object[] stack, double[] sDbl) {
