@@ -109,7 +109,8 @@ public class LambdaAccessorSlot extends Slot {
     }
 
     @Override
-    public boolean setValue(Object value, Scriptable scope, Scriptable start, boolean isThrow) {
+    public boolean setValue(
+            Object value, ScriptableObject owner, Scriptable start, boolean isThrow) {
         if (setter == null) {
             if (getter != null) {
                 throwNoSetterException(start, value);
@@ -120,7 +121,7 @@ public class LambdaAccessorSlot extends Slot {
             return true;
         }
 
-        return super.setValue(value, start, start, isThrow);
+        return super.setValue(value, owner, start, isThrow);
     }
 
     @Override
