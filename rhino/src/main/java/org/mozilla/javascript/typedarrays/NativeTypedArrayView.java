@@ -26,6 +26,7 @@ import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ExternalArrayData;
 import org.mozilla.javascript.Function;
 import org.mozilla.javascript.IteratorLikeIterable;
+import org.mozilla.javascript.KnownBuiltInFunction;
 import org.mozilla.javascript.LambdaConstructor;
 import org.mozilla.javascript.NativeArray;
 import org.mozilla.javascript.NativeArrayIterator;
@@ -186,6 +187,7 @@ public abstract class NativeTypedArrayView<T> extends NativeArrayBufferView
     }
 
     private static final Object TYPED_ARRAY_TAG = "%TypedArray.prototype%";
+    private static final Object TYPED_ITERATOR_TAG = "%TypedArray.prototype[Symbol.iterator]%";
 
     // Actual functions
 
@@ -244,7 +246,8 @@ public abstract class NativeTypedArrayView<T> extends NativeArrayBufferView
             defineMethod(ta, s, "toReversed", 0, NativeTypedArrayView::js_toReversed);
             defineMethod(ta, s, "toSorted", 1, NativeTypedArrayView::js_toSorted);
             defineMethod(ta, s, "toString", 0, NativeTypedArrayView::js_toString);
-            defineMethod(ta, s, "values", 0, NativeTypedArrayView::js_values);
+            defKnownBuiltInOnProto(
+                    ta, TYPED_ITERATOR_TAG, s, "values", 0, NativeTypedArrayView::js_values);
             defineMethod(ta, s, "with", 2, NativeTypedArrayView::js_with);
             defineMethod(ta, s, SymbolKey.ITERATOR, 0, NativeTypedArrayView::js_iterator);
 
@@ -295,6 +298,17 @@ public abstract class NativeTypedArrayView<T> extends NativeArrayBufferView
             int length,
             SerializableCallable target) {
         typedArray.definePrototypeMethod(scope, key, length, target, DONTENUM, DONTENUM | READONLY);
+    }
+
+    private static void defKnownBuiltInOnProto(
+            LambdaConstructor constructor,
+            Object tag,
+            Scriptable scope,
+            String name,
+            int length,
+            SerializableCallable target) {
+        constructor.defineKnownBuiltInPrototypeMethod(
+                tag, scope, name, length, null, target, DONTENUM, DONTENUM | READONLY);
     }
 
     /** Returns <code>true</code>, if the index is wrong. */
@@ -1269,20 +1283,17 @@ public abstract class NativeTypedArrayView<T> extends NativeArrayBufferView
 
         List<Object> listFromIterator = null;
         Object iteratorProp = ScriptableObject.getProperty(items, SymbolKey.ITERATOR);
-        // Optimization: When items is an instance of java.util.List and also have an iterator,
-        // we don't use the iterator to avoid copying the contents to determine the length.
-        // However, with this the test262 test
-        // built-ins/TypedArray/from/iterated-array-changed-by-tonumber.js
-        // doesn't pass.
-        if (!(iteratorProp == Scriptable.NOT_FOUND)
-                && !(items instanceof List) // NativeArray and NativeTypedArrayView
-                && !Undefined.isUndefined(iteratorProp)) {
+        if (!isKnownIterator(items, iteratorProp)) {
             final Object iterator = ScriptRuntime.callIterator(items, cx, scope);
             if (!Undefined.isUndefined(iterator)) {
                 IteratorLikeIterable it = new IteratorLikeIterable(cx, scope, iterator);
-                listFromIterator = new ArrayList<>();
-                for (Object temp : it) {
-                    listFromIterator.add(temp);
+                try {
+                    listFromIterator = new ArrayList<>();
+                    for (Object temp : it) {
+                        listFromIterator.add(temp);
+                    }
+                } finally {
+                    it.close();
                 }
             }
         }
@@ -1326,6 +1337,24 @@ public abstract class NativeTypedArrayView<T> extends NativeArrayBufferView
         }
 
         return result;
+    }
+
+    private static boolean isKnownIterator(Scriptable items, Object iteratorProp) {
+        if (iteratorProp == NOT_FOUND || Undefined.isUndefined(iteratorProp)) {
+            // No iterator is a known iterator.
+            return true;
+        } else if (items instanceof NativeArray && NativeArray.isBuiltInIterator(iteratorProp)) {
+            return true;
+        } else if (items instanceof NativeTypedArrayView && isBuiltInIterator(iteratorProp)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    public static boolean isBuiltInIterator(Object iterator) {
+        return iterator instanceof KnownBuiltInFunction
+                && ((KnownBuiltInFunction) iterator).getTag() == TYPED_ITERATOR_TAG;
     }
 
     private static Object js_of(Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {

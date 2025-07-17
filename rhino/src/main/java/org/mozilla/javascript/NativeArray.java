@@ -47,6 +47,7 @@ public class NativeArray extends ScriptableObject implements List {
     static final long MAX_ARRAY_INDEX = 0xfffffffel;
 
     private static final Object ARRAY_TAG = "Array";
+    private static final Object ARRAY_ITERATOR_TAG = "Array_iterator";
     private static final String CLASS_NAME = "Array";
     private static final Long NEGATIVE_ONE = Long.valueOf(-1);
     private static final String[] UNSCOPABLES = {
@@ -141,7 +142,8 @@ public class NativeArray extends ScriptableObject implements List {
         defineMethodOnPrototype(ctor, scope, "reduceRight", 1, NativeArray::js_reduceRight);
         defineMethodOnPrototype(ctor, scope, "keys", 0, NativeArray::js_keys);
         defineMethodOnPrototype(ctor, scope, "entries", 0, NativeArray::js_entries);
-        defineMethodOnPrototype(ctor, scope, "values", 0, NativeArray::js_values);
+        defKnownBuiltInOnProto(
+                ctor, ARRAY_ITERATOR_TAG, scope, "values", 0, NativeArray::js_values);
         defineMethodOnPrototype(ctor, scope, "toReversed", 0, NativeArray::js_toReversed);
         defineMethodOnPrototype(ctor, scope, "toSorted", 1, NativeArray::js_toSorted);
         defineMethodOnPrototype(ctor, scope, "toSpliced", 2, NativeArray::js_toSpliced);
@@ -174,6 +176,17 @@ public class NativeArray extends ScriptableObject implements List {
                 scope, name, length, null, target, DONTENUM, DONTENUM | READONLY);
     }
 
+    private static void defKnownBuiltInOnProto(
+            LambdaConstructor constructor,
+            Object tag,
+            Scriptable scope,
+            String name,
+            int length,
+            SerializableCallable target) {
+        constructor.defineKnownBuiltInPrototypeMethod(
+                tag, scope, name, length, null, target, DONTENUM, DONTENUM | READONLY);
+    }
+
     private static void defineMethodOnPrototype(
             LambdaConstructor constructor,
             Scriptable scope,
@@ -202,6 +215,11 @@ public class NativeArray extends ScriptableObject implements List {
                 },
                 DONTENUM,
                 DONTENUM | READONLY);
+    }
+
+    public static boolean isBuiltInIterator(Object iterator) {
+        return iterator instanceof KnownBuiltInFunction
+                && ((KnownBuiltInFunction) iterator).getTag() == ARRAY_ITERATOR_TAG;
     }
 
     static int getMaximumInitialCapacity() {
