@@ -2926,6 +2926,41 @@ public final class Interpreter extends Icode implements Evaluator {
         if (fun instanceof InterpretedFunction) {
             InterpretedFunction ifun = (InterpretedFunction) fun;
             if (frame.fnOrScript.securityDomain == ifun.securityDomain) {
+                // Increment the call count
+                ifun.invocationCount++;
+
+                // Check if function compilation is enabled and if this function should be compiled
+                if (cx.hasFeature(Context.FEATURE_FUNCTION_COMPILATION) && ifun.shouldCompile()) {
+                    // Only try to compile once per function
+                    synchronized (ifun) {
+                        // Get the function compiler
+                        Context.FunctionCompiler compiler = cx.getFunctionCompiler();
+                        if (compiler != null) {
+                            // Try to compile the function
+                            Callable compiledFunction = compiler.compile(ifun);
+                            if (compiledFunction != null) {
+                                // Mark as compiled before replacing the function
+                                ifun.isCompiled = true;
+                                // Replace the function with the compiled version
+                                fun = compiledFunction;
+                                // Proceed to call the compiled function
+                                stack[stackTop] = fun;
+                                cx.lastInterpreterFrame = frame;
+                                frame.savedCallOp = op;
+                                frame.savedStackTop = stackTop;
+                                stack[stackTop] = fun.call(
+                                        cx,
+                                        calleeScope,
+                                        funThisObj,
+                                        getArgsArray(stack, sDbl, stackTop + 1, indexReg));
+                                return new ContinueLoop(frame, stackTop, indexReg);
+                            }
+                            // If compilation fails, the function will remain uncompiled
+                            // and we'll try again on the next invocation
+                            // TODO: should we attempt a few times and "give up"?
+                        }
+                    }
+                }
                 CallFrame callParentFrame = frame;
                 if (op == Icode_TAIL_CALL) {
                     // In principle tail call can re-use the current
