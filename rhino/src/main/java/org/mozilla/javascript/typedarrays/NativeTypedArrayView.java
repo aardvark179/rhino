@@ -1315,18 +1315,38 @@ public abstract class NativeTypedArrayView<T> extends NativeArrayBufferView
             throw ScriptRuntime.typeErrorById("msg.typed.array.length.too.small");
         }
 
-        for (int k = 0; k < size; k++) {
+        int start = 0;
+        if (listFromIterator != null) {
+            fillFromValues(cx, scope, mapFn, mapFnThisArg, listFromIterator, size, typedArray, start);
+        } else if (items instanceof List<?>) {
+            fillFromList(cx, scope, items, mapFn, mapFnThisArg, size, typedArray, start);
+        } else {
+            extracted(cx, scope, items, mapFn, mapFnThisArg, size, typedArray, start);
+        }
+
+        return result;
+    }
+
+    private static void fillFromScriptbale(Context cx, Scriptable scope, final Scriptable items, Function mapFn,
+            Scriptable mapFnThisArg, int size, NativeTypedArrayView<?> typedArray, int start) {
+        for (int k = start; k < size; k++) {
+            Object temp = ScriptRuntime.getObjectIndex(items, k, cx, scope);
+            if (mapFn != null) {
+                temp = mapFn.call(cx, scope, mapFnThisArg, new Object[] {temp, k});
+            }
+
+            typedArray.setArrayElement(k, temp);
+        }
+    }
+
+    private static void fillFromList(Context cx, Scriptable scope, final List<?> items, Function mapFn,
+            Scriptable mapFnThisArg, int size, NativeTypedArrayView<?> typedArray, int start) {
+        for (int k = start; k < size; k++) {
             Object temp;
-            if (listFromIterator != null) {
-                temp = listFromIterator.get(k);
-            } else if (items instanceof List<?>) {
-                try {
-                    temp = ((List<?>) items).get(k);
-                } catch (IndexOutOfBoundsException e) {
-                    temp = Undefined.instance;
-                }
-            } else {
-                temp = ScriptRuntime.getObjectIndex(items, k, cx, scope);
+            try {
+                temp = ((List<?>) items).get(k);
+            } catch (IndexOutOfBoundsException e) {
+                temp = Undefined.instance;
             }
 
             if (mapFn != null) {
@@ -1335,8 +1355,18 @@ public abstract class NativeTypedArrayView<T> extends NativeArrayBufferView
 
             typedArray.setArrayElement(k, temp);
         }
+    }
 
-        return result;
+    private static void fillFromValues(Context cx, Scriptable scope, Function mapFn, Scriptable mapFnThisArg,
+            List<Object> listFromIterator, int size, NativeTypedArrayView<?> typedArray, int start) {
+        for (int k = start; k < size; k++) {
+            Object temp = listFromIterator.get(k);
+            if (mapFn != null) {
+                temp = mapFn.call(cx, scope, mapFnThisArg, new Object[] {temp, k});
+            }
+
+            typedArray.setArrayElement(k, temp);
+        }
     }
 
     private static boolean isKnownIterator(Scriptable items, Object iteratorProp) {
