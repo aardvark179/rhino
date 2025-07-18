@@ -1284,18 +1284,7 @@ public abstract class NativeTypedArrayView<T> extends NativeArrayBufferView
         List<Object> listFromIterator = null;
         Object iteratorProp = ScriptableObject.getProperty(items, SymbolKey.ITERATOR);
         if (!isKnownIterator(items, iteratorProp)) {
-            final Object iterator = ScriptRuntime.callIterator(items, cx, scope);
-            if (!Undefined.isUndefined(iterator)) {
-                IteratorLikeIterable it = new IteratorLikeIterable(cx, scope, iterator);
-                try {
-                    listFromIterator = new ArrayList<>();
-                    for (Object temp : it) {
-                        listFromIterator.add(temp);
-                    }
-                } finally {
-                    it.close();
-                }
-            }
+            listFromIterator = makeListFromIterator(cx, scope, items);
         }
 
         int size;
@@ -1315,19 +1304,35 @@ public abstract class NativeTypedArrayView<T> extends NativeArrayBufferView
             throw ScriptRuntime.typeErrorById("msg.typed.array.length.too.small");
         }
 
-        int start = 0;
         if (listFromIterator != null) {
-            fillFromValues(cx, scope, mapFn, mapFnThisArg, listFromIterator, size, typedArray, start);
+            fillFromValues(cx, scope, mapFn, mapFnThisArg, listFromIterator, size, typedArray, 0);
         } else if (items instanceof List<?>) {
-            fillFromList(cx, scope, items, mapFn, mapFnThisArg, size, typedArray, start);
+            fillFromList(cx, scope, (List<?>) items, mapFn, mapFnThisArg, size, typedArray, 0);
         } else {
-            extracted(cx, scope, items, mapFn, mapFnThisArg, size, typedArray, start);
+            fillFromScriptbale(cx, scope, items, mapFn, mapFnThisArg, size, typedArray, 0);
         }
 
         return result;
     }
 
-    private static void fillFromScriptbale(Context cx, Scriptable scope, final Scriptable items, Function mapFn,
+    private static List<Object> makeListFromIterator(Context cx, Scriptable scope, final Scriptable items) {
+        final Object iterator = ScriptRuntime.callIterator(items, cx, scope);
+        if (!Undefined.isUndefined(iterator)) {
+            IteratorLikeIterable it = new IteratorLikeIterable(cx, scope, iterator);
+            try {
+                var listFromIterator = new ArrayList<>();
+                for (Object temp : it) {
+                    listFromIterator.add(temp);
+                }
+                return listFromIterator;
+            } finally {
+                it.close();
+            }
+        }
+        return null;
+    }
+
+    private static void fillFromScriptbale(Context cx, Scriptable scope, Scriptable items, Function mapFn,
             Scriptable mapFnThisArg, int size, NativeTypedArrayView<?> typedArray, int start) {
         for (int k = start; k < size; k++) {
             Object temp = ScriptRuntime.getObjectIndex(items, k, cx, scope);
@@ -1339,14 +1344,19 @@ public abstract class NativeTypedArrayView<T> extends NativeArrayBufferView
         }
     }
 
-    private static void fillFromList(Context cx, Scriptable scope, final List<?> items, Function mapFn,
-            Scriptable mapFnThisArg, int size, NativeTypedArrayView<?> typedArray, int start) {
+    private static void fillFromList(Context cx, Scriptable scope, List<?> items, Function mapFn,
+        Scriptable mapFnThisArg, int size, NativeTypedArrayView<?> typedArray, int start) {
         for (int k = start; k < size; k++) {
             Object temp;
             try {
-                temp = ((List<?>) items).get(k);
+                temp = items.get(k);
             } catch (IndexOutOfBoundsException e) {
                 temp = Undefined.instance;
+            }
+
+            if (!(temp instanceof Number)) {
+                deoptToValues(cx, scope, mapFn, mapFnThisArg, items, size, typedArray, k);
+                return;
             }
 
             if (mapFn != null) {
@@ -1355,6 +1365,19 @@ public abstract class NativeTypedArrayView<T> extends NativeArrayBufferView
 
             typedArray.setArrayElement(k, temp);
         }
+    }
+
+    private static void deoptToValues(Context cx, Scriptable scope, Function mapFn, Scriptable mapFnThisArg,
+        List<?> items, int size, NativeTypedArrayView<?> typedArray, int start) {
+        var list = new ArrayList<Object>(size);
+        // Copy the remained of values into a temporary-list to avoid side effects.
+        for (int i = 0; i < start; i++) {
+            list.add(null);
+        }
+        for (int i = start; i < size; i++) {
+            list.add(items.get(i));
+        }
+        fillFromValues(cx, scope, mapFn, mapFnThisArg, list, size, typedArray, start);
     }
 
     private static void fillFromValues(Context cx, Scriptable scope, Function mapFn, Scriptable mapFnThisArg,
