@@ -4885,6 +4885,7 @@ public class ScriptRuntime {
                 funObj,
                 Context.getCurrentContext(),
                 scope,
+                null,
                 args,
                 false,
                 isStrict,
@@ -4907,7 +4908,7 @@ public class ScriptRuntime {
             boolean argsHasRest,
             Scriptable homeObject) {
         return new NativeCall(
-                funObj, cx, scope, args, false, isStrict, argsHasRest, true, homeObject);
+                funObj, cx, scope, null, args, false, isStrict, argsHasRest, true, homeObject);
     }
 
     public static Scriptable createFunctionActivation(
@@ -4923,6 +4924,7 @@ public class ScriptRuntime {
                 funObj,
                 cx,
                 scope,
+                null,
                 args,
                 false,
                 isStrict,
@@ -4942,6 +4944,7 @@ public class ScriptRuntime {
                 funObj,
                 Context.getCurrentContext(),
                 scope,
+                null,
                 args,
                 true,
                 isStrict,
@@ -4964,7 +4967,7 @@ public class ScriptRuntime {
             boolean argsHasRest,
             Scriptable homeObject) {
         return new NativeCall(
-                funObj, cx, scope, args, true, isStrict, argsHasRest, true, homeObject);
+                funObj, cx, scope, null, args, true, isStrict, argsHasRest, true, homeObject);
     }
 
     public static Scriptable createArrowFunctionActivation(
@@ -4980,6 +4983,7 @@ public class ScriptRuntime {
                 funObj,
                 cx,
                 scope,
+                null,
                 args,
                 true,
                 isStrict,

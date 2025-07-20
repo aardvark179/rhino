@@ -30,6 +30,7 @@ public final class NativeCall extends IdScriptableObject {
             NativeFunction function,
             Context cx,
             Scriptable scope,
+            MapShape shape,
             Object[] args,
             boolean isArrow,
             boolean isStrict,

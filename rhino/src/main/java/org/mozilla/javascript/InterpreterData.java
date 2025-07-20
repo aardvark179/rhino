@@ -62,6 +62,7 @@ final class InterpreterData implements Serializable, DebuggableScript {
 
     int itsMaxVars;
     int itsMaxLocals;
+    MapShape localVarMapShape;
     int itsMaxStack;
     int itsMaxFrameArray;
 
