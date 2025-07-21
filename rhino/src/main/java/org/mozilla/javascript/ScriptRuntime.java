@@ -4915,6 +4915,7 @@ public class ScriptRuntime {
             NativeFunction funObj,
             Context cx,
             Scriptable scope,
+            MapShape shape,
             Object[] args,
             boolean isStrict,
             boolean argsHasRest,
@@ -4962,18 +4963,20 @@ public class ScriptRuntime {
             NativeFunction funObj,
             Context cx,
             Scriptable scope,
+            MapShape shape,
             Object[] args,
             boolean isStrict,
             boolean argsHasRest,
             Scriptable homeObject) {
         return new NativeCall(
-                funObj, cx, scope, null, args, true, isStrict, argsHasRest, true, homeObject);
+                funObj, cx, scope, shape, args, true, isStrict, argsHasRest, true, homeObject);
     }
 
     public static Scriptable createArrowFunctionActivation(
             NativeFunction funObj,
             Context cx,
             Scriptable scope,
+            MapShape shape,
             Object[] args,
             boolean isStrict,
             boolean argsHasRest,
@@ -4983,7 +4986,7 @@ public class ScriptRuntime {
                 funObj,
                 cx,
                 scope,
-                null,
+                shape,
                 args,
                 true,
                 isStrict,

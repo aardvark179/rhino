@@ -117,6 +117,7 @@ class BodyCodegen {
         cfw.addALoad(funObjLocal);
         cfw.addALoad(contextLocal);
         cfw.addALoad(variableObjectLocal);
+        cfw.add(ByteCode.ACONST_NULL);
         cfw.addALoad(argsLocal);
         cfw.addPush(scriptOrFn.isInStrictMode());
         cfw.addPush(scriptOrFn.hasRestParameter());
@@ -134,6 +135,7 @@ class BodyCodegen {
                 "(Lorg/mozilla/javascript/NativeFunction;"
                         + "Lorg/mozilla/javascript/Context;"
                         + "Lorg/mozilla/javascript/Scriptable;"
+                        + "Lorg/mozilla/javascript/MapShape;"
                         + "[Ljava/lang/Object;"
                         + "Z"
                         + "Z"
@@ -433,6 +435,7 @@ class BodyCodegen {
             cfw.addALoad(funObjLocal);
             cfw.addALoad(contextLocal);
             cfw.addALoad(variableObjectLocal);
+            cfw.add(ByteCode.ACONST_NULL);
             cfw.addALoad(argsLocal);
             cfw.addPush(scriptOrFn.isInStrictMode());
             cfw.addPush(scriptOrFn.hasRestParameter());
@@ -479,6 +482,7 @@ class BodyCodegen {
                     "(Lorg/mozilla/javascript/NativeFunction;"
                             + "Lorg/mozilla/javascript/Context;"
                             + "Lorg/mozilla/javascript/Scriptable;"
+                            + "Lorg/mozilla/javascript/MapShape;"
                             + "[Ljava/lang/Object;"
                             + "Z"
                             + "Z"
