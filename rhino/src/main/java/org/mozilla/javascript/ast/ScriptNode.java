@@ -9,7 +9,9 @@ package org.mozilla.javascript.ast;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.mozilla.javascript.MapShape;
 import org.mozilla.javascript.Node;
+import org.mozilla.javascript.ScriptableObject;
 import org.mozilla.javascript.Token;
 
 /**
@@ -33,6 +35,7 @@ public class ScriptNode extends Scope {
     private List<Symbol> symbols = new ArrayList<>(4);
     private int paramCount = 0;
     private String[] variableNames;
+    private MapShape variablesShape;
     private boolean[] isConsts;
 
     private Object compilerData;
@@ -239,6 +242,13 @@ public class ScriptNode extends Scope {
         return variableNames;
     }
 
+    public MapShape getParamAndVarShape() {
+        if (variablesShape == null) {
+            variablesShape = buildShape();
+        }
+        return variablesShape;
+    }
+
     public boolean[] getParamAndVarConst() {
         if (variableNames == null) codeBug();
         return isConsts;
@@ -309,6 +319,18 @@ public class ScriptNode extends Scope {
             isConsts[i] = symbol.getDeclType() == Token.CONST;
             symbol.setIndex(i);
         }
+    }
+
+    private MapShape buildShape() {
+        MapShape.Builder builder = new MapShape.Builder();
+        for (int i = 0; i < variableNames.length; i++) {
+            builder =
+                    builder.withSlot(
+                            variableNames[i],
+                            isConsts[i] ? ScriptableObject.CONST : ScriptableObject.PERMANENT);
+        }
+        var shape = builder.build();
+        return shape;
     }
 
     public Object getCompilerData() {
