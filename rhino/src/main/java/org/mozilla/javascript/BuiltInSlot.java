@@ -154,8 +154,7 @@ public class BuiltInSlot<T extends ScriptableObject> extends Slot {
         }
         if (owner == start) {
             try (var mutableMap = owner.getMapForCompoundOp()) {
-                return setter.apply(
-                    (T) this.value, value, mutableMap, owner, start, isThrow);
+                return setter.apply((T) this.value, value, mutableMap, owner, start, isThrow);
             }
         }
         return false;
@@ -197,15 +196,7 @@ public class BuiltInSlot<T extends ScriptableObject> extends Slot {
             int index) {
         try (var mutableMap = owner.getMapForCompoundOp()) {
             return propDescSetter.apply(
-                ((T) this.value),
-                this,
-                mutableMap,
-                owner,
-                id,
-                info,
-                checkValid,
-                key,
-                index);
+                    ((T) this.value), this, mutableMap, owner, id, info, checkValid, key, index);
         }
     }
 

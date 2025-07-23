@@ -60,7 +60,7 @@ public interface SlotMap extends Iterable<Slot> {
      * use of multiple Slot subclasses, this function is templatized.
      */
     default <S extends Slot> S compute(
-        SlotMapOwner owner, Object key, int index, SlotComputer<S> compute) {
+            SlotMapOwner owner, Object key, int index, SlotComputer<S> compute) {
         try (var mutableMap = owner.getMapForCompoundOp()) {
             return compute(owner, mutableMap, key, index, compute);
         }
