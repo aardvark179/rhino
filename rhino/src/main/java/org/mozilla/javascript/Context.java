@@ -2455,6 +2455,7 @@ public class Context implements Closeable {
         applicationClassLoader = loader;
     }
 
+    // TODO: default function compiler
     //    FunctionCompiler functionCompiler = null;
     FunctionCompiler functionCompiler = new IFnToClassCompiler();
 
