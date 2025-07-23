@@ -14,15 +14,12 @@ package org.mozilla.javascript;
  * @see org.mozilla.javascript.Arguments
  * @author Norris Boyd
  */
-public final class NativeCall extends IdScriptableObject {
+public final class NativeCall extends ScriptableObject {
     private static final long serialVersionUID = -7471457301304454454L;
 
     private static final Object CALL_TAG = "Call";
 
-    static void init(Scriptable scope, boolean sealed) {
-        NativeCall obj = new NativeCall();
-        obj.exportAsJSClass(MAX_PROTOTYPE_ID, scope, sealed);
-    }
+    static void init(Scriptable scope, boolean sealed) {}
 
     NativeCall() {}
 
@@ -105,43 +102,6 @@ public final class NativeCall extends IdScriptableObject {
     @Override
     public String getClassName() {
         return "Call";
-    }
-
-    @Override
-    protected int findPrototypeId(String s) {
-        return s.equals("constructor") ? Id_constructor : 0;
-    }
-
-    @Override
-    protected void initPrototypeId(int id) {
-        String s;
-        int arity;
-        if (id == Id_constructor) {
-            arity = 1;
-            s = "constructor";
-        } else {
-            throw new IllegalArgumentException(String.valueOf(id));
-        }
-        initPrototypeMethod(CALL_TAG, id, s, arity);
-    }
-
-    @Override
-    public Object execIdCall(
-            IdFunctionObject f, Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
-        if (!f.hasTag(CALL_TAG)) {
-            return super.execIdCall(f, cx, scope, thisObj, args);
-        }
-        int id = f.methodId();
-        if (id == Id_constructor) {
-            if (thisObj != null) {
-                throw Context.reportRuntimeErrorById("msg.only.from.new", "Call");
-            }
-            ScriptRuntime.checkDeprecated(cx, "Call");
-            NativeCall result = new NativeCall();
-            result.setPrototype(getObjectPrototype(scope));
-            return result;
-        }
-        throw new IllegalArgumentException(String.valueOf(id));
     }
 
     public void defineAttributesForArguments() {
