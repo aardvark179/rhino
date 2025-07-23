@@ -61,7 +61,6 @@ public final class Interpreter extends Icode implements Evaluator {
         // sDbl[i]: if stack[i] is UniqueTag.DOUBLE_MARK, sDbl[i] holds the number value
 
         final Object[] stack;
-        final byte[] stackAttributes;
         final double[] sDbl;
 
         final CallFrame varSource; // defaults to this unless continuation frame
@@ -101,7 +100,7 @@ public final class Interpreter extends Icode implements Evaluator {
             if (maxFrameArray != emptyStackTop + idata.itsMaxStack + 1) Kit.codeBug();
 
             stack = new Object[maxFrameArray];
-            stackAttributes = new byte[maxFrameArray];
+            Arrays.fill(stack, ScriptableObject.NOT_FOUND);
             sDbl = new double[maxFrameArray];
 
             this.fnOrScript = fnOrScript;
@@ -145,8 +144,6 @@ public final class Interpreter extends Icode implements Evaluator {
             if (!original.frozen) Kit.codeBug();
 
             stack = Arrays.copyOf(original.stack, original.stack.length);
-            stackAttributes =
-                    Arrays.copyOf(original.stackAttributes, original.stackAttributes.length);
             sDbl = Arrays.copyOf(original.sDbl, original.sDbl.length);
 
             frozen = false;
@@ -198,7 +195,6 @@ public final class Interpreter extends Icode implements Evaluator {
             if (!original.frozen) Kit.codeBug();
 
             stack = original.stack;
-            stackAttributes = original.stackAttributes;
             sDbl = original.sDbl;
 
             frozen = keepFrozen;
@@ -306,9 +302,6 @@ public final class Interpreter extends Icode implements Evaluator {
             }
 
             int varCount = idata.getParamAndVarCount();
-            for (int i = 0; i < varCount; i++) {
-                if (idata.getParamOrVarConst(i)) stackAttributes[i] = ScriptableObject.CONST;
-            }
             int definedArgs = idata.argCount;
             if (definedArgs > argCount) {
                 definedArgs = argCount;
@@ -326,9 +319,9 @@ public final class Interpreter extends Icode implements Evaluator {
             if (argsDbl != null) {
                 System.arraycopy(argsDbl, argShift, sDbl, blen, definedArgs - blen);
             }
-            for (int i = definedArgs; i != idata.itsMaxVars; ++i) {
-                stack[i] = Undefined.instance;
-            }
+            // for (int i = definedArgs; i != idata.itsMaxVars; ++i) {
+            //     stack[i] = Undefined.instance;
+            // }
 
             if (idata.argsHasRest) {
                 Object[] vals;
@@ -3621,23 +3614,24 @@ public final class Interpreter extends Icode implements Evaluator {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
             state.indexReg = frame.idata.itsICode[frame.pc++];
-            var varAttributes = frame.varSource.stackAttributes;
             var vars = frame.varSource.stack;
             var varDbls = frame.varSource.sDbl;
+
+            var descriptor = frame.idata.localVarMapShape.getByIndex(state.indexReg);
             if (!frame.useActivation) {
-                if ((varAttributes[state.indexReg] & ScriptableObject.READONLY) == 0) {
-                    throw Context.reportRuntimeErrorById(
-                            "msg.var.redecl", frame.idata.argNames[state.indexReg]);
-                }
-                if ((varAttributes[state.indexReg] & ScriptableObject.UNINITIALIZED_CONST) != 0) {
+                if (vars[state.indexReg] == ScriptableObject.NOT_FOUND) {
                     vars[state.indexReg] = frame.stack[state.stackTop];
-                    varAttributes[state.indexReg] &= ~ScriptableObject.UNINITIALIZED_CONST;
                     varDbls[state.indexReg] = frame.sDbl[state.stackTop];
+                } else {
+                    var existing = vars[state.indexReg];
+                    new Error(existing == null ? "null" : existing.getClass().getName())
+                            .printStackTrace();
+                    throw Context.reportRuntimeErrorById("msg.var.redecl", descriptor.getId());
                 }
             } else {
                 Object val = frame.stack[state.stackTop];
                 if (val == DOUBLE_MARK) val = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
-                String stringReg = frame.idata.argNames[state.indexReg];
+                String stringReg = (String) descriptor.getId();
                 if (frame.scope instanceof ConstProperties) {
                     ConstProperties cp = (ConstProperties) frame.scope;
                     cp.putConst(stringReg, frame.scope, val);
@@ -3650,23 +3644,24 @@ public final class Interpreter extends Icode implements Evaluator {
     private static class DoSetConstVar extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            var varAttributes = frame.varSource.stackAttributes;
             var vars = frame.varSource.stack;
             var varDbls = frame.varSource.sDbl;
+
+            var descriptor = frame.idata.localVarMapShape.getByIndex(state.indexReg);
             if (!frame.useActivation) {
-                if ((varAttributes[state.indexReg] & ScriptableObject.READONLY) == 0) {
-                    throw Context.reportRuntimeErrorById(
-                            "msg.var.redecl", frame.idata.argNames[state.indexReg]);
-                }
-                if ((varAttributes[state.indexReg] & ScriptableObject.UNINITIALIZED_CONST) != 0) {
+                if (vars[state.indexReg] == ScriptableObject.NOT_FOUND) {
                     vars[state.indexReg] = frame.stack[state.stackTop];
-                    varAttributes[state.indexReg] &= ~ScriptableObject.UNINITIALIZED_CONST;
                     varDbls[state.indexReg] = frame.sDbl[state.stackTop];
+                } else {
+                    var existing = vars[state.indexReg];
+                    new Error(existing == null ? "null" : existing.getClass().getName())
+                            .printStackTrace();
+                    throw Context.reportRuntimeErrorById("msg.var.redecl", descriptor.getId());
                 }
             } else {
                 Object val = frame.stack[state.stackTop];
                 if (val == DOUBLE_MARK) val = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
-                String stringReg = frame.idata.argNames[state.indexReg];
+                String stringReg = (String) descriptor.getId();
                 if (frame.scope instanceof ConstProperties) {
                     ConstProperties cp = (ConstProperties) frame.scope;
                     cp.putConst(stringReg, frame.scope, val);
@@ -3680,18 +3675,20 @@ public final class Interpreter extends Icode implements Evaluator {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
             state.indexReg = frame.idata.itsICode[frame.pc++];
-            var varAttributes = frame.varSource.stackAttributes;
             var vars = frame.varSource.stack;
             var varDbls = frame.varSource.sDbl;
+
+            var descriptor = frame.idata.localVarMapShape.getByIndex(state.indexReg);
+
             if (!frame.useActivation) {
-                if ((varAttributes[state.indexReg] & ScriptableObject.READONLY) == 0) {
+                if ((descriptor.getAttributes() & ScriptableObject.READONLY) == 0) {
                     vars[state.indexReg] = frame.stack[state.stackTop];
                     varDbls[state.indexReg] = frame.sDbl[state.stackTop];
                 }
             } else {
                 Object val = frame.stack[state.stackTop];
                 if (val == DOUBLE_MARK) val = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
-                String stringReg = frame.idata.argNames[state.indexReg];
+                String stringReg = (String) descriptor.getId();
                 frame.scope.put(stringReg, frame.scope, val);
             }
             return null;
@@ -3701,18 +3698,19 @@ public final class Interpreter extends Icode implements Evaluator {
     private static class DoSetVar extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            var varAttributes = frame.varSource.stackAttributes;
             var vars = frame.varSource.stack;
             var varDbls = frame.varSource.sDbl;
+
+            var descriptor = frame.idata.localVarMapShape.getByIndex(state.indexReg);
             if (!frame.useActivation) {
-                if ((varAttributes[state.indexReg] & ScriptableObject.READONLY) == 0) {
+                if ((descriptor.getAttributes() & ScriptableObject.READONLY) == 0) {
                     vars[state.indexReg] = frame.stack[state.stackTop];
                     varDbls[state.indexReg] = frame.sDbl[state.stackTop];
                 }
             } else {
                 Object val = frame.stack[state.stackTop];
                 if (val == DOUBLE_MARK) val = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
-                String stringReg = frame.idata.argNames[state.indexReg];
+                String stringReg = (String) descriptor.getId();
                 frame.scope.put(stringReg, frame.scope, val);
             }
             return null;
@@ -3727,10 +3725,15 @@ public final class Interpreter extends Icode implements Evaluator {
             var varDbls = frame.varSource.sDbl;
             ++state.stackTop;
             if (!frame.useActivation) {
-                frame.stack[state.stackTop] = vars[state.indexReg];
+                var value = vars[state.indexReg];
+                if (value == ScriptableObject.NOT_FOUND) {
+                    value = Undefined.instance;
+                }
+                frame.stack[state.stackTop] = value;
                 frame.sDbl[state.stackTop] = varDbls[state.indexReg];
             } else {
-                String stringReg = frame.idata.argNames[state.indexReg];
+                String stringReg =
+                        (String) frame.idata.localVarMapShape.getByIndex(state.indexReg).getId();
                 frame.stack[state.stackTop] = frame.scope.get(stringReg, frame.scope);
             }
             return null;
@@ -3744,10 +3747,15 @@ public final class Interpreter extends Icode implements Evaluator {
             var varDbls = frame.varSource.sDbl;
             ++state.stackTop;
             if (!frame.useActivation) {
-                frame.stack[state.stackTop] = vars[state.indexReg];
+                var value = vars[state.indexReg];
+                if (value == ScriptableObject.NOT_FOUND) {
+                    value = Undefined.instance;
+                }
+                frame.stack[state.stackTop] = value;
                 frame.sDbl[state.stackTop] = varDbls[state.indexReg];
             } else {
-                String stringReg = frame.idata.argNames[state.indexReg];
+                String stringReg =
+                        (String) frame.idata.localVarMapShape.getByIndex(state.indexReg).getId();
                 frame.stack[state.stackTop] = frame.scope.get(stringReg, frame.scope);
             }
             return null;
@@ -3757,10 +3765,12 @@ public final class Interpreter extends Icode implements Evaluator {
     private static class DoVarIncDec extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            var varAttributes = frame.varSource.stackAttributes;
             var vars = frame.varSource.stack;
             var varDbls = frame.varSource.sDbl;
             // indexReg : varindex
+
+            var descriptor = frame.idata.localVarMapShape.getByIndex(state.indexReg);
+
             ++state.stackTop;
             int incrDecrMask = frame.idata.itsICode[frame.pc];
             if (!frame.useActivation) {
@@ -3781,7 +3791,7 @@ public final class Interpreter extends Icode implements Evaluator {
                     // double
                     double d2 = ((incrDecrMask & Node.DECR_FLAG) == 0) ? d + 1.0 : d - 1.0;
                     boolean post = ((incrDecrMask & Node.POST_FLAG) != 0);
-                    if ((varAttributes[state.indexReg] & ScriptableObject.READONLY) == 0) {
+                    if ((descriptor.getAttributes() & ScriptableObject.READONLY) == 0) {
                         if (varValue != DOUBLE_MARK) {
                             vars[state.indexReg] = DOUBLE_MARK;
                         }
@@ -3806,7 +3816,7 @@ public final class Interpreter extends Icode implements Evaluator {
                     }
 
                     boolean post = ((incrDecrMask & Node.POST_FLAG) != 0);
-                    if ((varAttributes[state.indexReg] & ScriptableObject.READONLY) == 0) {
+                    if ((descriptor.getAttributes() & ScriptableObject.READONLY) == 0) {
                         vars[state.indexReg] = result;
                         frame.stack[state.stackTop] = post ? bi : result;
                     } else {
@@ -3818,7 +3828,8 @@ public final class Interpreter extends Icode implements Evaluator {
                     }
                 }
             } else {
-                String varName = frame.idata.argNames[state.indexReg];
+                String varName =
+                        (String) frame.idata.localVarMapShape.getByIndex(state.indexReg).getId();
                 frame.stack[state.stackTop] =
                         ScriptRuntime.nameIncrDecr(frame.scope, varName, cx, incrDecrMask);
             }
@@ -4712,7 +4723,6 @@ public final class Interpreter extends Icode implements Evaluator {
             for (int i = x.savedStackTop + 1; i != x.stack.length; ++i) {
                 // Allow to GC unused stack space
                 x.stack[i] = null;
-                x.stackAttributes[i] = ScriptableObject.EMPTY;
             }
             if (x.savedCallOp == Token.CALL || x.savedCallOp == Icode_CALL_ON_SUPER) {
                 // the call will always overwrite the stack top with the result

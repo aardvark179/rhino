@@ -3,8 +3,10 @@ package org.mozilla.javascript;
 import static java.util.Map.entry;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public class MapShape implements Serializable {
@@ -46,12 +48,8 @@ public class MapShape implements Serializable {
         this.descriptors = descriptors;
     }
 
-    private MapShape(LinkedHashMap<Object, SlotDescriptor> orderedMap) {
-        descriptors = new SlotDescriptor[orderedMap.size()];
-        int i = 0;
-        for (var e : orderedMap.entrySet()) {
-            descriptors[i++] = e.getValue();
-        }
+    private MapShape(LinkedHashMap<Object, SlotDescriptor> orderedMap, List<SlotDescriptor> list) {
+        descriptors = list.toArray(new SlotDescriptor[0]);
         descriptorMap = Map.copyOf(orderedMap);
     }
 
@@ -78,47 +76,18 @@ public class MapShape implements Serializable {
 
     public static class Builder {
         private final LinkedHashMap<Object, SlotDescriptor> descriptors = new LinkedHashMap<>();
+        private final ArrayList<SlotDescriptor> list = new ArrayList<>();
         private int offset = 0;
 
         public Builder withSlot(Object id, int attributes) {
-            descriptors.put(id, new SlotDescriptor(id, offset, attributes));
+            var descriptor = new SlotDescriptor(id, offset, attributes);
+            descriptors.put(id, descriptor);
+            list.add(descriptor);
             return this;
         }
 
         public MapShape build() {
-            return new MapShape(descriptors);
-        }
-    }
-}
-
-class SlotDescriptor implements Serializable {
-    final int offset;
-    final int attributes;
-    final Object id;
-    final int hashCode; // Not sure we really need or want this.
-
-    SlotDescriptor(Object id, int offset, int attributes) {
-        this.id = id;
-        this.offset = offset;
-        this.attributes = attributes;
-        int h = id.hashCode();
-        h = 31 * h + offset;
-        h = 31 * h + attributes;
-        this.hashCode = h;
-    }
-
-    @Override
-    public int hashCode() {
-        return hashCode;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (obj instanceof SlotDescriptor) {
-            SlotDescriptor other = (SlotDescriptor) obj;
-            return other.id.equals(id) && other.offset == offset && other.attributes == attributes;
-        } else {
-            return false;
+            return new MapShape(descriptors, list);
         }
     }
 }

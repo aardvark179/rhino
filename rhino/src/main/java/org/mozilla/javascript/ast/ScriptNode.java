@@ -327,7 +327,9 @@ public class ScriptNode extends Scope {
             builder =
                     builder.withSlot(
                             variableNames[i],
-                            isConsts[i] ? ScriptableObject.CONST : ScriptableObject.PERMANENT);
+                            isConsts[i]
+                                    ? ScriptableObject.PERMANENT | ScriptableObject.READONLY
+                                    : ScriptableObject.PERMANENT);
         }
         var shape = builder.build();
         return shape;
