@@ -3835,13 +3835,14 @@ public class Parser {
                         propertyName = null;
                     } else {
                         propertyName = ts.getString();
-                        // short-hand method definition
+                        // shorthand method definition
                         ObjectProperty objectProp =
                                 methodDefinition(
                                         ppos,
                                         pname,
                                         entryKind,
-                                        pname instanceof GeneratorMethodDefinition);
+                                        pname instanceof GeneratorMethodDefinition,
+                                        true);
                         pname.setJsDocNode(jsdocNode);
                         elems.add(objectProp);
                     }
@@ -3988,7 +3989,6 @@ public class Parser {
             }
             AstNode nn = new Name(property.getPosition(), property.getString());
             ObjectProperty pn = new ObjectProperty();
-            pn.setIsShorthand(true);
             pn.setLeftAndRight(property, nn);
             return pn;
         } else if (tt == Token.ASSIGN) {
@@ -4008,7 +4008,8 @@ public class Parser {
     }
 
     private ObjectProperty methodDefinition(
-            int pos, AstNode propName, int entryKind, boolean isGenerator) throws IOException {
+            int pos, AstNode propName, int entryKind, boolean isGenerator, boolean isShorthand)
+            throws IOException {
         FunctionNode fn = function(FunctionNode.FUNCTION_EXPRESSION, true);
         // We've already parsed the function name, so fn should be anonymous.
         Name name = fn.getFunctionName();
@@ -4030,6 +4031,9 @@ public class Parser {
                 fn.setFunctionIsNormalMethod();
                 if (isGenerator) {
                     fn.setIsES6Generator();
+                }
+                if (isShorthand) {
+                    fn.setIsShorthand();
                 }
                 break;
         }
