@@ -744,7 +744,8 @@ public class Codegen implements Evaluator {
         final int Do_hasDefaultParameters = 8;
         final int Do_isStrict = 9;
         final int Do_isShorthand = 10;
-        final int SWITCH_COUNT = 11;
+        final int Do_getShape = 11;
+        final int SWITCH_COUNT = 12;
 
         for (int methodIndex = 0; methodIndex != SWITCH_COUNT; ++methodIndex) {
             if (methodIndex == Do_getRawSource && rawSource == null) {
@@ -802,6 +803,10 @@ public class Codegen implements Evaluator {
                 case Do_isShorthand:
                     methodLocals = 1; // Only this
                     cfw.startMethod("isShorthand", "()Z", ACC_PUBLIC);
+                    break;
+                case Do_getShape:
+                    methodLocals = 1; // Only this
+                    cfw.startMethod("getShape", "()Lorg/mozilla/javascript/MapShape;", ACC_PUBLIC);
                     break;
                 default:
                     throw Kit.codeBug();
@@ -977,6 +982,15 @@ public class Codegen implements Evaluator {
                     case Do_isShorthand:
                         cfw.addPush(n.isShorthand() ? 1 : 0);
                         cfw.add(ByteCode.IRETURN);
+                        break;
+
+                    case Do_getShape:
+                        cfw.add(
+                                ByteCode.GETSTATIC,
+                                mainClassName,
+                                "myShape",
+                                "Lorg/mozilla/javascript/MapShape;");
+                        cfw.add(ByteCode.ARETURN);
                         break;
 
                     default:
@@ -1162,6 +1176,12 @@ public class Codegen implements Evaluator {
             }
             cfw.add(ByteCode.PUTSTATIC, mainClassName, constantName, constantType);
         }
+
+        // Build our shape here.
+        cfw.addField(
+                "myShape", "Lorg/mozilla/javascript/MapShape;", (short) (ACC_STATIC | ACC_PRIVATE));
+        cfw.add(ByteCode.ACONST_NULL);
+        cfw.add(ByteCode.PUTSTATIC, mainClassName, "myShape", "Lorg/mozilla/javascript/MapShape;");
 
         cfw.add(ByteCode.RETURN);
         cfw.stopMethod((short) 0);

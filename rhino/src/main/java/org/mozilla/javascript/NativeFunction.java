@@ -111,6 +111,12 @@ public abstract class NativeFunction extends BaseFunction {
     protected abstract String getParamOrVarName(int index);
 
     /**
+     * Get the shape corresponding to this function which represents the set of variables and their
+     * attributes.
+     */
+    protected abstract MapShape getShape();
+
+    /**
      * Get parameter or variable const-ness. If <code>index &lt; {@link #getParamCount()}</code>,
      * then return the const-ness of the corresponding parameter. Otherwise return whether the
      * variable is const.

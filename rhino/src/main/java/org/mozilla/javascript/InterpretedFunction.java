@@ -150,6 +150,11 @@ final class InterpretedFunction extends NativeFunction implements Script {
     }
 
     @Override
+    protected MapShape getShape() {
+        return idata.localVarMapShape;
+    }
+
+    @Override
     protected boolean getParamOrVarConst(int index) {
         return idata.argIsConst[index];
     }
