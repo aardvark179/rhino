@@ -18,10 +18,19 @@ import java.util.function.Consumer;
 // modification as part of a compute operation or similar.
 public class ProxySlotMap implements SlotMap, AutoCloseable {
     protected final SlotMapOwner owner;
+    protected SlotMap map;
     boolean touched = false;
 
     public ProxySlotMap(SlotMapOwner owner) {
         this.owner = owner;
+        this.map = owner.getMap();
+    }
+
+    protected void updateMap(boolean resetTouched) {
+        if (touched) {
+            map = owner.getMap();
+            touched = resetTouched ? false : touched;
+        }
     }
 
     public boolean isTouched() {
@@ -30,14 +39,15 @@ public class ProxySlotMap implements SlotMap, AutoCloseable {
 
     @Override
     public void add(SlotMapOwner owner, Slot newSlot) {
-        owner.getMap().add(owner, newSlot);
+        map.add(owner, newSlot);
         touched = true;
     }
 
     @Override
     public <S extends Slot> S compute(
             SlotMapOwner owner, Object key, int index, SlotComputer<S> compute) {
-        var res = owner.getMap().compute(owner, this, key, index, compute);
+        updateMap(true);
+        var res = map.compute(owner, this, key, index, compute);
         touched = true;
         return res;
     }
@@ -49,61 +59,70 @@ public class ProxySlotMap implements SlotMap, AutoCloseable {
             Object key,
             int index,
             SlotComputer<S> compute) {
-        var res = owner.getMap().compute(owner, this, key, index, compute);
+        assert (mutableMap == this);
+        updateMap(true);
+        var res = map.compute(owner, this, key, index, compute);
         touched = true;
         return res;
     }
 
     @Override
     public int dirtySize() {
-        return owner.getMap().dirtySize();
+        updateMap(false);
+        return map.dirtySize();
     }
 
     @Override
     public boolean isEmpty() {
-        return owner.getMap().isEmpty();
+        updateMap(false);
+        return map.isEmpty();
     }
 
     @Override
     public Slot modify(SlotMapOwner owner, Object key, int index, int attributes) {
-        var res = owner.getMap().modify(owner, key, index, attributes);
+        updateMap(true);
+        var res = map.modify(owner, key, index, attributes);
         touched = true;
         return res;
     }
 
     @Override
     public Slot query(Object key, int index) {
-        return owner.getMap().query(key, index);
+        updateMap(false);
+        return map.query(key, index);
     }
 
     @Override
     public long readLock() {
-        return owner.getMap().readLock();
+        return map.readLock();
     }
 
     @Override
     public int size() {
-        return owner.getMap().size();
+        updateMap(false);
+        return map.size();
     }
 
     @Override
     public void unlockRead(long stamp) {
-        owner.getMap().unlockRead(stamp);
+        map.unlockRead(stamp);
     }
 
     @Override
     public void forEach(Consumer<? super Slot> action) {
-        owner.getMap().forEach(action);
+        updateMap(false);
+        map.forEach(action);
     }
 
     @Override
     public Iterator<Slot> iterator() {
-        return owner.getMap().iterator();
+        updateMap(false);
+        return map.iterator();
     }
 
     @Override
     public Spliterator<Slot> spliterator() {
-        return owner.getMap().spliterator();
+        return map.spliterator();
     }
 
     @Override
