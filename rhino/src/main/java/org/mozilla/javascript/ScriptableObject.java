@@ -2772,7 +2772,7 @@ public abstract class ScriptableObject extends SlotMapOwner
         return obj;
     }
 
-    private static Scriptable getBase(Scriptable start, Symbol key) {
+    static Scriptable getBase(Scriptable start, Symbol key) {
         Scriptable obj = start;
         do {
             if (ensureSymbolScriptable(obj).has(key, start)) break;
