@@ -24,7 +24,7 @@ public interface JSCodeResume<T extends ScriptOrFn<T>> {
             Context cx,
             T executableObject,
             Object state,
-            Scriptable scope,
+            JSScope scope,
             int operation,
             Object value);
 

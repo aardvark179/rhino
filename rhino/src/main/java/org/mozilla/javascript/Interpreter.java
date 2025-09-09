@@ -70,7 +70,7 @@ public final class Interpreter extends Icode implements Evaluator {
         final boolean useActivation;
         boolean isContinuationsTopFrame;
 
-        final Scriptable thisObj;
+        final Object thisObj;
 
         // The values that change during interpretation
 
@@ -79,7 +79,7 @@ public final class Interpreter extends Icode implements Evaluator {
         int pc;
         int pcPrevBranch;
         int pcSourceLineStart;
-        Scriptable scope;
+        JSScope scope;
 
         int savedStackTop;
         int savedCallOp;
@@ -87,7 +87,7 @@ public final class Interpreter extends Icode implements Evaluator {
 
         CallFrame(
                 Context cx,
-                Scriptable thisObj,
+                Object thisObj,
                 ScriptOrFn fnOrScript,
                 InterpreterData code,
                 CallFrame parentFrame,
@@ -245,7 +245,7 @@ public final class Interpreter extends Icode implements Evaluator {
 
         void initializeArgs(
                 Context cx,
-                Scriptable callerScope,
+                JSScope callerScope,
                 Object[] args,
                 double[] argsDbl,
                 Object[] boundArgs,
@@ -1241,7 +1241,7 @@ public final class Interpreter extends Icode implements Evaluator {
         return desc.getRawSource();
     }
 
-    private static void initFunction(Context cx, Scriptable scope, JSDescriptor parent, int index) {
+    private static void initFunction(Context cx, JSScope scope, JSDescriptor parent, int index) {
         JSFunction fn;
         fn = JSFunction.createFunction(cx, scope, parent, index, null);
         var desc = fn.getDescriptor();
@@ -1252,8 +1252,8 @@ public final class Interpreter extends Icode implements Evaluator {
             ScriptOrFn ifun,
             InterpreterData idata,
             Context cx,
-            Scriptable scope,
-            Scriptable thisObj,
+            JSScope scope,
+            Object thisObj,
             Object[] args) {
         if (!ScriptRuntime.hasTopCall(cx)) Kit.codeBug();
 
@@ -1321,7 +1321,7 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     public static Object resumeGenerator(
-            Context cx, Scriptable scope, int operation, Object savedState, Object value) {
+            Context cx, JSScope scope, int operation, Object savedState, Object value) {
         CallFrame frame = (CallFrame) savedState;
         CallFrame activeFrame = frame.shallowCloneFrozen((CallFrame) cx.lastInterpreterFrame);
         try {
@@ -1347,7 +1347,7 @@ public final class Interpreter extends Icode implements Evaluator {
     }
 
     public static Object restartContinuation(
-            NativeContinuation c, Context cx, Scriptable scope, Object[] args) {
+            NativeContinuation c, Context cx, JSScope scope, Object[] args) {
         if (!ScriptRuntime.hasTopCall(cx)) {
             return ScriptRuntime.doTopCall(c, cx, scope, null, args, cx.isTopLevelStrict);
         }
@@ -3359,7 +3359,7 @@ public final class Interpreter extends Icode implements Evaluator {
             // Check if the lookup result is a function and throw if it's not
             // must not be done sooner according to the spec
             Callable fun = result.getCallable();
-            Scriptable funThisObj = (Scriptable) result.getThis();
+            Object funThisObj = result.getThis();
             Scriptable funHomeObj =
                     (fun instanceof BaseFunction) ? ((BaseFunction) fun).getHomeObject() : null;
             if (op == Icode_CALL_ON_SUPER) {
@@ -3378,7 +3378,7 @@ public final class Interpreter extends Icode implements Evaluator {
                                 outArgs, cx);
                 return null;
             }
-            Scriptable calleeScope = frame.scope;
+            JSScope calleeScope = frame.scope;
             if (frame.useActivation) {
                 calleeScope = ScriptableObject.getTopLevelScope(frame.scope);
             }
@@ -4703,7 +4703,7 @@ public final class Interpreter extends Icode implements Evaluator {
         return frame;
     }
 
-    private static Scriptable getApplyThis(
+    private static Object getApplyThis(
             Context cx,
             Object[] stack,
             double[] sDbl,
@@ -4729,8 +4729,8 @@ public final class Interpreter extends Icode implements Evaluator {
 
     private static CallFrame initFrame(
             Context cx,
-            Scriptable callerScope,
-            Scriptable thisObj,
+            JSScope callerScope,
+            Object thisObj,
             Scriptable homeObj,
             Object[] args,
             double[] argsDbl,
@@ -4761,7 +4761,7 @@ public final class Interpreter extends Icode implements Evaluator {
         boolean usesActivation = frame.fnOrScript.getDescriptor().requiresActivationFrame();
         boolean isDebugged = frame.debuggerFrame != null;
         if (usesActivation || isDebugged) {
-            Scriptable scope = frame.scope;
+            JSScope scope = frame.scope;
             if (scope == null) {
                 Kit.codeBug();
             } else if (continuationRestart) {
@@ -4792,7 +4792,7 @@ public final class Interpreter extends Icode implements Evaluator {
                 }
             }
             if (isDebugged) {
-                frame.debuggerFrame.onEnter(cx, scope, frame.thisObj, args);
+                frame.debuggerFrame.onEnter(cx, scope, (Scriptable) frame.thisObj, args);
             }
             // Enter activation only when itsNeedsActivation true,
             // since debugger should not interfere with activation

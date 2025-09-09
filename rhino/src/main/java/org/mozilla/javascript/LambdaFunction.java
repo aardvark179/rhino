@@ -57,7 +57,7 @@ public class LambdaFunction extends BaseFunction {
      * @param target an object that implements the function in Java. Since Callable is a
      *     single-function interface this will typically be implemented as a lambda.
      */
-    public LambdaFunction(Scriptable scope, String name, int length, SerializableCallable target) {
+    public LambdaFunction(JSScope scope, String name, int length, SerializableCallable target) {
         this(scope, name, length, target, true);
     }
 
@@ -90,12 +90,12 @@ public class LambdaFunction extends BaseFunction {
     }
 
     @Override
-    public Object call(Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
-        return target.call(cx, (Scriptable) getDeclarationScope(), thisObj, args);
+    public Object call(Context cx, JSScope scope, Object thisObj, Object[] args) {
+        return target.call(cx, getDeclarationScope(), thisObj, args);
     }
 
     @Override
-    public Scriptable construct(Context cx, Scriptable scope, Object[] args) {
+    public Scriptable construct(Context cx, JSScope scope, Object[] args) {
         throw ScriptRuntime.typeErrorById("msg.no.new", getFunctionName());
     }
 

@@ -198,7 +198,7 @@ class Arguments extends ScriptableObject {
     }
 
     @Override
-    public void put(Symbol key, Scriptable start, Object value) {
+    public void put(Symbol key, JSScope start, Object value) {
         super.put(key, start, value);
     }
 
@@ -319,7 +319,7 @@ class Arguments extends ScriptableObject {
         }
 
         @Override
-        public void put(int index, Scriptable start, Object value) {
+        public void put(int index, JSScope start, Object value) {
             if (initialized) {
                 return;
             }
@@ -327,7 +327,7 @@ class Arguments extends ScriptableObject {
         }
 
         @Override
-        public void put(String name, Scriptable start, Object value) {
+        public void put(String name, JSScope start, Object value) {
             if (initialized) {
                 return;
             }
@@ -335,7 +335,7 @@ class Arguments extends ScriptableObject {
         }
 
         @Override
-        public void put(Symbol key, Scriptable start, Object value) {
+        public void put(Symbol key, JSScope start, Object value) {
             if (initialized) {
                 return;
             }

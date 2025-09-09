@@ -19,6 +19,7 @@ import org.mozilla.javascript.Context;
 import org.mozilla.javascript.Function;
 import org.mozilla.javascript.IdFunctionObject;
 import org.mozilla.javascript.IdScriptableObject;
+import org.mozilla.javascript.JSScope;
 import org.mozilla.javascript.Kit;
 import org.mozilla.javascript.NativeArray;
 import org.mozilla.javascript.NativeObject;
@@ -145,7 +146,7 @@ public class NativeRegExp extends IdScriptableObject {
 
     private static final int ANCHOR_BOL = -2;
 
-    static Object init(Context cx, Scriptable scope, boolean sealed) {
+    static Object init(Context cx, JSScope scope, boolean sealed) {
 
         NativeRegExp proto = NativeRegExpInstantiator.withLanguageVersion(cx.getLanguageVersion());
         proto.re = compileRE(cx, "", null, false);
@@ -174,7 +175,7 @@ public class NativeRegExp extends IdScriptableObject {
         return ctor;
     }
 
-    NativeRegExp(Scriptable scope, RECompiled regexpCompiled) {
+    NativeRegExp(JSScope scope, RECompiled regexpCompiled) {
         this.re = regexpCompiled;
         setLastIndex(ScriptRuntime.zeroObj);
         ScriptRuntime.setBuiltinProtoAndParent(this, scope, TopLevel.Builtins.RegExp);
@@ -196,7 +197,7 @@ public class NativeRegExp extends IdScriptableObject {
         return "object";
     }
 
-    Scriptable compile(Context cx, Scriptable scope, Object[] args) {
+    Scriptable compile(Context cx, JSScope scope, Object[] args) {
         if (args.length >= 1
                 && args[0] instanceof NativeRegExp
                 && (args.length == 1 || args[1] == Undefined.instance)) {
@@ -286,7 +287,7 @@ public class NativeRegExp extends IdScriptableObject {
         return s;
     }
 
-    Object execSub(Context cx, Scriptable scopeObj, Object[] args, int matchType) {
+    Object execSub(Context cx, JSScope scopeObj, Object[] args, int matchType) {
         RegExpImpl reImpl = getImpl(cx);
         String str;
         if (args.length == 0) {
@@ -3508,7 +3509,7 @@ public class NativeRegExp extends IdScriptableObject {
      * indexp is assumed to be an array of length 1
      */
     Object executeRegExp(
-            Context cx, Scriptable scope, RegExpImpl res, String str, int[] indexp, int matchType) {
+            Context cx, JSScope scope, RegExpImpl res, String str, int[] indexp, int matchType) {
         REGlobalData gData = new REGlobalData();
 
         int start = indexp[0];
@@ -3807,8 +3808,8 @@ public class NativeRegExp extends IdScriptableObject {
         setLastIndex((Scriptable) thisObj, value);
     }
 
-    private void setLastIndex(Scriptable thisObj, Object value) {
-        ScriptableObject.putProperty(thisObj, "lastIndex", value);
+    private void setLastIndex(Object thisObj, Object value) {
+        ScriptableObject.putProperty((Scriptable) thisObj, "lastIndex", value);
     }
 
     private void setLastIndex(Object value) {
@@ -3903,7 +3904,7 @@ public class NativeRegExp extends IdScriptableObject {
 
     @Override
     public Object execIdCall(
-            IdFunctionObject f, Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+            IdFunctionObject f, Context cx, JSScope scope, Object thisObj, Object[] args) {
         if (!f.hasTag(REGEXP_TAG)) {
             return super.execIdCall(f, cx, scope, thisObj, args);
         }
@@ -3915,10 +3916,11 @@ public class NativeRegExp extends IdScriptableObject {
             case Id_toString:
                 // thisObj != scope is a strange hack but i had no better idea for the moment
                 if (thisObj != scope && thisObj instanceof NativeObject) {
-                    Object sourceObj = thisObj.get("source", thisObj);
+                    var nObj = (NativeObject) thisObj;
+                    Object sourceObj = nObj.get("source", nObj);
                     String source =
                             sourceObj.equals(NOT_FOUND) ? "undefined" : escapeRegExp(sourceObj);
-                    Object flagsObj = thisObj.get("flags", thisObj);
+                    Object flagsObj = nObj.get("flags", nObj);
                     String flags = flagsObj.equals(NOT_FOUND) ? "undefined" : flagsObj.toString();
 
                     return "/" + source + "/" + flags;
@@ -3958,8 +3960,7 @@ public class NativeRegExp extends IdScriptableObject {
         throw new IllegalArgumentException(String.valueOf(id));
     }
 
-    public static Object regExpExec(
-            Scriptable regexp, String string, Context cx, Scriptable scope) {
+    public static Object regExpExec(Object regexp, String string, Context cx, JSScope scope) {
         // See ECMAScript spec 22.2.7.1
         Object execMethod = ScriptRuntime.getObjectProp(regexp, "exec", cx, scope);
         if (execMethod instanceof Callable) {
@@ -3968,8 +3969,7 @@ public class NativeRegExp extends IdScriptableObject {
         return NativeRegExp.js_exec(cx, scope, regexp, new Object[] {string});
     }
 
-    private Object js_SymbolMatch(
-            Context cx, Scriptable scope, Scriptable thisScriptable, Object[] args) {
+    private Object js_SymbolMatch(Context cx, JSScope scope, Object thisScriptable, Object[] args) {
         // See ECMAScript spec 22.2.6.8
         var thisObj = ScriptableObject.ensureScriptableObject(thisScriptable);
 
@@ -4001,8 +4001,7 @@ public class NativeRegExp extends IdScriptableObject {
         }
     }
 
-    private Object js_SymbolSearch(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private Object js_SymbolSearch(Context cx, JSScope scope, Object thisObj, Object[] args) {
         // See ECMAScript spec 22.2.6.12
         if (!ScriptRuntime.isObject(thisObj)) {
             throw ScriptRuntime.typeErrorById("msg.arg.not.object", ScriptRuntime.typeof(thisObj));
@@ -4028,12 +4027,11 @@ public class NativeRegExp extends IdScriptableObject {
         }
     }
 
-    static Object js_exec(Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    static Object js_exec(Context cx, JSScope scope, Object thisObj, Object[] args) {
         return realThis(thisObj, "exec").execSub(cx, scope, args, MATCH);
     }
 
-    private Object js_SymbolMatchAll(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private Object js_SymbolMatchAll(Context cx, JSScope scope, Object thisObj, Object[] args) {
         // See ECMAScript spec 22.2.6.9
         if (!ScriptRuntime.isObject(thisObj)) {
             throw ScriptRuntime.typeErrorById("msg.arg.not.object", ScriptRuntime.typeof(thisObj));
@@ -4059,8 +4057,7 @@ public class NativeRegExp extends IdScriptableObject {
         return new NativeRegExpStringIterator(scope, matcher, s, global, fullUnicode);
     }
 
-    private Object js_SymbolReplace(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private Object js_SymbolReplace(Context cx, JSScope scope, Object thisObj, Object[] args) {
         // See ECMAScript spec 22.2.6.11
         if (!ScriptRuntime.isObject(thisObj)) {
             throw ScriptRuntime.typeErrorById("msg.arg.not.object", ScriptRuntime.typeof(thisObj));
@@ -4143,7 +4140,7 @@ public class NativeRegExp extends IdScriptableObject {
                     replacerArgs.add(namedCaptures);
                 }
 
-                Scriptable callThis =
+                Object callThis =
                         ScriptRuntime.getApplyOrCallThis(
                                 cx, scope, null, 0, (Callable) replaceValue);
                 Object replacementValue =
@@ -4182,7 +4179,7 @@ public class NativeRegExp extends IdScriptableObject {
         }
     }
 
-    private Object js_SymbolSplit(Context cx, Scriptable scope, Scriptable rx, Object[] args) {
+    private Object js_SymbolSplit(Context cx, JSScope scope, Object rx, Object[] args) {
         // See ECMAScript spec 22.2.6.14
         if (!ScriptRuntime.isObject(rx)) {
             throw ScriptRuntime.typeErrorById("msg.arg.not.object", ScriptRuntime.typeof(rx));
@@ -4270,15 +4267,15 @@ public class NativeRegExp extends IdScriptableObject {
         return a;
     }
 
-    private static long getLastIndex(Context cx, Scriptable thisObj) {
+    private static long getLastIndex(Context cx, Object thisObj) {
         return ScriptRuntime.toLength(ScriptRuntime.getObjectProp(thisObj, "lastIndex", cx));
     }
 
-    private static NativeRegExp realThis(Scriptable thisObj, IdFunctionObject f) {
+    private static NativeRegExp realThis(Object thisObj, IdFunctionObject f) {
         return realThis(thisObj, f.getFunctionName());
     }
 
-    private static NativeRegExp realThis(Scriptable thisObj, String functionName) {
+    private static NativeRegExp realThis(Object thisObj, String functionName) {
         return ensureType(thisObj, NativeRegExp.class, functionName);
     }
 

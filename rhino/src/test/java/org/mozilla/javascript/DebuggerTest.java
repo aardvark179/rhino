@@ -55,7 +55,7 @@ public class DebuggerTest {
         }
 
         @Override
-        public void onEnter(Context cx, Scriptable activation, Scriptable thisObj, Object[] args) {}
+        public void onEnter(Context cx, JSScope activation, Object thisObj, Object[] args) {}
 
         @Override
         public void onLineChange(Context cx, int line) {

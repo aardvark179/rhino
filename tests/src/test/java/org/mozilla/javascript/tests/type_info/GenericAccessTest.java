@@ -226,8 +226,7 @@ public class GenericAccessTest {
                 }
             };
 
-    private static Object readClassAndValue(
-            Context cx, Scriptable scope, Scriptable thiz, Object[] args) {
+    private static Object readClassAndValue(Context cx, JSScope scope, Object thiz, Object[] args) {
         return Arrays.stream(args)
                 .map(arg -> Context.jsToJava(arg, TypeInfo.OBJECT))
                 .map(arg -> arg.getClass().getSimpleName() + ' ' + arg)

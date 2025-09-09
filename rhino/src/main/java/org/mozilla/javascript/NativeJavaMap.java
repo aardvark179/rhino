@@ -30,7 +30,7 @@ public class NativeJavaMap extends NativeJavaObject {
     private final TypeInfo keyType;
     private final TypeInfo valueType;
 
-    static void init(ScriptableObject scope, boolean sealed) {
+    static void init(JSScope scope, boolean sealed) {
         NativeJavaMapIterator.init(scope, sealed);
     }
 
@@ -160,7 +160,7 @@ public class NativeJavaMap extends NativeJavaObject {
     }
 
     private static Callable symbol_iterator =
-            (Context cx, Scriptable scope, Scriptable thisObj, Object[] args) -> {
+            (Context cx, JSScope scope, Object thisObj, Object[] args) -> {
                 if (!(thisObj instanceof NativeJavaMap)) {
                     throw ScriptRuntime.typeErrorById("msg.incompat.call", SymbolKey.ITERATOR);
                 }
@@ -171,7 +171,7 @@ public class NativeJavaMap extends NativeJavaObject {
         private static final long serialVersionUID = 1L;
         private static final String ITERATOR_TAG = "JavaMapIterator";
 
-        static void init(ScriptableObject scope, boolean sealed) {
+        static void init(JSScope scope, boolean sealed) {
             ES6Iterator.init(scope, sealed, new NativeJavaMapIterator(), ITERATOR_TAG);
         }
 
@@ -180,7 +180,7 @@ public class NativeJavaMap extends NativeJavaObject {
             super();
         }
 
-        NativeJavaMapIterator(Scriptable scope, NativeJavaMap map) {
+        NativeJavaMapIterator(JSScope scope, NativeJavaMap map) {
             super(scope, ITERATOR_TAG);
             this.iterator = map.map.entrySet().iterator();
             this.keyType = map.keyType;
@@ -193,12 +193,12 @@ public class NativeJavaMap extends NativeJavaObject {
         }
 
         @Override
-        protected boolean isDone(Context cx, Scriptable scope) {
+        protected boolean isDone(Context cx, JSScope scope) {
             return !iterator.hasNext();
         }
 
         @Override
-        protected Object nextValue(Context cx, Scriptable scope) {
+        protected Object nextValue(Context cx, JSScope scope) {
             if (!iterator.hasNext()) {
                 return cx.newArray(scope, new Object[] {Undefined.instance, Undefined.instance});
             }

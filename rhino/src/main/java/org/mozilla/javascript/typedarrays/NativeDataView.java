@@ -10,7 +10,6 @@ import org.mozilla.javascript.Context;
 import org.mozilla.javascript.JSScope;
 import org.mozilla.javascript.LambdaConstructor;
 import org.mozilla.javascript.ScriptRuntime;
-import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 import org.mozilla.javascript.SymbolKey;
 import org.mozilla.javascript.Undefined;
@@ -39,7 +38,7 @@ public class NativeDataView extends NativeArrayBufferView {
         return CLASS_NAME;
     }
 
-    public static Object init(Context cx, Scriptable scope, boolean sealed) {
+    public static Object init(Context cx, JSScope scope, boolean sealed) {
         LambdaConstructor constructor =
                 new LambdaConstructor(
                         scope,
@@ -98,11 +97,11 @@ public class NativeDataView extends NativeArrayBufferView {
         return constructor;
     }
 
-    private static NativeDataView realThis(JSScope thisObj) {
+    private static NativeDataView realThis(Object thisObj) {
         return LambdaConstructor.convertThisObject(thisObj, NativeDataView.class);
     }
 
-    private static NativeDataView js_constructor(Context cx, Scriptable scope, Object[] args) {
+    private static NativeDataView js_constructor(Context cx, JSScope scope, Object[] args) {
         if (!isArg(args, 0) || !(args[0] instanceof NativeArrayBuffer)) {
             throw ScriptRuntime.constructError("TypeError", "Missing parameters");
         }
@@ -148,44 +147,37 @@ public class NativeDataView extends NativeArrayBufferView {
         return new NativeDataView(ab, pos, len);
     }
 
-    private static Object js_getInt8(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_getInt8(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         return realThis.js_getInt(cx, scope, 1, true, args);
     }
 
-    private static Object js_getInt16(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_getInt16(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         return realThis.js_getInt(cx, scope, 2, true, args);
     }
 
-    private static Object js_getInt32(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_getInt32(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         return realThis.js_getInt(cx, scope, 4, true, args);
     }
 
-    private static Object js_getUint8(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_getUint8(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         return realThis.js_getInt(cx, scope, 1, false, args);
     }
 
-    private static Object js_getUint16(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_getUint16(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         return realThis.js_getInt(cx, scope, 2, false, args);
     }
 
-    private static Object js_getUint32(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_getUint32(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         return realThis.js_getInt(cx, scope, 4, false, args);
     }
 
-    private Object js_getInt(
-            Context cx, Scriptable scope, int bytes, boolean signed, Object[] args) {
+    private Object js_getInt(Context cx, JSScope scope, int bytes, boolean signed, Object[] args) {
         int pos = ScriptRuntime.toIndex(isArg(args, 0) ? args[0] : Undefined.instance);
 
         boolean littleEndian = isArg(args, 1) && (bytes > 1) && ScriptRuntime.toBoolean(args[1]);
@@ -221,19 +213,17 @@ public class NativeDataView extends NativeArrayBufferView {
         }
     }
 
-    private static Object js_getFloat32(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_getFloat32(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         return realThis.js_getFloat(cx, scope, 4, args);
     }
 
-    private static Object js_getFloat64(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_getFloat64(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         return realThis.js_getFloat(cx, scope, 8, args);
     }
 
-    private Object js_getFloat(Context cx, Scriptable scope, int bytes, Object[] args) {
+    private Object js_getFloat(Context cx, JSScope scope, int bytes, Object[] args) {
         int pos = ScriptRuntime.toIndex(isArg(args, 0) ? args[0] : Undefined.instance);
 
         boolean littleEndian = isArg(args, 1) && (bytes > 1) && ScriptRuntime.toBoolean(args[1]);
@@ -257,49 +247,43 @@ public class NativeDataView extends NativeArrayBufferView {
         }
     }
 
-    private static Object js_setInt8(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_setInt8(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         realThis.js_setInt(cx, scope, 1, true, args);
         return Undefined.instance;
     }
 
-    private static Object js_setInt16(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_setInt16(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         realThis.js_setInt(cx, scope, 2, true, args);
         return Undefined.instance;
     }
 
-    private static Object js_setInt32(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_setInt32(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         realThis.js_setInt(cx, scope, 4, true, args);
         return Undefined.instance;
     }
 
-    private static Object js_setUint8(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_setUint8(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         realThis.js_setInt(cx, scope, 1, false, args);
         return Undefined.instance;
     }
 
-    private static Object js_setUint16(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_setUint16(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         realThis.js_setInt(cx, scope, 2, false, args);
         return Undefined.instance;
     }
 
-    private static Object js_setUint32(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_setUint32(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         realThis.js_setInt(cx, scope, 4, false, args);
         return Undefined.instance;
     }
 
-    private void js_setInt(Context cx, Scriptable scope, int bytes, boolean signed, Object[] args) {
+    private void js_setInt(Context cx, JSScope scope, int bytes, boolean signed, Object[] args) {
         int pos = ScriptRuntime.toIndex(isArg(args, 0) ? args[0] : Undefined.instance);
 
         Object val = isArg(args, 1) ? ScriptRuntime.toNumber(args[1]) : ScriptRuntime.zeroObj;
@@ -366,21 +350,19 @@ public class NativeDataView extends NativeArrayBufferView {
         }
     }
 
-    private static Object js_setFloat32(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_setFloat32(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         realThis.js_setFloat(cx, scope, 4, args);
         return Undefined.instance;
     }
 
-    private static Object js_setFloat64(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Object js_setFloat64(Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeDataView realThis = realThis(thisObj);
         realThis.js_setFloat(cx, scope, 8, args);
         return Undefined.instance;
     }
 
-    private void js_setFloat(Context cx, Scriptable scope, int bytes, Object[] args) {
+    private void js_setFloat(Context cx, JSScope scope, int bytes, Object[] args) {
         int pos = ScriptRuntime.toIndex(isArg(args, 0) ? args[0] : Undefined.instance);
 
         double val = isArg(args, 1) ? ScriptRuntime.toNumber(args[1]) : Double.NaN;

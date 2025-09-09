@@ -36,7 +36,7 @@ public class NativeArrayBuffer extends ScriptableObject {
         return CLASS_NAME;
     }
 
-    public static Object init(Context cx, Scriptable scope, boolean sealed) {
+    public static Object init(Context cx, JSScope scope, boolean sealed) {
         LambdaConstructor constructor =
                 new LambdaConstructor(
                         scope,
@@ -139,22 +139,21 @@ public class NativeArrayBuffer extends ScriptableObject {
         return newBuf;
     }
 
-    private static NativeArrayBuffer getSelf(JSScope thisObj) {
+    private static NativeArrayBuffer getSelf(Object thisObj) {
         return LambdaConstructor.convertThisObject(thisObj, NativeArrayBuffer.class);
     }
 
-    private static NativeArrayBuffer js_constructor(Context cx, Scriptable scope, Object[] args) {
+    private static NativeArrayBuffer js_constructor(Context cx, JSScope scope, Object[] args) {
         double length = isArg(args, 0) ? ScriptRuntime.toNumber(args[0]) : 0;
         return new NativeArrayBuffer(length);
     }
 
-    private static Boolean js_isView(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+    private static Boolean js_isView(Context cx, JSScope scope, Object thisObj, Object[] args) {
         return Boolean.valueOf((isArg(args, 0) && (args[0] instanceof NativeArrayBufferView)));
     }
 
     private static NativeArrayBuffer js_slice(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+            Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeArrayBuffer self = getSelf(thisObj);
 
         if (self.isDetached()) {
@@ -203,17 +202,17 @@ public class NativeArrayBuffer extends ScriptableObject {
         return buf;
     }
 
-    private static Object js_byteLength(JSScope thisObj) {
+    private static Object js_byteLength(Object thisObj) {
         return getSelf(thisObj).getLength();
     }
 
-    private static Object js_detached(JSScope thisObj) {
+    private static Object js_detached(Object thisObj) {
         return getSelf(thisObj).isDetached();
     }
 
     // ES2025 ArrayBuffer.prototype.transfer
     private static Scriptable js_transfer(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+            Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeArrayBuffer self = getSelf(thisObj);
 
         // 1. Perform ? RequireInternalSlot(O, [[ArrayBufferData]])
@@ -261,7 +260,7 @@ public class NativeArrayBuffer extends ScriptableObject {
 
     // ES2025 ArrayBuffer.prototype.transferToFixedLength
     private static Scriptable js_transferToFixedLength(
-            Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+            Context cx, JSScope scope, Object thisObj, Object[] args) {
         NativeArrayBuffer self = getSelf(thisObj);
 
         // 1. Let O be the this value

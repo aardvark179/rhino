@@ -77,7 +77,7 @@ public class ScriptRuntime {
     private static final class ThrowTypeError extends BaseFunction {
         private static final long serialVersionUID = -5891740962154902286L;
 
-        ThrowTypeError(Scriptable scope) {
+        ThrowTypeError(JSScope scope) {
             setPrototype(ScriptableObject.getFunctionPrototype(scope));
 
             setAttributes("length", DONTENUM | PERMANENT | READONLY);
@@ -100,7 +100,7 @@ public class ScriptRuntime {
         }
 
         @Override
-        public Object call(Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+        public Object call(Context cx, JSScope scope, Object thisObj, Object[] args) {
             throw typeErrorById("msg.op.not.allowed");
         }
     }
@@ -131,7 +131,7 @@ public class ScriptRuntime {
          * @return the result of the call
          */
         @Override
-        public Object call(Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+        public Object call(Context cx, JSScope scope, Object thisObj, Object[] args) {
             Object[] nestedArgs = new Object[2];
 
             nestedArgs[0] = methodName;
@@ -169,6 +169,7 @@ public class ScriptRuntime {
             ScriptableObjectClass = Kit.classOrNull("org.mozilla.javascript.ScriptableObject");
 
     public static final Class<Scriptable> ScriptableClass = Scriptable.class;
+    public static final Class<JSScope> JSScopeClass = JSScope.class;
 
     private static final Object LIBRARY_SCOPE_KEY = "LIBRARY_SCOPE";
 
@@ -2632,9 +2633,9 @@ public class ScriptRuntime {
         }
         Callable f = (Callable) iterator;
         Object[] args = new Object[] {};
-        Scriptable scope;
+        JSScope scope;
         if (f instanceof Function) {
-            scope = (Scriptable) ((Function) f).getDeclarationScope();
+            scope = ((Function) f).getDeclarationScope();
         } else {
             scope = cx.topCallScope;
         }
@@ -2667,9 +2668,9 @@ public class ScriptRuntime {
             Object v = ScriptableObject.getProperty(x.iterator, "next");
             if (!(v instanceof Callable)) return Boolean.FALSE;
             Callable f = (Callable) v;
-            Scriptable scope;
+            JSScope scope;
             if (f instanceof Function) {
-                scope = (Scriptable) ((Function) f).getDeclarationScope();
+                scope = ((Function) f).getDeclarationScope();
             } else {
                 scope = cx.topCallScope;
             }
@@ -2717,7 +2718,7 @@ public class ScriptRuntime {
             throw notFunctionError(enumObj.iterator, ES6Iterator.NEXT_METHOD);
         }
         Callable f = (Callable) v;
-        Scriptable scope;
+        JSScope scope;
         if (f instanceof Function) {
             scope = (Scriptable) ((Function) f).getDeclarationScope();
         } else {
@@ -3292,8 +3293,7 @@ public class ScriptRuntime {
         final Callable getIterator =
                 ScriptRuntime.getElemFunctionAndThis(obj, SymbolKey.ITERATOR, cx, scope);
         final Object iterable = ScriptRuntime.lastStoredScriptable(cx);
-        return getIterator.call(
-                cx, (Scriptable) scope, (Scriptable) iterable, ScriptRuntime.emptyArgs);
+        return getIterator.call(cx, scope, iterable, ScriptRuntime.emptyArgs);
     }
 
     /**
@@ -3418,7 +3418,7 @@ public class ScriptRuntime {
         return function.call(cx, (Scriptable) scope, (Scriptable) callThis, callArgs);
     }
 
-    public static Scriptable getApplyOrCallThis(
+    public static Object getApplyOrCallThis(
             Context cx, JSScope scope, Object arg0, int l, Callable target) {
         Object callThis;
         if (cx.hasFeature(Context.FEATURE_OLD_UNDEF_NULL_THIS)) {
@@ -3565,11 +3565,11 @@ public class ScriptRuntime {
                         1,
                         null,
                         compilerEnvironsProcessor);
-        Scriptable thisObject =
+        Object thisObject =
                 thisArg == Undefined.instance
                         ? Undefined.SCRIPTABLE_UNDEFINED
                         : (Scriptable) thisArg;
-        return script.exec(cx, (Scriptable) scope, thisObject);
+        return script.exec(cx, scope, thisObject);
     }
 
     /** The typeof operator */
@@ -4772,8 +4772,7 @@ public class ScriptRuntime {
     }
 
     @Deprecated
-    public static Object doTopCall(
-            Script script, Context cx, Scriptable scope, Scriptable thisObj) {
+    public static Object doTopCall(Script script, Context cx, JSScope scope, Scriptable thisObj) {
         return doTopCall(script, cx, scope, thisObj, cx.isTopLevelStrict);
     }
 
@@ -4808,11 +4807,7 @@ public class ScriptRuntime {
     }
 
     public static Object doTopCall(
-            Script script,
-            Context cx,
-            Scriptable scope,
-            Scriptable thisObj,
-            boolean isTopLevelStrict) {
+            Script script, Context cx, JSScope scope, Object thisObj, boolean isTopLevelStrict) {
         if (scope == null) throw new IllegalArgumentException();
         if (cx.topCallScope != null) throw new IllegalStateException();
 
@@ -5853,7 +5848,7 @@ public class ScriptRuntime {
     }
 
     public static Scriptable wrapRegExp(Context cx, JSScope scope, Object compiled) {
-        return cx.getRegExpProxy().wrapRegExp(cx, (Scriptable) scope, compiled);
+        return cx.getRegExpProxy().wrapRegExp(cx, scope, compiled);
     }
 
     public static Scriptable getTemplateLiteralCallSite(
@@ -6151,7 +6146,7 @@ public class ScriptRuntime {
          * the result with ths stored "this".
          */
         public Object call(Context cx, JSScope scope, Object[] args) {
-            return getCallable().call(cx, (Scriptable) scope, (Scriptable) thisObj, args);
+            return getCallable().call(cx, scope, thisObj, args);
         }
     }
 

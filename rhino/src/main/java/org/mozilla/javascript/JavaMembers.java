@@ -123,7 +123,7 @@ class JavaMembers {
         return cx.getWrapFactory().wrap(cx, ScriptableObject.getTopLevelScope(scope), got, type);
     }
 
-    void put(Scriptable scope, String name, Object javaObject, Object value, boolean isStatic) {
+    void put(JSScope scope, String name, Object javaObject, Object value, boolean isStatic) {
         Map<String, Object> ht = isStatic ? staticMembers : members;
         Object member = ht.get(name);
         if (!isStatic && member == null) {

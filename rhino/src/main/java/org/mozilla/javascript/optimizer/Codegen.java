@@ -522,7 +522,7 @@ public class Codegen implements Evaluator {
                 "org/mozilla/javascript/BaseFunction",
                 "createObject",
                 "(Lorg/mozilla/javascript/Context;"
-                        + "Lorg/mozilla/javascript/Scriptable;"
+                        + "Lorg/mozilla/javascript/JSScope;"
                         + ")Lorg/mozilla/javascript/Scriptable;");
         cfw.addAStore(firstLocal);
 
@@ -885,10 +885,7 @@ public class Codegen implements Evaluator {
         } else {
             sb.append("Lorg/mozilla/javascript/JSScript;");
         }
-        sb.append(
-                "Ljava/lang/Object;"
-                        + "Lorg/mozilla/javascript/Scriptable;"
-                        + "Ljava/lang/Object;");
+        sb.append("Ljava/lang/Object;" + "Lorg/mozilla/javascript/JSScope;" + "Ljava/lang/Object;");
         sb.append("[Ljava/lang/Object;)Ljava/lang/Object;");
         return sb.toString();
     }
@@ -902,10 +899,7 @@ public class Codegen implements Evaluator {
         } else {
             sb.append("Lorg/mozilla/javascript/JSScript;");
         }
-        sb.append(
-                "Ljava/lang/Object;"
-                        + "Lorg/mozilla/javascript/Scriptable;"
-                        + "Ljava/lang/Object;");
+        sb.append("Ljava/lang/Object;" + "Lorg/mozilla/javascript/JSScope;" + "Ljava/lang/Object;");
         if (n.getType() == Token.FUNCTION) {
             OptFunctionNode ofn = OptFunctionNode.get(n);
             if (ofn.isTargetOfDirectCall()) {
@@ -964,9 +958,9 @@ public class Codegen implements Evaluator {
     static final String JSFUNCTION_CONSTRUCTOR_SIGNATURE =
             "("
                     + "Lorg/mozilla/javascript/Context;"
-                    + "Lorg/mozilla/javascript/Scriptable;"
+                    + "Lorg/mozilla/javascript/JSScope;"
                     + "Lorg/mozilla/javascript/JSDescriptor;"
-                    + "Lorg/mozilla/javascript/Scriptable;"
+                    + "Ljava/lang/Object;"
                     + "Lorg/mozilla/javascript/Scriptable;"
                     + ")V";
 
@@ -975,7 +969,7 @@ public class Codegen implements Evaluator {
                     + "Lorg/mozilla/javascript/Context;"
                     + "Lorg/mozilla/javascript/JSFunction;"
                     + "Ljava/lang/Object;"
-                    + "Lorg/mozilla/javascript/Scriptable;"
+                    + "Lorg/mozilla/javascript/JSScope;"
                     + "I"
                     + "Ljava/lang/Object;)Ljava/lang/Object;";
 
