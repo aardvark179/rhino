@@ -62,7 +62,7 @@ public class LambdaAccessorSlot extends Slot {
     }
 
     @Override
-    DescriptorInfo getPropertyDescriptor(Context cx, Scriptable scope) {
+    DescriptorInfo getPropertyDescriptor(Context cx, JSScope scope) {
         return buildPropertyDescriptor(cx);
     }
 
@@ -107,7 +107,7 @@ public class LambdaAccessorSlot extends Slot {
     }
 
     @Override
-    public boolean setValue(Object value, Scriptable scope, Scriptable start, boolean isThrow) {
+    public boolean setValue(Object value, JSScope scope, JSScope start, boolean isThrow) {
         if (setter == null) {
             if (getter != null) {
                 throwNoSetterException(start, value);
@@ -122,36 +122,37 @@ public class LambdaAccessorSlot extends Slot {
     }
 
     @Override
-    public Object getValue(Scriptable owner) {
+    public Object getValue(JSScope owner) {
         if (getter != null) {
             return getter.apply(owner);
         }
         return super.getValue(owner);
     }
 
-    public void setGetter(Scriptable scope, ScriptableObject.LambdaGetterFunction getter) {
+    public void setGetter(JSScope scope, ScriptableObject.LambdaGetterFunction getter) {
         this.getter = getter;
         if (getter != null) {
             this.getterFunction =
                     new LambdaFunction(
-                            scope,
+                            (Scriptable) scope,
                             "get " + super.name,
                             0,
-                            (cx1, scope1, thisObj, args) -> getter.apply(thisObj));
+                            (cx1, scope1, thisObj, args) -> getter.apply((Scriptable) thisObj));
         }
     }
 
-    public void setSetter(Scriptable scope, ScriptableObject.LambdaSetterFunction setter) {
+    public void setSetter(JSScope scope, ScriptableObject.LambdaSetterFunction setter) {
         this.setter = setter;
         if (setter != null) {
             this.setterFunction =
                     new LambdaFunction(
-                            scope,
+                            (Scriptable) scope,
                             "set " + super.name,
                             1,
                             (cx1, scope1, thisObj, args) -> {
                                 setter.accept(
-                                        thisObj, args.length > 0 ? args[0] : Undefined.instance);
+                                        (Scriptable) thisObj,
+                                        args.length > 0 ? args[0] : Undefined.instance);
                                 return Undefined.instance;
                             });
         }

@@ -36,6 +36,7 @@ import org.mozilla.javascript.ContextFactory;
 import org.mozilla.javascript.ErrorReporter;
 import org.mozilla.javascript.Function;
 import org.mozilla.javascript.ImporterTopLevel;
+import org.mozilla.javascript.JSScope;
 import org.mozilla.javascript.NativeArray;
 import org.mozilla.javascript.NativeConsole;
 import org.mozilla.javascript.RhinoException;
@@ -527,7 +528,7 @@ public class Global extends ImporterTopLevel {
      * </pre>
      */
     public static Object spawn(Context cx, Scriptable thisObj, Object[] args, Function funObj) {
-        Scriptable scope = funObj.getParentScope();
+        JSScope scope = funObj.getParentScope();
         ContextAction<?> action = getAsyncAction(cx, args, scope);
         ContextFactory factory = cx.getFactory();
         Thread thread = new Thread(() -> factory.call(action));
@@ -535,8 +536,7 @@ public class Global extends ImporterTopLevel {
         return cx.getWrapFactory().wrap(cx, scope, thread, Thread.class);
     }
 
-    private static ContextAction<Object> getAsyncAction(
-            Context cx, Object[] args, Scriptable scope) {
+    private static ContextAction<Object> getAsyncAction(Context cx, Object[] args, JSScope scope) {
         ContextAction<Object> action;
         if (args.length != 0 && args[0] instanceof Function) {
             Function f = (Function) args[0];
@@ -544,10 +544,10 @@ public class Global extends ImporterTopLevel {
                     args.length > 1 && args[1] instanceof Scriptable
                             ? cx.getElements((Scriptable) args[1])
                             : ScriptRuntime.emptyArgs;
-            action = cx2 -> f.call(cx2, scope, scope, newArgs);
+            action = cx2 -> f.call(cx2, (Scriptable) scope, (Scriptable) scope, newArgs);
         } else if (args.length != 0 && args[0] instanceof Script) {
             Script s = (Script) args[0];
-            action = cx2 -> s.exec(cx2, scope, scope);
+            action = cx2 -> s.exec(cx2, (Scriptable) scope, (Scriptable) scope);
         } else {
             throw reportRuntimeError("msg.spawn.args");
         }
@@ -755,7 +755,7 @@ public class Global extends ImporterTopLevel {
     }
 
     private static Global getInstance(Function function) {
-        Scriptable scope = function.getParentScope();
+        JSScope scope = function.getParentScope();
         if (!(scope instanceof Global))
             throw reportRuntimeError("msg.bad.shell.function.scope", String.valueOf(scope));
         return (Global) scope;

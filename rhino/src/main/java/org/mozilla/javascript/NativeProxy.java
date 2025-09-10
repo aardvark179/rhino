@@ -143,7 +143,7 @@ final class NativeProxy extends ScriptableObject implements Function {
      * [[HasProperty]] (P)</a>
      */
     @Override
-    public boolean has(String name, Scriptable start) {
+    public boolean has(String name, JSScope start) {
         /*
          * 1. Assert: IsPropertyKey(P) is true.
          * 2. Let handler be O.[[ProxyHandler]].
@@ -196,7 +196,7 @@ final class NativeProxy extends ScriptableObject implements Function {
      * [[HasProperty]] (P)</a>
      */
     @Override
-    public boolean has(int index, Scriptable start) {
+    public boolean has(int index, JSScope start) {
         /*
          * 1. Assert: IsPropertyKey(P) is true.
          * 2. Let handler be O.[[ProxyHandler]].
@@ -248,7 +248,7 @@ final class NativeProxy extends ScriptableObject implements Function {
      * [[HasProperty]] (P)</a>
      */
     @Override
-    public boolean has(Symbol key, Scriptable start) {
+    public boolean has(Symbol key, JSScope start) {
         ScriptableObject target = getTargetThrowIfRevoked();
 
         Function trap = getTrap(TRAP_HAS);
@@ -407,7 +407,7 @@ final class NativeProxy extends ScriptableObject implements Function {
      * [[Get]] (P, Receiver)</a>
      */
     @Override
-    public Object get(String name, Scriptable start) {
+    public Object get(String name, JSScope start) {
         /*
          * 1. Assert: IsPropertyKey(P) is true.
          * 2. Let handler be O.[[ProxyHandler]].
@@ -462,7 +462,7 @@ final class NativeProxy extends ScriptableObject implements Function {
      * [[Get]] (P, Receiver)</a>
      */
     @Override
-    public Object get(int index, Scriptable start) {
+    public Object get(int index, JSScope start) {
         /*
          * 1. Assert: IsPropertyKey(P) is true.
          * 2. Let handler be O.[[ProxyHandler]].
@@ -521,7 +521,7 @@ final class NativeProxy extends ScriptableObject implements Function {
      * [[Get]] (P, Receiver)</a>
      */
     @Override
-    public Object get(Symbol key, Scriptable start) {
+    public Object get(Symbol key, JSScope start) {
         /*
          * 1. Assert: IsPropertyKey(P) is true.
          * 2. Let handler be O.[[ProxyHandler]].
@@ -579,7 +579,7 @@ final class NativeProxy extends ScriptableObject implements Function {
      * [[Set]] (P, V, Receiver)</a>
      */
     @Override
-    public void put(String name, Scriptable start, Object value) {
+    public void put(String name, JSScope start, Object value) {
         /*
          * 1. Assert: IsPropertyKey(P) is true.
          * 2. Let handler be O.[[ProxyHandler]].
@@ -638,7 +638,7 @@ final class NativeProxy extends ScriptableObject implements Function {
      * [[Set]] (P, V, Receiver)</a>
      */
     @Override
-    public void put(int index, Scriptable start, Object value) {
+    public void put(int index, JSScope start, Object value) {
         /*
          * 1. Assert: IsPropertyKey(P) is true.
          * 2. Let handler be O.[[ProxyHandler]].
@@ -701,7 +701,7 @@ final class NativeProxy extends ScriptableObject implements Function {
      * [[Set]] (P, V, Receiver)</a>
      */
     @Override
-    public void put(Symbol key, Scriptable start, Object value) {
+    public void put(Symbol key, JSScope start, Object value) {
         /*
          * 1. Assert: IsPropertyKey(P) is true.
          * 2. Let handler be O.[[ProxyHandler]].
@@ -1042,7 +1042,9 @@ final class NativeProxy extends ScriptableObject implements Function {
                             callTrap(
                                     trap,
                                     new Object[] {
-                                        target, id, desc.toObject(trap.getDeclarationScope())
+                                        target,
+                                        id,
+                                        desc.toObject((Scriptable) trap.getDeclarationScope())
                                     }));
             if (!booleanTrapResult) {
                 return false;
@@ -1291,7 +1293,7 @@ final class NativeProxy extends ScriptableObject implements Function {
     }
 
     @Override
-    public Scriptable getDeclarationScope() {
+    public JSScope getDeclarationScope() {
         ScriptableObject target = getTargetThrowIfRevoked();
         if (target instanceof Function) {
             return ((Function) target).getDeclarationScope();
@@ -1348,7 +1350,8 @@ final class NativeProxy extends ScriptableObject implements Function {
     }
 
     private Object callTrap(Function trap, Object[] args) {
-        return trap.call(Context.getContext(), trap.getDeclarationScope(), handlerObj, args);
+        return trap.call(
+                Context.getContext(), (Scriptable) trap.getDeclarationScope(), handlerObj, args);
     }
 
     ScriptableObject getTargetThrowIfRevoked() {

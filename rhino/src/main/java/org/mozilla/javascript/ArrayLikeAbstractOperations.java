@@ -38,7 +38,7 @@ public class ArrayLikeAbstractOperations {
     public static Object iterativeMethod(
             Context cx,
             IterativeOperation operation,
-            Scriptable scope,
+            JSScope scope,
             Scriptable thisObj,
             Object[] args,
             LengthAccessor lengthAccessor) {
@@ -53,7 +53,7 @@ public class ArrayLikeAbstractOperations {
             Context cx,
             IdFunctionObject fun,
             IterativeOperation operation,
-            Scriptable scope,
+            JSScope scope,
             Scriptable thisObj,
             Object[] args,
             LengthAccessor lengthAccessor) {
@@ -64,7 +64,7 @@ public class ArrayLikeAbstractOperations {
             Context cx,
             IdFunctionObject fun,
             IterativeOperation operation,
-            Scriptable scope,
+            JSScope scope,
             Scriptable thisObj,
             Object[] args,
             LengthAccessor lengthAccessor,
@@ -89,8 +89,8 @@ public class ArrayLikeAbstractOperations {
             Object tag,
             String name,
             IterativeOperation operation,
-            Scriptable scope,
-            Scriptable thisObj,
+            JSScope scope,
+            Object thisObj,
             Object[] args,
             LengthAccessor lengthAccessor) {
         return iterativeMethod(
@@ -102,8 +102,8 @@ public class ArrayLikeAbstractOperations {
             Object tag,
             String name,
             IterativeOperation operation,
-            Scriptable scope,
-            Scriptable thisObj,
+            JSScope scope,
+            Object thisObj,
             Object[] args,
             LengthAccessor lengthAccessor,
             boolean skipCoercibleCheck) {
@@ -125,8 +125,8 @@ public class ArrayLikeAbstractOperations {
     public static Object coercibleIterativeMethod(
             Context cx,
             IterativeOperation operation,
-            Scriptable scope,
-            Scriptable o,
+            JSScope scope,
+            Object o,
             Object[] args,
             long length) {
         if (operation == IterativeOperation.MAP && length > Integer.MAX_VALUE) {
@@ -168,7 +168,7 @@ public class ArrayLikeAbstractOperations {
                         : +1;
         for (long i = start; i != end; i += increment) {
             Object[] innerArgs = new Object[3];
-            Object elem = getRawElem(o, i);
+            Object elem = getRawElem((Scriptable) o, i);
             if (elem == NOT_FOUND) {
                 if (operation == IterativeOperation.FIND
                         || operation == IterativeOperation.FIND_INDEX
@@ -226,9 +226,9 @@ public class ArrayLikeAbstractOperations {
         }
     }
 
-    static Scriptable arraySpeciesCreate(Context cx, Scriptable scope, Scriptable o, int length) {
+    static Scriptable arraySpeciesCreate(Context cx, JSScope scope, Object o, int length) {
         if (o instanceof NativeArray) {
-            Object c = ScriptableObject.getProperty(o, "constructor");
+            Object c = ScriptableObject.getProperty((Scriptable) o, "constructor");
             if (c instanceof Scriptable) {
                 c = ScriptableObject.getProperty((Scriptable) c, SymbolKey.SPECIES);
                 if (c == null || c == NOT_FOUND) {
@@ -239,7 +239,8 @@ public class ArrayLikeAbstractOperations {
             if (!Undefined.isUndefined(c)) {
                 if (c instanceof Constructable) {
                     return ((Constructable) c)
-                            .construct(cx, scope, new Object[] {Double.valueOf(length)});
+                            .construct(
+                                    cx, (Scriptable) scope, new Object[] {Double.valueOf(length)});
                 } else {
                     throw ScriptRuntime.typeErrorById("msg.ctor.not.found", o);
                 }
@@ -314,11 +315,7 @@ public class ArrayLikeAbstractOperations {
 
     /** Implements the methods "reduce" and "reduceRight". */
     public static Object reduceMethod(
-            Context cx,
-            ReduceOperation operation,
-            Scriptable scope,
-            Scriptable thisObj,
-            Object[] args) {
+            Context cx, ReduceOperation operation, JSScope scope, Object thisObj, Object[] args) {
         Scriptable o = ScriptRuntime.toObject(cx, scope, thisObj);
 
         long length = getLengthProperty(cx, o);
@@ -328,7 +325,7 @@ public class ArrayLikeAbstractOperations {
     public static Object reduceMethodWithLength(
             Context cx,
             ReduceOperation operation,
-            Scriptable scope,
+            JSScope scope,
             Scriptable o,
             Object[] args,
             long length) {
@@ -364,7 +361,7 @@ public class ArrayLikeAbstractOperations {
     }
 
     public static Comparator<Object> getSortComparator(
-            final Context cx, final Scriptable scope, final Object[] args) {
+            final Context cx, final JSScope scope, final Object[] args) {
         if (args.length > 0 && Undefined.instance != args[0]) {
             return getSortComparatorFromArguments(cx, scope, args);
         } else {
@@ -373,17 +370,17 @@ public class ArrayLikeAbstractOperations {
     }
 
     public static ElementComparator getSortComparatorFromArguments(
-            Context cx, Scriptable scope, Object[] args) {
+            Context cx, JSScope scope, Object[] args) {
         var compareFunc = ScriptRuntime.getValueAndThis(args[0], cx);
         Callable compare = compareFunc.getCallable();
-        Scriptable compareThis = compareFunc.getThis();
+        Scriptable compareThis = (Scriptable) compareFunc.getThis();
         final Object[] cmpBuf = new Object[2]; // Buffer for cmp arguments
         return new ElementComparator(
                 (x, y) -> {
                     // This comparator is invoked only for non-undefined objects
                     cmpBuf[0] = x;
                     cmpBuf[1] = y;
-                    Object ret = compare.call(cx, scope, compareThis, cmpBuf);
+                    Object ret = compare.call(cx, (Scriptable) scope, compareThis, cmpBuf);
                     double d = ScriptRuntime.toNumber(ret);
                     int cmp = Double.compare(d, 0);
                     if (cmp < 0) {

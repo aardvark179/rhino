@@ -33,7 +33,7 @@ public class LambdaFunction extends BaseFunction {
      * @param defaultPrototype set up a prototype on the new function
      */
     public LambdaFunction(
-            Scriptable scope,
+            JSScope scope,
             String name,
             int length,
             SerializableCallable target,
@@ -73,11 +73,7 @@ public class LambdaFunction extends BaseFunction {
      *     single-function interface this will typically be implemented as a lambda.
      */
     public LambdaFunction(
-            Scriptable scope,
-            String name,
-            int length,
-            Object prototype,
-            SerializableCallable target) {
+            JSScope scope, String name, int length, Object prototype, SerializableCallable target) {
         this.target = target;
         this.name = name;
         this.length = length;
@@ -86,7 +82,7 @@ public class LambdaFunction extends BaseFunction {
     }
 
     /** Create a new built-in function, with no name, and no default prototype. */
-    public LambdaFunction(Scriptable scope, int length, SerializableCallable target) {
+    public LambdaFunction(JSScope scope, int length, SerializableCallable target) {
         this.target = target;
         this.length = length;
         this.name = "";
@@ -95,7 +91,7 @@ public class LambdaFunction extends BaseFunction {
 
     @Override
     public Object call(Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
-        return target.call(cx, getDeclarationScope(), thisObj, args);
+        return target.call(cx, (Scriptable) getDeclarationScope(), thisObj, args);
     }
 
     @Override

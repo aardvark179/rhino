@@ -49,7 +49,7 @@ public class NativeJavaList extends NativeJavaObject {
     private final TypeInfo elementType;
 
     @SuppressWarnings("unchecked")
-    public NativeJavaList(Scriptable scope, Object list, TypeInfo staticType) {
+    public NativeJavaList(JSScope scope, Object list, TypeInfo staticType) {
         super(scope, list, staticType);
         assert list instanceof List;
         this.list = (List<Object>) list;
@@ -64,7 +64,7 @@ public class NativeJavaList extends NativeJavaObject {
     }
 
     @Override
-    public boolean has(String name, Scriptable start) {
+    public boolean has(String name, JSScope start) {
         if ("length".equals(name)) {
             return true;
         }
@@ -72,7 +72,7 @@ public class NativeJavaList extends NativeJavaObject {
     }
 
     @Override
-    public boolean has(int index, Scriptable start) {
+    public boolean has(int index, JSScope start) {
         if (isWithValidIndex(index)) {
             return true;
         }
@@ -87,7 +87,7 @@ public class NativeJavaList extends NativeJavaObject {
     }
 
     @Override
-    public boolean has(Symbol key, Scriptable start) {
+    public boolean has(Symbol key, JSScope start) {
         if (SymbolKey.IS_CONCAT_SPREADABLE.equals(key)) {
             return true;
         }
@@ -95,7 +95,7 @@ public class NativeJavaList extends NativeJavaObject {
     }
 
     @Override
-    public Object get(String name, Scriptable start) {
+    public Object get(String name, JSScope start) {
         if ("length".equals(name)) {
             return Integer.valueOf(list.size());
         }
@@ -103,7 +103,7 @@ public class NativeJavaList extends NativeJavaObject {
     }
 
     @Override
-    public Object get(int index, Scriptable start) {
+    public Object get(int index, JSScope start) {
         if (isWithValidIndex(index)) {
             Context cx = Context.getCurrentContext();
             Object obj = list.get(index);
@@ -116,7 +116,7 @@ public class NativeJavaList extends NativeJavaObject {
     }
 
     @Override
-    public Object get(Symbol key, Scriptable start) {
+    public Object get(Symbol key, JSScope start) {
         if (SymbolKey.IS_CONCAT_SPREADABLE.equals(key)) {
             return Boolean.TRUE;
         }
@@ -124,7 +124,7 @@ public class NativeJavaList extends NativeJavaObject {
     }
 
     @Override
-    public void put(int index, Scriptable start, Object value) {
+    public void put(int index, JSScope start, Object value) {
         if (index >= 0) {
             Object javaValue = Context.jsToJava(value, elementType);
             if (index == list.size()) {
@@ -139,7 +139,7 @@ public class NativeJavaList extends NativeJavaObject {
     }
 
     @Override
-    public void put(String name, Scriptable start, Object value) {
+    public void put(String name, JSScope start, Object value) {
         if (list != null && "length".equals(name)) {
             setLength(value);
             return;

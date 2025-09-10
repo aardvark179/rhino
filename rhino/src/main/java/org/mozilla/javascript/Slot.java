@@ -3,6 +3,7 @@ package org.mozilla.javascript;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
+import org.mozilla.javascript.ScriptableObject.DescriptorInfo;
 
 /**
  * A Slot is the base class for all properties stored in the ScriptableObject class. There are a
@@ -63,11 +64,11 @@ public class Slot implements Serializable {
         }
     }
 
-    public final boolean setValue(Object value, Scriptable owner, Scriptable start) {
+    public final boolean setValue(Object value, JSScope owner, JSScope start) {
         return setValue(value, owner, start, Context.isCurrentContextStrict());
     }
 
-    public boolean setValue(Object value, Scriptable owner, Scriptable start, boolean isThrow) {
+    public boolean setValue(Object value, JSScope owner, JSScope start, boolean isThrow) {
         if ((attributes & ScriptableObject.READONLY) != 0) {
             if (isThrow) {
                 throw ScriptRuntime.typeErrorById("msg.modify.readonly", name);
@@ -81,7 +82,7 @@ public class Slot implements Serializable {
         return false;
     }
 
-    public Object getValue(Scriptable start) {
+    public Object getValue(JSScope start) {
         return value;
     }
 
@@ -94,11 +95,11 @@ public class Slot implements Serializable {
         attributes = (short) value;
     }
 
-    ScriptableObject.DescriptorInfo getPropertyDescriptor(Context cx, Scriptable scope) {
+    DescriptorInfo getPropertyDescriptor(Context cx, JSScope scope) {
         return ScriptableObject.buildDataDescriptor(value, attributes);
     }
 
-    protected void throwNoSetterException(Scriptable start, Object newValue) {
+    protected void throwNoSetterException(JSScope start, Object newValue) {
         Context cx = Context.getContext();
         if (cx.isStrictMode()
                 ||
@@ -108,7 +109,7 @@ public class Slot implements Serializable {
 
             String prop = "";
             if (name != null) {
-                prop = "[" + start.getClassName() + "]." + name;
+                prop = "[" + ((Scriptable) start).getClassName() + "]." + name;
             }
             throw ScriptRuntime.typeErrorById(
                     "msg.set.prop.no.setter", prop, Context.toString(newValue));
@@ -119,12 +120,12 @@ public class Slot implements Serializable {
      * Return a JavaScript function that represents the "setter". This is used by some legacy
      * functionality. Return null if there is no setter.
      */
-    Function getSetterFunction(String name, Scriptable scope) {
+    Function getSetterFunction(String name, JSScope scope) {
         return null;
     }
 
     /** Same for the "getter." */
-    Function getGetterFunction(String name, Scriptable scope) {
+    Function getGetterFunction(String name, JSScope scope) {
         return null;
     }
 

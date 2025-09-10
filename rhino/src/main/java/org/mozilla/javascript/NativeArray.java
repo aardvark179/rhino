@@ -255,7 +255,7 @@ public class NativeArray extends ScriptableObject implements List {
     }
 
     @Override
-    public Object get(int index, Scriptable start) {
+    public Object get(int index, JSScope start) {
         var slot = denseOnly ? null : getMap().query(null, index);
         if (!denseOnly && slot != null && slot.isSetterSlot()) return slot.getValue(start);
         if (dense != null && 0 <= index && index < dense.length) return dense[index];
@@ -263,7 +263,7 @@ public class NativeArray extends ScriptableObject implements List {
     }
 
     @Override
-    public boolean has(int index, Scriptable start) {
+    public boolean has(int index, JSScope start) {
         var slot = denseOnly ? null : getMap().query(null, index);
         if (slot != null) {
             return true;
@@ -309,7 +309,7 @@ public class NativeArray extends ScriptableObject implements List {
     }
 
     @Override
-    public void put(String id, Scriptable start, Object value) {
+    public void put(String id, JSScope start, Object value) {
         super.put(id, start, value);
         if (start == this) {
             // If the object is sealed, super will throw exception
@@ -338,7 +338,7 @@ public class NativeArray extends ScriptableObject implements List {
     }
 
     @Override
-    public void put(int index, Scriptable start, Object value) {
+    public void put(int index, JSScope start, Object value) {
         var slot = denseOnly ? null : getMap().query(null, index);
         if (start == this
                 && !isSealed()
@@ -561,16 +561,12 @@ public class NativeArray extends ScriptableObject implements List {
                 NativeArray::arraySetLength);
     }
 
-    private static Object lengthGetter(NativeArray array, Scriptable start) {
+    private static Object lengthGetter(NativeArray array, JSScope start) {
         return ScriptRuntime.wrapNumber((double) array.length);
     }
 
     private static boolean lengthSetter(
-            NativeArray builtIn,
-            Object value,
-            Scriptable owner,
-            Scriptable start,
-            boolean isThrow) {
+            NativeArray builtIn, Object value, JSScope owner, JSScope start, boolean isThrow) {
         double d = ScriptRuntime.toNumber(value);
         try (var map = builtIn.startCompoundOp(true)) {
             builtIn.setLength(map, d);

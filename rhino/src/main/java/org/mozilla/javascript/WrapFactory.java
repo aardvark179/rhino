@@ -46,11 +46,11 @@ public class WrapFactory {
      *     class, staticType will be used instead.
      * @return the wrapped value.
      */
-    public Object wrap(Context cx, Scriptable scope, Object obj, Class<?> staticType) {
+    public Object wrap(Context cx, JSScope scope, Object obj, Class<?> staticType) {
         return wrap(cx, scope, obj, TypeInfoFactory.GLOBAL.create(staticType));
     }
 
-    public Object wrap(Context cx, Scriptable scope, Object obj, TypeInfo staticType) {
+    public Object wrap(Context cx, JSScope scope, Object obj, TypeInfo staticType) {
         if (obj == null || obj == Undefined.instance || obj instanceof Scriptable) {
             return obj;
         }
@@ -99,7 +99,7 @@ public class WrapFactory {
      * Wrap Java object as Scriptable instance to allow full access to its methods and fields from
      * JavaScript.
      *
-     * <p>{@link #wrap(Context, Scriptable, Object, Class)} and {@link #wrapNewObject(Context,
+     * <p>{@link #wrap(Context, JSScope, Object, Class)} and {@link #wrapNewObject(Context,
      * Scriptable, Object)} call this method when they can not convert {@code javaObject} to
      * JavaScript primitive value or JavaScript array.
      *
@@ -113,12 +113,12 @@ public class WrapFactory {
      * @return the wrapped value which shall not be null
      */
     public Scriptable wrapAsJavaObject(
-            Context cx, Scriptable scope, Object javaObject, Class<?> staticType) {
+            Context cx, JSScope scope, Object javaObject, Class<?> staticType) {
         return wrapAsJavaObject(cx, scope, javaObject, TypeInfoFactory.GLOBAL.create(staticType));
     }
 
     public Scriptable wrapAsJavaObject(
-            Context cx, Scriptable scope, Object javaObject, TypeInfo staticType) {
+            Context cx, JSScope scope, Object javaObject, TypeInfo staticType) {
         if (staticType.shouldReplace() && javaObject != null) {
             staticType =
                     TypeInfoFactory.getOrElse(scope, TypeInfoFactory.GLOBAL)

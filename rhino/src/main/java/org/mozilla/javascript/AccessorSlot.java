@@ -45,7 +45,7 @@ public class AccessorSlot extends Slot {
     }
 
     @Override
-    DescriptorInfo getPropertyDescriptor(Context cx, Scriptable scope) {
+    DescriptorInfo getPropertyDescriptor(Context cx, JSScope scope) {
         // It sounds logical that this would be the same as the logic for a normal Slot,
         // but the spec is super pedantic about things like the order of properties here,
         // so we need special support here.
@@ -85,7 +85,7 @@ public class AccessorSlot extends Slot {
     }
 
     @Override
-    public boolean setValue(Object value, Scriptable owner, Scriptable start, boolean isThrow) {
+    public boolean setValue(Object value, JSScope owner, JSScope start, boolean isThrow) {
         if (setter == null) {
             if (getter != null) {
                 throwNoSetterException(start, value);
@@ -98,7 +98,7 @@ public class AccessorSlot extends Slot {
     }
 
     @Override
-    public Object getValue(Scriptable start) {
+    public Object getValue(JSScope start) {
         if (getter != null) {
             return getter.getValue(start);
         }
@@ -106,7 +106,7 @@ public class AccessorSlot extends Slot {
     }
 
     @Override
-    Function getSetterFunction(String name, Scriptable scope) {
+    Function getSetterFunction(String name, JSScope scope) {
         if (setter == null) {
             return null;
         }
@@ -114,7 +114,7 @@ public class AccessorSlot extends Slot {
     }
 
     @Override
-    Function getGetterFunction(String name, Scriptable scope) {
+    Function getGetterFunction(String name, JSScope scope) {
         if (getter == null) {
             return null;
         }
@@ -144,9 +144,9 @@ public class AccessorSlot extends Slot {
     }
 
     interface Getter {
-        Object getValue(Scriptable start);
+        Object getValue(JSScope start);
 
-        Function asGetterFunction(final String name, final Scriptable scope);
+        Function asGetterFunction(final String name, final JSScope scope);
 
         boolean isSameGetterFunction(Object getter);
     }
@@ -160,7 +160,7 @@ public class AccessorSlot extends Slot {
         }
 
         @Override
-        public Object getValue(Scriptable start) {
+        public Object getValue(JSScope start) {
             if (member.delegateTo == null) {
                 return member.invoke(start, ScriptRuntime.emptyArgs);
             }
@@ -168,7 +168,7 @@ public class AccessorSlot extends Slot {
         }
 
         @Override
-        public Function asGetterFunction(String name, Scriptable scope) {
+        public Function asGetterFunction(String name, JSScope scope) {
             return member.asGetterFunction(name, scope);
         }
 
@@ -188,17 +188,21 @@ public class AccessorSlot extends Slot {
         }
 
         @Override
-        public Object getValue(Scriptable start) {
+        public Object getValue(JSScope start) {
             if (target instanceof Function) {
                 Function t = (Function) target;
                 Context cx = Context.getContext();
-                return t.call(cx, t.getDeclarationScope(), start, ScriptRuntime.emptyArgs);
+                return t.call(
+                        cx,
+                        (Scriptable) t.getDeclarationScope(),
+                        (Scriptable) start,
+                        ScriptRuntime.emptyArgs);
             }
             return Undefined.instance;
         }
 
         @Override
-        public Function asGetterFunction(String name, Scriptable scope) {
+        public Function asGetterFunction(String name, JSScope scope) {
             return target instanceof Function ? (Function) target : null;
         }
 
@@ -210,9 +214,9 @@ public class AccessorSlot extends Slot {
     }
 
     interface Setter {
-        boolean setValue(Object value, Scriptable owner, Scriptable start);
+        boolean setValue(Object value, JSScope owner, JSScope start);
 
-        Function asSetterFunction(final String name, final Scriptable scope);
+        Function asSetterFunction(final String name, final JSScope scope);
 
         boolean isSameSetterFunction(Object getter);
     }
@@ -226,7 +230,7 @@ public class AccessorSlot extends Slot {
         }
 
         @Override
-        public boolean setValue(Object value, Scriptable owner, Scriptable start) {
+        public boolean setValue(Object value, JSScope owner, JSScope start) {
             Context cx = Context.getContext();
             var pTypes = member.getArgTypes();
             // XXX: cache tag since it is already calculated in
@@ -245,7 +249,7 @@ public class AccessorSlot extends Slot {
         }
 
         @Override
-        public Function asSetterFunction(String name, Scriptable scope) {
+        public Function asSetterFunction(String name, JSScope scope) {
             return member.asSetterFunction(name, scope);
         }
 
@@ -266,17 +270,21 @@ public class AccessorSlot extends Slot {
         }
 
         @Override
-        public boolean setValue(Object value, Scriptable owner, Scriptable start) {
+        public boolean setValue(Object value, JSScope owner, JSScope start) {
             if (target instanceof Function) {
                 Function t = (Function) target;
                 Context cx = Context.getContext();
-                t.call(cx, t.getDeclarationScope(), start, new Object[] {value});
+                t.call(
+                        cx,
+                        (Scriptable) t.getDeclarationScope(),
+                        (Scriptable) start,
+                        new Object[] {value});
             }
             return true;
         }
 
         @Override
-        public Function asSetterFunction(String name, Scriptable scope) {
+        public Function asSetterFunction(String name, JSScope scope) {
             return target instanceof Function ? (Function) target : null;
         }
 

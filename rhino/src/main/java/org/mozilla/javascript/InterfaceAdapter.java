@@ -32,7 +32,7 @@ public class InterfaceAdapter {
     static Object create(Context cx, Class<?> cl, ScriptableObject object) {
         if (!cl.isInterface()) throw new IllegalArgumentException();
 
-        Scriptable topScope = ScriptRuntime.getTopCallScope(cx);
+        JSScope topScope = ScriptRuntime.getTopCallScope(cx);
         ClassCache cache = ClassCache.get(topScope);
         InterfaceAdapter adapter;
         adapter = (InterfaceAdapter) cache.getInterfaceAdapter(cl);
@@ -85,7 +85,7 @@ public class InterfaceAdapter {
             final ContextFactory cf,
             final InterfaceAdapter adapter,
             final Object target,
-            final Scriptable topScope) {
+            final JSScope topScope) {
         Constructor<?> c = (Constructor<?>) proxyHelper;
 
         InvocationHandler handler =
@@ -168,7 +168,7 @@ public class InterfaceAdapter {
     public Object invoke(
             ContextFactory cf,
             final Object target,
-            final Scriptable topScope,
+            final JSScope topScope,
             final Object thisObject,
             final Method method,
             final Object[] args) {
@@ -178,7 +178,7 @@ public class InterfaceAdapter {
     Object invokeImpl(
             Context cx,
             Object target,
-            Scriptable topScope,
+            JSScope topScope,
             Object thisObject,
             Method method,
             Object[] args) {
@@ -221,7 +221,7 @@ public class InterfaceAdapter {
         }
         Scriptable thisObj = wf.wrapAsJavaObject(cx, topScope, thisObject, TypeInfo.NONE);
 
-        Object result = function.call(cx, topScope, thisObj, args);
+        Object result = function.call(cx, (Scriptable) topScope, thisObj, args);
         Class<?> javaResultType = method.getReturnType();
         if (javaResultType == Void.TYPE) {
             result = null;

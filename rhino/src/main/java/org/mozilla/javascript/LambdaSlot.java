@@ -48,12 +48,12 @@ public class LambdaSlot extends Slot {
     }
 
     @Override
-    DescriptorInfo getPropertyDescriptor(Context cx, Scriptable scope) {
+    DescriptorInfo getPropertyDescriptor(Context cx, JSScope scope) {
         return new DescriptorInfo(getter == null ? value : getter.get(), getAttributes(), true);
     }
 
     @Override
-    public boolean setValue(Object value, Scriptable owner, Scriptable start, boolean isThrow) {
+    public boolean setValue(Object value, JSScope owner, JSScope start, boolean isThrow) {
         if (setter != null) {
             if (owner == start) {
                 setter.accept(value);
@@ -65,7 +65,7 @@ public class LambdaSlot extends Slot {
     }
 
     @Override
-    public Object getValue(Scriptable start) {
+    public Object getValue(JSScope start) {
         if (getter != null) {
             return getter.get();
         }

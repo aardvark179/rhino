@@ -135,7 +135,7 @@ class Arguments extends ScriptableObject {
     // end helpers
 
     @Override
-    public boolean has(int index, Scriptable start) {
+    public boolean has(int index, JSScope start) {
         if (arg(index) != NOT_FOUND) {
             return true;
         }
@@ -143,7 +143,7 @@ class Arguments extends ScriptableObject {
     }
 
     @Override
-    public Object get(int index, Scriptable start) {
+    public Object get(int index, JSScope start) {
         final Object value = arg(index);
         if (value == NOT_FOUND) {
             return super.get(index, start);
@@ -184,7 +184,7 @@ class Arguments extends ScriptableObject {
     }
 
     @Override
-    public void put(int index, Scriptable start, Object value) {
+    public void put(int index, JSScope start, Object value) {
         if (arg(index) == NOT_FOUND) {
             super.put(index, start, value);
         } else {
@@ -193,7 +193,7 @@ class Arguments extends ScriptableObject {
     }
 
     @Override
-    public void put(String name, Scriptable start, Object value) {
+    public void put(String name, JSScope start, Object value) {
         super.put(name, start, value);
     }
 

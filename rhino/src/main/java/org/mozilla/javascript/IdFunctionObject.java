@@ -60,7 +60,7 @@ public class IdFunctionObject extends BaseFunction {
         setImmunePrototypeProperty(prototypeProperty);
     }
 
-    public final void addAsProperty(Scriptable target) {
+    public final void addAsProperty(JSScope target) {
         ScriptableObject.defineProperty(target, functionName, this, ScriptableObject.DONTENUM);
     }
 

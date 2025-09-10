@@ -793,7 +793,7 @@ class JavaMembers {
     }
 
     static JavaMembers lookupClass(
-            Scriptable scope, Class<?> dynamicType, Class<?> staticType, boolean includeProtected) {
+            JSScope scope, Class<?> dynamicType, Class<?> staticType, boolean includeProtected) {
         JavaMembers members;
         ClassCache cache = ClassCache.get(scope);
         Map<ClassCache.CacheKey, JavaMembers> ct = cache.getClassCacheMap();

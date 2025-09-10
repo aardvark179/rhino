@@ -8,6 +8,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mozilla.javascript.Context;
+import org.mozilla.javascript.JSScope;
 import org.mozilla.javascript.LambdaConstructor;
 import org.mozilla.javascript.LambdaFunction;
 import org.mozilla.javascript.RhinoException;
@@ -279,7 +280,7 @@ public class LambdaFunctionTest {
         }
 
         @Override
-        public Object get(String name, Scriptable start) {
+        public Object get(String name, JSScope start) {
             if ("value".equals(name)) {
                 return instanceVal;
             }
@@ -287,7 +288,7 @@ public class LambdaFunctionTest {
         }
 
         @Override
-        public boolean has(String name, Scriptable start) {
+        public boolean has(String name, JSScope start) {
             if ("value".equals(name)) {
                 return true;
             }
@@ -295,7 +296,7 @@ public class LambdaFunctionTest {
         }
 
         @Override
-        public void put(String name, Scriptable start, Object value) {
+        public void put(String name, JSScope start, Object value) {
             if ("value".equals(name)) {
                 instanceVal = ScriptRuntime.toString(value);
             } else {
@@ -345,13 +346,13 @@ public class LambdaFunctionTest {
             constructor.definePrototypeProperty(
                     cx,
                     "value",
-                    (Scriptable s) -> {
+                    (JSScope s) -> {
                         SpecialConstructorClass thisObj =
                                 LambdaConstructor.convertThisObject(
                                         s, SpecialConstructorClass.class);
                         return thisObj.value;
                     },
-                    (Scriptable s, Object newVal) -> {
+                    (JSScope s, Object newVal) -> {
                         SpecialConstructorClass thisObj =
                                 LambdaConstructor.convertThisObject(
                                         s, SpecialConstructorClass.class);

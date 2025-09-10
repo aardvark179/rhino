@@ -173,7 +173,7 @@ public class FunctionObject extends BaseFunction {
     }
 
     public static Object convertArg(
-            Context cx, Scriptable scope, Object arg, int typeTag, boolean isNullable) {
+            Context cx, JSScope scope, Object arg, int typeTag, boolean isNullable) {
         switch (typeTag) {
             case JAVA_STRING_TYPE:
                 if (arg instanceof String) return arg;
@@ -395,7 +395,7 @@ public class FunctionObject extends BaseFunction {
                 if (!clazz.isInstance(thisObj)) {
                     boolean compatible = false;
                     if (thisObj == scope || thisObj instanceof ModuleScope) {
-                        Scriptable parentScope = getDeclarationScope();
+                        Scriptable parentScope = (Scriptable) getDeclarationScope();
                         if (scope != parentScope) {
                             // Call with dynamic scope for standalone function,
                             // use parentScope as thisObj

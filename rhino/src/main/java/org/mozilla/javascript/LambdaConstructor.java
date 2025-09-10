@@ -132,7 +132,7 @@ public class LambdaConstructor extends LambdaFunction {
         if ((flags & CONSTRUCTOR_FUNCTION) == 0) {
             throw ScriptRuntime.typeErrorById("msg.constructor.no.function", getFunctionName());
         }
-        scope = getDeclarationScope();
+        scope = (Scriptable) getDeclarationScope();
         if (target == null) {
             return fireConstructor(cx, scope, args);
         }
@@ -144,7 +144,7 @@ public class LambdaConstructor extends LambdaFunction {
         if ((flags & CONSTRUCTOR_NEW) == 0) {
             throw ScriptRuntime.typeErrorById("msg.no.new", getFunctionName());
         }
-        return fireConstructor(cx, getDeclarationScope(), args);
+        return fireConstructor(cx, (Scriptable) getDeclarationScope(), args);
     }
 
     private Scriptable fireConstructor(Context cx, Scriptable scope, Object[] args) {
@@ -456,7 +456,7 @@ public class LambdaConstructor extends LambdaFunction {
      * in JavaScript doesn't necessarily map to an instance of the class.
      */
     @SuppressWarnings("unchecked")
-    public static <T> T convertThisObject(Scriptable thisObj, Class<T> targetClass) {
+    public static <T> T convertThisObject(Object thisObj, Class<T> targetClass) {
         if (!targetClass.isInstance(thisObj)) {
             throw ScriptRuntime.typeErrorById("msg.this.not.instance", targetClass.getSimpleName());
         }
