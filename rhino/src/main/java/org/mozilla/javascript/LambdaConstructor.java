@@ -298,7 +298,7 @@ public class LambdaConstructor extends LambdaFunction {
     public void definePrototypeProperty(
             Context cx, String name, ScriptableObject.LambdaGetterFunction getter, int attributes) {
         ScriptableObject proto = getPrototypeScriptable();
-        proto.defineProperty(cx, name, getter, null, attributes);
+        proto.defineProperty(cx, getDeclarationScope(), name, getter, null, attributes);
     }
 
     public void definePrototypeProperty(
@@ -309,7 +309,7 @@ public class LambdaConstructor extends LambdaFunction {
     public void definePrototypeProperty(
             Context cx, Symbol key, ScriptableObject.LambdaGetterFunction getter, int attributes) {
         ScriptableObject proto = getPrototypeScriptable();
-        proto.defineProperty(cx, key, getter, null, attributes);
+        proto.defineProperty(cx, getDeclarationScope(), key, getter, null, attributes);
     }
 
     /**
@@ -324,7 +324,7 @@ public class LambdaConstructor extends LambdaFunction {
             ScriptableObject.LambdaSetterFunction setter,
             int attributes) {
         ScriptableObject proto = getPrototypeScriptable();
-        proto.defineProperty(cx, name, getter, setter, attributes);
+        proto.defineProperty(cx, getDeclarationScope(), name, getter, setter, attributes);
     }
 
     public void definePrototypeProperty(
@@ -342,7 +342,7 @@ public class LambdaConstructor extends LambdaFunction {
             ScriptableObject.LambdaSetterFunction setter,
             int attributes) {
         ScriptableObject proto = getPrototypeScriptable();
-        proto.defineProperty(cx, key, getter, setter, attributes);
+        proto.defineProperty(cx, getDeclarationScope(), key, getter, setter, attributes);
     }
 
     public void definePrototypeProperty(

@@ -43,40 +43,49 @@ class NativeRegExpCtor {
                         NativeRegExpCtor::js_construct);
         ctor.defineProperty(
                 cx,
+                scopeArg,
                 "multiline",
                 (c) -> ScriptRuntime.wrapBoolean(getImpl().multiline),
                 (c, v) -> getImpl().multiline = ScriptRuntime.toBoolean(v),
                 PERMANENT);
         ctor.defineProperty(
                 cx,
+                scopeArg,
                 "$*",
                 (c) -> ScriptRuntime.wrapBoolean(getImpl().multiline),
                 (c, v) -> getImpl().multiline = ScriptRuntime.toBoolean(v),
                 PERMANENT);
         ctor.defineProperty(
                 cx,
+                scopeArg,
                 "input",
                 (c) -> toStr(getImpl().input),
                 (c, v) -> getImpl().input = ScriptRuntime.toString(v),
                 PERMANENT);
         ctor.defineProperty(
                 cx,
+                scopeArg,
                 "$_",
                 (c) -> toStr(getImpl().input),
                 (c, v) -> getImpl().input = ScriptRuntime.toString(v),
                 PERMANENT);
-        ctor.defineProperty(cx, "lastMatch", (c) -> toStr(getImpl().lastMatch), PERMANENT);
-        ctor.defineProperty(cx, "$&", (c) -> toStr(getImpl().lastMatch), PERMANENT);
-        ctor.defineProperty(cx, "lastParen", (c) -> toStr(getImpl().lastParen), PERMANENT);
-        ctor.defineProperty(cx, "$+", (c) -> toStr(getImpl().lastParen), PERMANENT);
-        ctor.defineProperty(cx, "leftContext", (c) -> toStr(getImpl().leftContext), PERMANENT);
-        ctor.defineProperty(cx, "$`", (c) -> toStr(getImpl().leftContext), PERMANENT);
-        ctor.defineProperty(cx, "rightContext", (c) -> toStr(getImpl().rightContext), PERMANENT);
-        ctor.defineProperty(cx, "$'", (c) -> toStr(getImpl().rightContext), PERMANENT);
+        ctor.defineProperty(
+                cx, scopeArg, "lastMatch", (c) -> toStr(getImpl().lastMatch), PERMANENT);
+        ctor.defineProperty(cx, scopeArg, "$&", (c) -> toStr(getImpl().lastMatch), PERMANENT);
+        ctor.defineProperty(
+                cx, scopeArg, "lastParen", (c) -> toStr(getImpl().lastParen), PERMANENT);
+        ctor.defineProperty(cx, scopeArg, "$+", (c) -> toStr(getImpl().lastParen), PERMANENT);
+        ctor.defineProperty(
+                cx, scopeArg, "leftContext", (c) -> toStr(getImpl().leftContext), PERMANENT);
+        ctor.defineProperty(cx, scopeArg, "$`", (c) -> toStr(getImpl().leftContext), PERMANENT);
+        ctor.defineProperty(
+                cx, scopeArg, "rightContext", (c) -> toStr(getImpl().rightContext), PERMANENT);
+        ctor.defineProperty(cx, scopeArg, "$'", (c) -> toStr(getImpl().rightContext), PERMANENT);
         for (int i = 1; i < 10; i++) {
             int c = i - 1;
             ctor.defineProperty(
                     cx,
+                    scopeArg,
                     String.format("$%d", i),
                     (x) -> toStr(getImpl().getParenSubString(c)),
                     null,

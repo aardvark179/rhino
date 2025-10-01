@@ -17,7 +17,6 @@ public final class ES6Generator extends IdScriptableObject {
 
         ES6Generator prototype = new ES6Generator();
         if (scope != null) {
-            prototype.setParentScope(scope);
             prototype.setPrototype(getObjectPrototype(scope));
         }
         prototype.activatePrototypeMap(MAX_PROTOTYPE_ID);
@@ -46,7 +45,6 @@ public final class ES6Generator extends IdScriptableObject {
         // "Generator" constructor in the top scope, we stash the
         // prototype in the top scope's associated value.
         Scriptable top = ScriptableObject.getTopLevelScope(scope);
-        this.setParentScope(top);
         ES6Generator prototype =
                 (ES6Generator) ScriptableObject.getTopScopeValue(top, GENERATOR_TAG);
         this.setPrototype(prototype);

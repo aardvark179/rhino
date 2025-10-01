@@ -33,7 +33,6 @@ public final class NativeJSON extends ScriptableObject {
     static Object init(Context cx, JSScope scope, boolean sealed) {
         NativeJSON json = new NativeJSON();
         json.setPrototype(getObjectPrototype(scope));
-        json.setParentScope(scope);
 
         json.defineBuiltinProperty(scope, "parse", 2, NativeJSON::parse);
         json.defineBuiltinProperty(scope, "stringify", 3, NativeJSON::stringify);
@@ -238,7 +237,6 @@ public final class NativeJSON extends ScriptableObject {
                 new StringifyState(cx, scope, indent, gap, replacerFunction, propertyList);
 
         ScriptableObject wrapper = new NativeObject();
-        wrapper.setParentScope(scope);
         wrapper.setPrototype(ScriptableObject.getObjectPrototype(scope));
         wrapper.defineProperty("", value, 0);
         return str("", wrapper, state);
@@ -581,7 +579,6 @@ public final class NativeJSON extends ScriptableObject {
         value = Context.javaToJS(value, state.scope, state.cx);
 
         ScriptableObject wrapper = new NativeObject();
-        wrapper.setParentScope(state.scope);
         wrapper.setPrototype(ScriptableObject.getObjectPrototype(state.scope));
         wrapper.defineProperty("", value, 0);
         return str("", wrapper, state);

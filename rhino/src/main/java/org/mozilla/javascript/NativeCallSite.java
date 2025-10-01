@@ -23,7 +23,6 @@ public class NativeCallSite extends IdScriptableObject {
     static NativeCallSite make(JSScope scope, Scriptable ctorObj) {
         NativeCallSite cs = new NativeCallSite();
         Scriptable proto = (Scriptable) ctorObj.get("prototype", ctorObj);
-        cs.setParentScope(scope);
         cs.setPrototype(proto);
         return cs;
     }

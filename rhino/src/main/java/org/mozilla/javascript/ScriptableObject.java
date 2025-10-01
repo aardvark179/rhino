@@ -2019,6 +2019,7 @@ public abstract class ScriptableObject extends SlotMapOwner
      */
     public void defineProperty(
             Context cx,
+            JSScope scope,
             String name,
             LambdaGetterFunction getter,
             LambdaSetterFunction setter,
@@ -2026,17 +2027,19 @@ public abstract class ScriptableObject extends SlotMapOwner
         if (getter == null && setter == null)
             throw ScriptRuntime.typeError("at least one of {getter, setter} is required");
 
-        LambdaAccessorSlot newSlot = createLambdaAccessorSlot(name, 0, getter, setter, attributes);
+        LambdaAccessorSlot newSlot =
+                createLambdaAccessorSlot(scope, name, 0, getter, setter, attributes);
         replaceLambdaAccessorSlot(cx, name, newSlot);
     }
 
     public void defineProperty(
-            Context cx, String name, LambdaGetterFunction getter, int attributes) {
-        defineProperty(cx, name, getter, null, attributes);
+            Context cx, JSScope scope, String name, LambdaGetterFunction getter, int attributes) {
+        defineProperty(cx, scope, name, getter, null, attributes);
     }
 
     public void defineProperty(
             Context cx,
+            JSScope scope,
             Symbol key,
             LambdaGetterFunction getter,
             LambdaSetterFunction setter,
@@ -2044,7 +2047,8 @@ public abstract class ScriptableObject extends SlotMapOwner
         if (getter == null && setter == null)
             throw ScriptRuntime.typeError("at least one of {getter, setter} is required");
 
-        LambdaAccessorSlot newSlot = createLambdaAccessorSlot(key, 0, getter, setter, attributes);
+        LambdaAccessorSlot newSlot =
+                createLambdaAccessorSlot(scope, key, 0, getter, setter, attributes);
         replaceLambdaAccessorSlot(cx, key, newSlot);
     }
 
@@ -2084,14 +2088,15 @@ public abstract class ScriptableObject extends SlotMapOwner
     }
 
     private LambdaAccessorSlot createLambdaAccessorSlot(
+            JSScope scope,
             Object name,
             int index,
             LambdaGetterFunction getter,
             LambdaSetterFunction setter,
             int attributes) {
         LambdaAccessorSlot slot = new LambdaAccessorSlot(name, index);
-        slot.setGetter(this, getter);
-        slot.setSetter(this, setter);
+        slot.setGetter(scope, getter);
+        slot.setSetter(scope, setter);
         slot.setAttributes(attributes);
         return slot;
     }

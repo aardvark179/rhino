@@ -49,7 +49,6 @@ public class NativeObject extends ScriptableObject implements Map {
                 };
 
         var proto = new NativeObject();
-        proto.setParentScope(s);
         ctor.setPrototypeProperty(proto);
         proto.defineProperty("constructor", ctor, DONTENUM);
 
@@ -650,7 +649,6 @@ public class NativeObject extends ScriptableObject implements Map {
         Scriptable obj = (arg == null) ? null : ensureScriptable(arg);
 
         ScriptableObject newObject = new NativeObject();
-        newObject.setParentScope(scope);
         newObject.setPrototype(obj);
 
         if (args.length > 1 && !Undefined.isUndefined(args[1])) {

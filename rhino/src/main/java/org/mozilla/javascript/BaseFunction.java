@@ -669,13 +669,12 @@ public class BaseFunction extends ScriptableObject implements Function {
             createPrototypeProperty();
         }
         NativeObject obj = new NativeObject();
-        obj.setParentScope(getParentScope());
 
         // put the prototype property into the object now, then in the
         // wacky case of a user defining a function Object(), we don't
         // get an infinite loop trying to find the prototype.
         prototypeProperty = obj;
-        Scriptable proto = getObjectPrototype(this);
+        Scriptable proto = getObjectPrototype(scope);
         if (proto != obj) {
             // not the one we just made, it must remain grounded
             obj.setPrototype(proto);
@@ -777,15 +776,6 @@ public class BaseFunction extends ScriptableObject implements Function {
     public Scriptable getHomeObject() {
         return homeObject;
     }
-
-    private static final int Id_constructor = 1,
-            Id_toString = 2,
-            Id_toSource = 3,
-            Id_apply = 4,
-            Id_call = 5,
-            Id_bind = 6,
-            SymbolId_hasInstance = 7,
-            MAX_PROTOTYPE_ID = SymbolId_hasInstance;
 
     private Object prototypeProperty;
     private Object argumentsObj = NOT_FOUND;
