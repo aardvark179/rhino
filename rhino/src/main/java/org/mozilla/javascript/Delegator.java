@@ -212,7 +212,7 @@ public class Delegator implements Function, SymbolScriptable {
      */
     @Override
     public void setParentScope(JSScope parent) {
-        getDelegee().setParentScope(parent);
+        // Do nothing.
     }
 
     /**

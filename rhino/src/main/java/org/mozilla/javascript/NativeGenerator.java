@@ -24,10 +24,9 @@ public final class NativeGenerator extends IdScriptableObject {
 
         NativeGenerator prototype = new NativeGenerator();
         if (scope != null) {
-            prototype.setParentScope(scope);
             prototype.setPrototype(getObjectPrototype(scope));
         }
-        prototype.activatePrototypeMap(MAX_PROTOTYPE_ID);
+        prototype.activatePrototypeMap(scope, MAX_PROTOTYPE_ID);
         if (sealed) {
             prototype.sealObject();
         }
@@ -53,7 +52,6 @@ public final class NativeGenerator extends IdScriptableObject {
         // "Generator" constructor in the top scope, we stash the
         // prototype in the top scope's associated value.
         Scriptable top = ScriptableObject.getTopLevelScope(scope);
-        this.setParentScope(top);
         NativeGenerator prototype =
                 (NativeGenerator) ScriptableObject.getTopScopeValue(top, GENERATOR_TAG);
         this.setPrototype(prototype);

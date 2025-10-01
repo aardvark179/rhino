@@ -13,10 +13,9 @@ public abstract class ES6Iterator extends IdScriptableObject {
     protected static void init(
             JSScope scope, boolean sealed, IdScriptableObject prototype, String tag) {
         if (scope != null) {
-            prototype.setParentScope(scope);
             prototype.setPrototype(getObjectPrototype(scope));
         }
-        prototype.activatePrototypeMap(MAX_PROTOTYPE_ID);
+        prototype.activatePrototypeMap(scope, MAX_PROTOTYPE_ID);
         if (sealed) {
             prototype.sealObject();
         }
@@ -33,15 +32,17 @@ public abstract class ES6Iterator extends IdScriptableObject {
     protected boolean exhausted = false;
     private String tag;
 
-    protected ES6Iterator() {}
+    protected ES6Iterator() {
+        new Error().printStackTrace();
+    }
 
     protected ES6Iterator(JSScope scope, String tag) {
         // Set parent and prototype properties. Since we don't have a
         // "Iterator" constructor in the top scope, we stash the
         // prototype in the top scope's associated value.
+        new Error().printStackTrace();
         this.tag = tag;
         Scriptable top = ScriptableObject.getTopLevelScope(scope);
-        this.setParentScope(top);
         ScriptableObject prototype = (ScriptableObject) ScriptableObject.getTopScopeValue(top, tag);
         setPrototype(prototype);
     }

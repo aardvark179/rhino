@@ -33,8 +33,8 @@ public class NativeJavaTopPackage extends NativeJavaPackage implements Function,
         {"javax", "swing"}
     };
 
-    NativeJavaTopPackage(ClassLoader loader) {
-        super(true, "", loader);
+    NativeJavaTopPackage(JSScope scope, ClassLoader loader) {
+        super(scope, true, "", loader);
     }
 
     @Override
@@ -58,14 +58,14 @@ public class NativeJavaTopPackage extends NativeJavaPackage implements Function,
             Context.reportRuntimeErrorById("msg.not.classloader");
             return null;
         }
-        NativeJavaPackage pkg = new NativeJavaPackage(true, "", loader);
+        NativeJavaPackage pkg = new NativeJavaPackage(scope, true, "", loader);
         ScriptRuntime.setObjectProtoAndParent(pkg, scope);
         return pkg;
     }
 
     public static void init(Context cx, JSScope scope, boolean sealed) {
         ClassLoader loader = cx.getApplicationClassLoader();
-        final NativeJavaTopPackage top = new NativeJavaTopPackage(loader);
+        final NativeJavaTopPackage top = new NativeJavaTopPackage(scope, loader);
         top.setPrototype(getObjectPrototype(scope));
         top.setParentScope(scope);
 

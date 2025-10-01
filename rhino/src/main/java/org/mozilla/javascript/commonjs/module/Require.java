@@ -90,6 +90,7 @@ public class Require extends BaseFunction {
         this.sandboxed = sandboxed;
         this.preExec = preExec;
         this.postExec = postExec;
+        setParentScope(nativeScope);
         setPrototype(ScriptableObject.getFunctionPrototype(nativeScope));
         if (!sandboxed) {
             paths = cx.newArray(nativeScope, 0);
@@ -173,6 +174,7 @@ public class Require extends BaseFunction {
 
     @Override
     public Object call(Context cx, JSScope scope, Object thisObj, Object[] args) {
+        scope = getDeclarationScope();
         if (args == null || args.length < 1) {
             throw ScriptRuntime.throwError(cx, scope, "require() needs one argument");
         }

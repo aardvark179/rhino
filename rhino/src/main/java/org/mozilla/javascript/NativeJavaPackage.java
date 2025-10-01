@@ -25,7 +25,9 @@ import java.util.Set;
 public class NativeJavaPackage extends ScriptableObject {
     private static final long serialVersionUID = 7445054382212031523L;
 
-    NativeJavaPackage(boolean internalUsage, String packageName, ClassLoader classLoader) {
+    NativeJavaPackage(
+            JSScope scope, boolean internalUsage, String packageName, ClassLoader classLoader) {
+        this.scope = scope;
         this.packageName = packageName;
         this.classLoader = classLoader;
     }
@@ -34,16 +36,16 @@ public class NativeJavaPackage extends ScriptableObject {
      * @deprecated NativeJavaPackage is an internal class, do not use it directly.
      */
     @Deprecated
-    public NativeJavaPackage(String packageName, ClassLoader classLoader) {
-        this(false, packageName, classLoader);
+    public NativeJavaPackage(JSScope scope, String packageName, ClassLoader classLoader) {
+        this(scope, false, packageName, classLoader);
     }
 
     /**
      * @deprecated NativeJavaPackage is an internal class, do not use it directly.
      */
     @Deprecated
-    public NativeJavaPackage(String packageName) {
-        this(false, packageName, Context.getCurrentContext().getApplicationClassLoader());
+    public NativeJavaPackage(JSScope scope, String packageName) {
+        this(scope, false, packageName, Context.getCurrentContext().getApplicationClassLoader());
     }
 
     @Override
@@ -89,7 +91,7 @@ public class NativeJavaPackage extends ScriptableObject {
             return (NativeJavaPackage) cached;
         }
         String newPackage = packageName.length() == 0 ? name : packageName + "." + name;
-        NativeJavaPackage pkg = new NativeJavaPackage(true, newPackage, classLoader);
+        NativeJavaPackage pkg = new NativeJavaPackage(scope, true, newPackage, classLoader);
         ScriptRuntime.setObjectProtoAndParent(pkg, scope);
         super.put(name, this, pkg);
         return pkg;
@@ -116,15 +118,15 @@ public class NativeJavaPackage extends ScriptableObject {
             }
             if (cl != null) {
                 WrapFactory wrapFactory = cx.getWrapFactory();
-                newValue = wrapFactory.wrapJavaClass(cx, getTopLevelScope(this), cl);
+                newValue = wrapFactory.wrapJavaClass(cx, getTopLevelScope(scope), cl);
                 newValue.setPrototype(getPrototype());
             }
         }
         if (newValue == null) {
             if (createPkg) {
                 NativeJavaPackage pkg;
-                pkg = new NativeJavaPackage(true, className, classLoader);
-                ScriptRuntime.setObjectProtoAndParent(pkg, getParentScope());
+                pkg = new NativeJavaPackage(scope, true, className, classLoader);
+                ScriptRuntime.setObjectProtoAndParent(pkg, scope);
                 newValue = pkg;
             } else {
                 // add to negative cache
@@ -172,4 +174,5 @@ public class NativeJavaPackage extends ScriptableObject {
     private String packageName;
     private transient ClassLoader classLoader;
     private Set<String> negativeCache = null;
+    private final JSScope scope;
 }

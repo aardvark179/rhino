@@ -85,10 +85,10 @@ public class FunctionObject extends BaseFunction {
         var typeInfoFactory = TypeInfoFactory.getOrElse(scope, TypeInfoFactory.GLOBAL);
 
         if (methodOrConstructor instanceof Constructor) {
-            member = new MemberBox((Constructor<?>) methodOrConstructor, typeInfoFactory);
+            member = new MemberBox(scope, (Constructor<?>) methodOrConstructor, typeInfoFactory);
             isStatic = true; // well, doesn't take a 'this'
         } else {
-            member = new MemberBox((Method) methodOrConstructor, typeInfoFactory);
+            member = new MemberBox(scope, (Method) methodOrConstructor, typeInfoFactory);
             isStatic = member.isStatic();
         }
         String methodName = member.getName();
@@ -330,8 +330,6 @@ public class FunctionObject extends BaseFunction {
     void initAsConstructor(JSScope scope, Scriptable prototype, int attributes) {
         ScriptRuntime.setFunctionProtoAndParent(this, Context.getCurrentContext(), scope);
         setImmunePrototypeProperty(prototype);
-
-        prototype.setParentScope(this);
 
         defineProperty(prototype, "constructor", this, attributes);
         setParentScope(scope);

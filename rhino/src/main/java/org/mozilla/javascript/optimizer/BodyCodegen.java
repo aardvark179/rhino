@@ -1144,6 +1144,9 @@ class BodyCodegen {
             case Token.ENUM_ID:
                 {
                     int local = getLocalBlockRegister(node);
+                    if (type != Token.ENUM_NEXT) {
+                        cfw.addALoad(variableObjectLocal);
+                    }
                     cfw.addALoad(local);
                     cfw.addALoad(contextLocal);
                     if (type == Token.ENUM_NEXT) {
@@ -1155,7 +1158,8 @@ class BodyCodegen {
                     } else {
                         addScriptRuntimeInvoke(
                                 "enumId",
-                                "(Ljava/lang/Object;"
+                                "(Lorg/mozilla/javascript/JSScope;"
+                                        + "Ljava/lang/Object;"
                                         + "Lorg/mozilla/javascript/Context;"
                                         + ")Ljava/lang/Object;");
                     }

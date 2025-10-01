@@ -75,7 +75,6 @@ final class NativeProxy extends ScriptableObject implements Function {
                                         getTargetConstructor().construct(cx, scope, target, args);
                         // avoid getting trapped
                         obj.setPrototypeDirect(getClassPrototype());
-                        obj.setParentScope(scope);
                         return obj;
                     }
                 };
@@ -1314,7 +1313,6 @@ final class NativeProxy extends ScriptableObject implements Function {
 
         NativeProxy proxy = new NativeProxy(target, handler);
         proxy.setPrototypeDirect(ScriptableObject.getClassPrototype(scope, PROXY_TAG));
-        proxy.setParentScope(scope);
         return proxy;
     }
 

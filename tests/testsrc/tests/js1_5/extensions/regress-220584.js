@@ -41,7 +41,7 @@ else
 
   status = inSection(2);
   actual = (s.__parent__ == undefined) || (s.__parent__ == null);
-  expect = false;
+  expect = true; // Parent is not set any more so should be null.
   addThis();
 
   status = inSection(3);
@@ -72,7 +72,7 @@ else
 
   status = inSection(6);
   actual = (s.__parent__ == undefined) || (s.__parent__ == null);
-  expect = false;
+  expect = true; // Parent is not set any more so should be null.
   addThis();
 
   status = inSection(7);

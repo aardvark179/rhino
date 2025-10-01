@@ -23,7 +23,6 @@ final class NativeReflect extends ScriptableObject {
     public static Object init(Context cx, JSScope scope, boolean sealed) {
         NativeReflect reflect = new NativeReflect();
         reflect.setPrototype(getObjectPrototype(scope));
-        reflect.setParentScope(scope);
 
         reflect.defineBuiltinProperty(scope, "apply", 3, NativeReflect::apply);
         reflect.defineBuiltinProperty(scope, "construct", 2, NativeReflect::construct);

@@ -44,9 +44,8 @@ public class NativeConsole extends IdScriptableObject {
 
     public static void init(JSScope scope, boolean sealed, ConsolePrinter printer) {
         NativeConsole obj = new NativeConsole(printer);
-        obj.activatePrototypeMap(MAX_ID);
+        obj.activatePrototypeMap(scope, MAX_ID);
         obj.setPrototype(getObjectPrototype(scope));
-        obj.setParentScope(scope);
         if (sealed) {
             obj.sealObject();
         }

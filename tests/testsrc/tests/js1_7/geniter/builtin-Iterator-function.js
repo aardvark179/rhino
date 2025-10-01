@@ -81,7 +81,7 @@ try
 }
 catch (e)
 {
-  failed = e;
+  failed = e.stack;
 }
 
 expect = false;

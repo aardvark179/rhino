@@ -206,8 +206,8 @@ public class NativeJavaMap extends NativeJavaObject {
             Object key = e.getKey();
             Object value = e.getValue();
             WrapFactory wrapFactory = cx.getWrapFactory();
-            key = wrapFactory.wrap(cx, this, key, keyType);
-            value = wrapFactory.wrap(cx, this, value, valueType);
+            key = wrapFactory.wrap(cx, scope, key, keyType);
+            value = wrapFactory.wrap(cx, scope, value, valueType);
 
             return cx.newArray(scope, new Object[] {key, value});
         }

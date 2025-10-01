@@ -21,7 +21,6 @@ final class NativeMath extends ScriptableObject {
     static Object init(Context cx, JSScope scope, boolean sealed) {
         NativeMath math = new NativeMath();
         math.setPrototype(getObjectPrototype(scope));
-        math.setParentScope(scope);
 
         math.defineProperty("toSource", "Math", DONTENUM | READONLY | PERMANENT);
 

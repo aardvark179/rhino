@@ -2735,7 +2735,7 @@ public class ScriptRuntime {
         return Boolean.TRUE;
     }
 
-    public static Object enumId(Object enumObj, Context cx) {
+    public static Object enumId(JSScope scope, Object enumObj, Context cx) {
         IdEnumeration x = (IdEnumeration) enumObj;
         if (x.iterator != null) {
             return x.currentId;
@@ -2750,7 +2750,7 @@ public class ScriptRuntime {
             case ENUMERATE_ARRAY:
             case ENUMERATE_ARRAY_NO_ITERATOR:
                 Object[] elements = {x.currentId, enumValue(enumObj, cx)};
-                return cx.newArray(ScriptableObject.getTopLevelScope(x.obj), elements);
+                return cx.newArray(ScriptableObject.getTopLevelScope(scope), elements);
             default:
                 throw Kit.codeBug();
         }
@@ -5296,7 +5296,6 @@ public class ScriptRuntime {
     public static void setObjectProtoAndParent(ScriptableObject object, JSScope scope) {
         // Compared with function it always sets the scope to top scope
         scope = ScriptableObject.getTopLevelScope(scope);
-        object.setParentScope(scope);
         Scriptable proto = ScriptableObject.getClassPrototype(scope, object.getClassName());
         object.setPrototype(proto);
     }
@@ -5304,7 +5303,6 @@ public class ScriptRuntime {
     public static void setBuiltinProtoAndParent(
             ScriptableObject object, JSScope scope, TopLevel.Builtins type) {
         scope = ScriptableObject.getTopLevelScope(scope);
-        object.setParentScope(scope);
         object.setPrototype(TopLevel.getBuiltinPrototype(scope, type));
     }
 

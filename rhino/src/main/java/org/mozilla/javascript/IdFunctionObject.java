@@ -36,7 +36,7 @@ public class IdFunctionObject extends BaseFunction {
         this.functionName = name;
     }
 
-    public void initFunction(String name, Scriptable scope) {
+    public void initFunction(String name, JSScope scope) {
         if (name == null) throw new IllegalArgumentException();
         if (scope == null) throw new IllegalArgumentException();
         this.functionName = name;

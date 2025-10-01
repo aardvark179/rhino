@@ -39,7 +39,7 @@ final class NativeError extends IdScriptableObject {
         obj.setAttributes("name", DONTENUM);
         obj.setAttributes("message", DONTENUM);
         obj.exportAsJSClass(MAX_PROTOTYPE_ID, scope, sealed);
-        NativeCallSite.init(obj, sealed);
+        NativeCallSite.init(scope, sealed);
     }
 
     static NativeError makeProto(JSScope scope, Function ctorObj) {
@@ -47,7 +47,6 @@ final class NativeError extends IdScriptableObject {
 
         NativeError obj = new NativeError();
         obj.setPrototype(proto);
-        obj.setParentScope(scope);
         return obj;
     }
 

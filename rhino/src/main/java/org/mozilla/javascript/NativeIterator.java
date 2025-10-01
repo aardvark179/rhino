@@ -33,7 +33,6 @@ public final class NativeIterator extends IdScriptableObject {
         // StopIteration
         NativeObject obj = new StopIteration();
         obj.setPrototype(getObjectPrototype(scope));
-        obj.setParentScope(scope);
         if (sealed) {
             obj.sealObject();
         }
@@ -140,7 +139,7 @@ public final class NativeIterator extends IdScriptableObject {
 
         switch (id) {
             case Id_next:
-                return iterator.next(cx, scope);
+                return iterator.next(cx, f.getDeclarationScope());
 
             case Id___iterator__:
                 /// XXX: what about argument? SpiderMonkey apparently ignores it
@@ -197,7 +196,6 @@ public final class NativeIterator extends IdScriptableObject {
         ScriptRuntime.setEnumNumbers(objectIterator, true);
         NativeIterator result = new NativeIterator(objectIterator);
         result.setPrototype(ScriptableObject.getClassPrototype(scope, result.getClassName()));
-        result.setParentScope(scope);
         return result;
     }
 
@@ -207,7 +205,7 @@ public final class NativeIterator extends IdScriptableObject {
             // Out of values. Throw StopIteration.
             throw new JavaScriptException(NativeIterator.getStopIterationObject(scope), null, 0);
         }
-        return ScriptRuntime.enumId(this.objectIterator, cx);
+        return ScriptRuntime.enumId(scope, this.objectIterator, cx);
     }
 
     /**

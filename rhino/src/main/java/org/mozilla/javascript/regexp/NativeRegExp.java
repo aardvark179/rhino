@@ -150,8 +150,7 @@ public class NativeRegExp extends IdScriptableObject {
 
         NativeRegExp proto = NativeRegExpInstantiator.withLanguageVersion(cx.getLanguageVersion());
         proto.re = compileRE(cx, "", null, false);
-        proto.activatePrototypeMap(MAX_PROTOTYPE_ID);
-        proto.setParentScope(scope);
+        proto.activatePrototypeMap(scope, MAX_PROTOTYPE_ID);
         proto.setPrototype(getObjectPrototype(scope));
 
         var ctor = NativeRegExpCtor.init(cx, scope, sealed);

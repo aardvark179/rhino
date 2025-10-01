@@ -12,40 +12,49 @@ import org.mozilla.javascript.lc.type.TypeInfoFactory;
 public class NullabilityDetectorTest {
     @Test
     public void testNullableDetectorForMethodWithoutArgs() {
+        JSScope scope = new TopLevel();
         MemberBox memberBox =
-                new MemberBox(getTestClassMethod("function1"), TypeInfoFactory.GLOBAL);
+                new MemberBox(scope, getTestClassMethod("function1"), TypeInfoFactory.GLOBAL);
         assertNullabilityMatch(memberBox.getArgNullability());
     }
 
     @Test
     public void testNullableDetectorForMethodWithOneArg() {
+        JSScope scope = new TopLevel();
         MemberBox memberBox =
-                new MemberBox(getTestClassMethod("function2"), TypeInfoFactory.GLOBAL);
+                new MemberBox(scope, getTestClassMethod("function2"), TypeInfoFactory.GLOBAL);
         assertNullabilityMatch(memberBox.getArgNullability(), true);
     }
 
     @Test
     public void testNullableDetectorForMethodWithSeveralArgs() {
+        JSScope scope = new TopLevel();
         MemberBox memberBox =
-                new MemberBox(getTestClassMethod("function3"), TypeInfoFactory.GLOBAL);
+                new MemberBox(scope, getTestClassMethod("function3"), TypeInfoFactory.GLOBAL);
         assertNullabilityMatch(memberBox.getArgNullability(), true, true, true, true);
     }
 
     @Test
     public void testNullableDetectorForConstructorWithoutArgs() {
-        MemberBox memberBox = new MemberBox(getTestClassConstructor(0), TypeInfoFactory.GLOBAL);
+        JSScope scope = new TopLevel();
+        MemberBox memberBox =
+                new MemberBox(scope, getTestClassConstructor(0), TypeInfoFactory.GLOBAL);
         assertNullabilityMatch(memberBox.getArgNullability());
     }
 
     @Test
     public void testNullableDetectorForConstructorWithOneArg() {
-        MemberBox memberBox = new MemberBox(getTestClassConstructor(1), TypeInfoFactory.GLOBAL);
+        JSScope scope = new TopLevel();
+        MemberBox memberBox =
+                new MemberBox(scope, getTestClassConstructor(1), TypeInfoFactory.GLOBAL);
         assertNullabilityMatch(memberBox.getArgNullability(), true);
     }
 
     @Test
     public void testNullableDetectorForConstructorWithSeveralArgs() {
-        MemberBox memberBox = new MemberBox(getTestClassConstructor(4), TypeInfoFactory.GLOBAL);
+        JSScope scope = new TopLevel();
+        MemberBox memberBox =
+                new MemberBox(scope, getTestClassConstructor(4), TypeInfoFactory.GLOBAL);
         assertNullabilityMatch(memberBox.getArgNullability(), true, false, true, false);
     }
 

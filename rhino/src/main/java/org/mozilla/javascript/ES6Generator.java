@@ -19,7 +19,7 @@ public final class ES6Generator extends IdScriptableObject {
         if (scope != null) {
             prototype.setPrototype(getObjectPrototype(scope));
         }
-        prototype.activatePrototypeMap(MAX_PROTOTYPE_ID);
+        prototype.activatePrototypeMap(scope, MAX_PROTOTYPE_ID);
         if (sealed) {
             prototype.sealObject();
         }

@@ -580,7 +580,6 @@ public class BaseFunction extends ScriptableObject implements Function {
     public Scriptable createObject(Context cx, JSScope scope) {
         Scriptable newInstance = new NativeObject();
         newInstance.setPrototype(getClassPrototype());
-        newInstance.setParentScope(getParentScope());
         return newInstance;
     }
 

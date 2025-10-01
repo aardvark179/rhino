@@ -1643,6 +1643,7 @@ public class Context implements Closeable {
     public Scriptable newObject(JSScope scope) {
         NativeObject result = new NativeObject();
         ScriptRuntime.setBuiltinProtoAndParent(result, scope, TopLevel.Builtins.Object);
+        result.setParentScope(scope);
         return result;
     }
 

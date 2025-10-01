@@ -701,14 +701,14 @@ public abstract class ScriptableObject extends SlotMapOwner
      *     to regular property access.
      * @since 1.7.6
      */
-    public void setExternalArrayData(ExternalArrayData array) {
+    public void setExternalArrayData(JSScope scope, ExternalArrayData array) {
         externalData = array;
 
         if (array == null) {
             delete("length");
         } else {
             // Define "length" to return whatever length the List gives us.
-            defineProperty("length", null, GET_ARRAY_LENGTH, null, READONLY | DONTENUM);
+            defineProperty(scope, "length", null, GET_ARRAY_LENGTH, null, READONLY | DONTENUM);
         }
     }
 
@@ -1235,7 +1235,7 @@ public abstract class ScriptableObject extends SlotMapOwner
                         ScriptableObject.PERMANENT
                                 | ScriptableObject.DONTENUM
                                 | (setter != null ? 0 : ScriptableObject.READONLY);
-                ((ScriptableObject) proto).defineProperty(name, null, method, setter, attr);
+                ((ScriptableObject) proto).defineProperty(scope, name, null, method, setter, attr);
                 continue;
             }
 
@@ -1465,7 +1465,7 @@ public abstract class ScriptableObject extends SlotMapOwner
      * @param attributes the attributes of the JavaScript property
      * @see org.mozilla.javascript.Scriptable#put(String, Scriptable, Object)
      */
-    public void defineProperty(String propertyName, Class<?> clazz, int attributes) {
+    public void defineProperty(JSScope scope, String propertyName, Class<?> clazz, int attributes) {
         int length = propertyName.length();
         if (length == 0) throw new IllegalArgumentException();
         char[] buf = new char[3 + length];
@@ -1482,7 +1482,8 @@ public abstract class ScriptableObject extends SlotMapOwner
         Method getter = FunctionObject.findSingleMethod(methods, getterName);
         Method setter = FunctionObject.findSingleMethod(methods, setterName);
         if (setter == null) attributes |= ScriptableObject.READONLY;
-        defineProperty(propertyName, null, getter, setter == null ? null : setter, attributes);
+        defineProperty(
+                scope, propertyName, null, getter, setter == null ? null : setter, attributes);
     }
 
     /**
@@ -1533,12 +1534,17 @@ public abstract class ScriptableObject extends SlotMapOwner
      * @param attributes the attributes of the JavaScript property
      */
     public void defineProperty(
-            String propertyName, Object delegateTo, Method getter, Method setter, int attributes) {
+            JSScope scope,
+            String propertyName,
+            Object delegateTo,
+            Method getter,
+            Method setter,
+            int attributes) {
         var typeFactory = TypeInfoFactory.getOrElse(this, TypeInfoFactory.GLOBAL);
 
         MemberBox getterBox = null;
         if (getter != null) {
-            getterBox = new MemberBox(getter, typeFactory);
+            getterBox = new MemberBox(scope, getter, typeFactory);
 
             boolean delegatedForm;
             if (!Modifier.isStatic(getter.getModifiers())) {
@@ -1579,7 +1585,7 @@ public abstract class ScriptableObject extends SlotMapOwner
             if (setter.getReturnType() != Void.TYPE)
                 throw Context.reportRuntimeErrorById("msg.setter.return", setter.toString());
 
-            setterBox = new MemberBox(setter, typeFactory);
+            setterBox = new MemberBox(scope, setter, typeFactory);
 
             boolean delegatedForm;
             if (!Modifier.isStatic(setter.getModifiers())) {

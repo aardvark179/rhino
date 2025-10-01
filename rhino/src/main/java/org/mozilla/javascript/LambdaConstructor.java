@@ -146,7 +146,6 @@ public class LambdaConstructor extends LambdaFunction {
     private Scriptable fireConstructor(Context cx, JSScope scope, Object target, Object[] args) {
         Scriptable obj = targetConstructor.construct(cx, scope, target, args);
         obj.setPrototype(getClassPrototype());
-        obj.setParentScope(scope);
         return obj;
     }
 

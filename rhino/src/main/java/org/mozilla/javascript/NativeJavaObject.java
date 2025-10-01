@@ -953,7 +953,7 @@ public class NativeJavaObject implements Scriptable, SymbolScriptable, Wrapper, 
                 return Undefined.instance;
             }
             Object obj = iterator.next();
-            return cx.getWrapFactory().wrap(cx, this, obj, obj == null ? null : obj.getClass());
+            return cx.getWrapFactory().wrap(cx, scope, obj, obj == null ? null : obj.getClass());
         }
 
         @Override

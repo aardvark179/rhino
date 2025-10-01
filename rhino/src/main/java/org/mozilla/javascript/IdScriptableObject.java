@@ -25,11 +25,11 @@ import java.io.Serializable;
  * scopeInit or fillConstructorProperties methods.
  */
 public abstract class IdScriptableObject extends ScriptableObject implements IdFunctionCall {
-    private static final long serialVersionUID = -3744239272168621609L;
+    private static final long serialVersionUID = -3744239272168621606L;
     private transient PrototypeValues prototypeValues;
 
     private static final class PrototypeValues implements Serializable {
-        private static final long serialVersionUID = 3038645279153854371L;
+        private static final long serialVersionUID = 3038645279153854373L;
 
         private static final int NAME_SLOT = 1;
         private static final int SLOT_SPAN = 2;
@@ -42,12 +42,14 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
         // The following helps to avoid the creation of valueArray during runtime
         // initialization for the common case of "constructor" property
         int constructorId;
+        private JSScope scope;
         private IdFunctionObject constructor;
         private short constructorAttrs;
 
-        PrototypeValues(IdScriptableObject obj, int maxId) {
+        PrototypeValues(JSScope scope, IdScriptableObject obj, int maxId) {
             if (obj == null) throw new IllegalArgumentException("obj == null");
             if (maxId < 1) throw new IllegalArgumentException("maxId < 1");
+            this.scope = scope;
             this.obj = obj;
             this.maxId = maxId;
         }
@@ -132,7 +134,7 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
                                 + "initialize id="
                                 + constructorId);
             }
-            constructor.initFunction(obj.getClassName(), ScriptableObject.getTopLevelScope(obj));
+            constructor.initFunction(obj.getClassName(), scope);
             constructor.markAsConstructor(obj);
             return constructor;
         }
@@ -721,11 +723,10 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
             int maxPrototypeId, JSScope scope, boolean sealed) {
         // Set scope and prototype unless this is top level scope itself
         if (scope != this && scope != null) {
-            setParentScope(scope);
             setPrototype(getObjectPrototype(scope));
         }
 
-        activatePrototypeMap(maxPrototypeId);
+        activatePrototypeMap(scope, maxPrototypeId);
         IdFunctionObject ctor = prototypeValues.createPrecachedConstructor();
         if (sealed) {
             sealObject();
@@ -742,8 +743,8 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
         return prototypeValues != null;
     }
 
-    public final void activatePrototypeMap(int maxPrototypeId) {
-        PrototypeValues values = new PrototypeValues(this, maxPrototypeId);
+    public final void activatePrototypeMap(JSScope scope, int maxPrototypeId) {
+        PrototypeValues values = new PrototypeValues(scope, this, maxPrototypeId);
         synchronized (this) {
             if (prototypeValues != null) throw new IllegalStateException();
             prototypeValues = values;
@@ -756,7 +757,7 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
 
     public final IdFunctionObject initPrototypeMethod(
             Object tag, int id, String propertyName, String functionName, int arity) {
-        Scriptable scope = ScriptableObject.getTopLevelScope(this);
+        JSScope scope = prototypeValues.scope;
         IdFunctionObject function =
                 newIdFunction(
                         tag, id, functionName != null ? functionName : propertyName, arity, scope);
@@ -766,7 +767,7 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
 
     public final IdFunctionObject initPrototypeMethod(
             Object tag, int id, Symbol key, String functionName, int arity) {
-        Scriptable scope = ScriptableObject.getTopLevelScope(this);
+        JSScope scope = prototypeValues.scope;
         IdFunctionObject function = newIdFunction(tag, id, functionName, arity, scope);
         prototypeValues.initValue(id, key, function, DONTENUM);
         return function;
@@ -774,7 +775,7 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
 
     public final IdFunctionObject initPrototypeMethod(
             Object tag, int id, Symbol key, String functionName, int arity, int attributes) {
-        Scriptable scope = ScriptableObject.getTopLevelScope(this);
+        JSScope scope = prototypeValues.scope;
         IdFunctionObject function = newIdFunction(tag, id, functionName, arity, scope);
         prototypeValues.initValue(id, key, function, attributes);
         return function;
@@ -841,7 +842,7 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
     }
 
     private IdFunctionObject newIdFunction(
-            Object tag, int id, String name, int arity, Scriptable scope) {
+            Object tag, int id, String name, int arity, JSScope scope) {
         IdFunctionObject function = new IdFunctionObject(this, tag, id, name, arity, scope);
 
         if (isSealed()) {
@@ -1003,17 +1004,21 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
     private void readObject(ObjectInputStream stream) throws IOException, ClassNotFoundException {
         stream.defaultReadObject();
         int maxPrototypeId = stream.readInt();
+        JSScope scope = (JSScope) stream.readObject();
         if (maxPrototypeId != 0) {
-            activatePrototypeMap(maxPrototypeId);
+            activatePrototypeMap(scope, maxPrototypeId);
         }
     }
 
     private void writeObject(ObjectOutputStream stream) throws IOException {
         stream.defaultWriteObject();
         int maxPrototypeId = 0;
+        JSScope scope = null;
         if (prototypeValues != null) {
             maxPrototypeId = prototypeValues.getMaxId();
+            scope = prototypeValues.scope;
         }
         stream.writeInt(maxPrototypeId);
+        stream.writeObject(scope);
     }
 }

@@ -36,7 +36,6 @@ class Arguments extends ScriptableObject {
         this.activation = activation;
 
         Scriptable parent = activation.getParentScope();
-        setParentScope(parent);
         setPrototype(ScriptableObject.getObjectPrototype(parent));
 
         args = activation.originalArgs;
