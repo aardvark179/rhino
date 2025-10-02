@@ -791,11 +791,8 @@ public class NativeObject extends ScriptableObject implements Map {
         for (Map.Entry<Object, List<Object>> entry : groups.entrySet()) {
             Scriptable elements = cx.newArray(scope, entry.getValue().toArray());
 
-            ScriptableObject desc = (ScriptableObject) cx.newObject(scope);
-            desc.put("enumerable", desc, Boolean.TRUE);
-            desc.put("configurable", desc, Boolean.TRUE);
-            desc.put("value", desc, elements);
-
+            DescriptorInfo desc =
+                    new DescriptorInfo(true, NOT_FOUND, true, NOT_FOUND, NOT_FOUND, elements);
             obj.defineOwnProperty(cx, entry.getKey(), desc);
         }
 

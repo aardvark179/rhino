@@ -279,12 +279,12 @@ public class LambdaConstructor extends LambdaFunction {
         proto.defineProperty(key, value, attributes);
     }
 
-    public void definePrototypeProperty(Context cx, String name, ScriptableObject descriptor) {
+    public void definePrototypeProperty(Context cx, String name, DescriptorInfo descriptor) {
         ScriptableObject proto = getPrototypeScriptable();
         proto.defineOwnProperty(cx, name, descriptor);
     }
 
-    public void definePrototypeProperty(Context cx, Symbol key, ScriptableObject descriptor) {
+    public void definePrototypeProperty(Context cx, Symbol key, DescriptorInfo descriptor) {
         ScriptableObject proto = getPrototypeScriptable();
         proto.defineOwnProperty(cx, key, descriptor);
     }

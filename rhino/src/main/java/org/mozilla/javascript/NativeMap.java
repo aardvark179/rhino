@@ -44,9 +44,6 @@ public class NativeMap extends ScriptableObject {
 
         // The spec requires very specific handling of the "size" prototype
         // property that's not like other things that we already do.
-        ScriptableObject desc = (ScriptableObject) cx.newObject(scope);
-        desc.put("enumerable", desc, Boolean.FALSE);
-        desc.put("configurable", desc, Boolean.TRUE);
         LambdaFunction sizeFunc =
                 new LambdaFunction(
                         scope,
@@ -55,7 +52,8 @@ public class NativeMap extends ScriptableObject {
                         (Context lcx, JSScope lscope, Object thisObj, Object[] args) ->
                                 realThis(thisObj, "size").js_getSize(),
                         false);
-        desc.put("get", desc, sizeFunc);
+        DescriptorInfo desc =
+                new DescriptorInfo(false, NOT_FOUND, true, sizeFunc, NOT_FOUND, NOT_FOUND);
         constructor.definePrototypeProperty(cx, "size", desc);
         constructor.definePrototypeProperty(cx, NativeSet.GETSIZE, desc);
 

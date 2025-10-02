@@ -7,6 +7,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import org.junit.Test;
 import org.mozilla.javascript.Context;
+import org.mozilla.javascript.JSScope;
 import org.mozilla.javascript.RhinoException;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
@@ -75,7 +76,7 @@ public class ComparatorTest {
     public void customComparator() throws IOException {
         try (Context cx = Context.enter()) {
             Global global = new Global(cx);
-            Scriptable root = cx.newObject(global);
+            JSScope root = cx.newScope(global);
             FileReader fr = new FileReader("testsrc/jstests/extensions/custom-comparators.js");
 
             cx.evaluateReader(root, fr, "custom-comparators.js", 1, null);

@@ -10,7 +10,7 @@ import java.util.Optional;
 import org.junit.Test;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ImporterTopLevel;
-import org.mozilla.javascript.Scriptable;
+import org.mozilla.javascript.JSScope;
 import org.mozilla.javascript.ScriptableObject;
 
 /**
@@ -63,7 +63,7 @@ public class WrapFactoryTest {
             String getResult) {
         try (Context cx = Context.enter()) {
             cx.getWrapFactory().setJavaPrimitiveWrap(javaPrimitiveWrap);
-            Scriptable scope = cx.newObject(new ImporterTopLevel(cx));
+            JSScope scope = cx.newScope(new ImporterTopLevel(cx));
 
             // register object
             Map<String, Object> map = new LinkedHashMap<>();

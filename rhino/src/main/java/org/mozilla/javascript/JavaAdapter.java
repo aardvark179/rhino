@@ -100,8 +100,7 @@ public final class JavaAdapter implements IdFunctionCall {
         return Context.jsToJava(result, c);
     }
 
-    public static Scriptable createAdapterWrapper(Scriptable obj, Object adapter) {
-        Scriptable scope = ScriptableObject.getTopLevelScope(obj);
+    public static Scriptable createAdapterWrapper(JSScope scope, Scriptable obj, Object adapter) {
         NativeJavaObject res = new NativeJavaObject(scope, adapter, TypeInfo.NONE, true);
         res.setPrototype(obj);
         return res;
@@ -176,9 +175,10 @@ public final class JavaAdapter implements IdFunctionCall {
                 // Arguments contain parameters for super-class constructor.
                 // We use the generic Java method lookup logic to find and
                 // invoke the right constructor.
-                Object[] ctorArgs = new Object[argsCount + 2];
-                ctorArgs[0] = obj;
-                ctorArgs[1] = cx.getFactory();
+                Object[] ctorArgs = new Object[argsCount + 3];
+                ctorArgs[0] = scope;
+                ctorArgs[1] = obj;
+                ctorArgs[2] = cx.getFactory();
                 System.arraycopy(args, classCount + 1, ctorArgs, 2, argsCount);
                 // TODO: cache class wrapper?
                 NativeJavaClass classWrapper = new NativeJavaClass(scope, adapterClass, true);
@@ -194,9 +194,11 @@ public final class JavaAdapter implements IdFunctionCall {
                 adapter = NativeJavaClass.constructInternal(ctorArgs, ctors.methods[index]);
             } else {
                 Class<?>[] ctorParms = {
-                    ScriptRuntime.ScriptableClass, ScriptRuntime.ContextFactoryClass
+                    ScriptRuntime.JSScopeClass,
+                    ScriptRuntime.ScriptableClass,
+                    ScriptRuntime.ContextFactoryClass
                 };
-                Object[] ctorArgs = {obj, cx.getFactory()};
+                Object[] ctorArgs = {scope, obj, cx.getFactory()};
                 adapter = adapterClass.getConstructor(ctorParms).newInstance(ctorArgs);
             }
 
@@ -356,7 +358,7 @@ public final class JavaAdapter implements IdFunctionCall {
         }
         generateSerialCtor(cfw, adapterName, superName);
         if (scriptClassName != null) {
-            generateEmptyCtor(cfw, adapterName, superName, scriptClassName);
+            throw new Error();
         }
 
         HashMap<String, Integer> generatedOverrides = new HashMap<>();
@@ -581,7 +583,7 @@ public final class JavaAdapter implements IdFunctionCall {
 
     private static void generateCtor(
             ClassFileWriter cfw, String adapterName, String superName, Constructor<?> superCtor) {
-        int locals = 3; // this + factory + delegee
+        int locals = 4; // this + scope + factory + delegee
         Class<?>[] parameters = superCtor.getParameterTypes();
 
         // Note that we swapped arguments in app-facing constructors to avoid
@@ -589,7 +591,8 @@ public final class JavaAdapter implements IdFunctionCall {
         if (parameters.length == 0) {
             cfw.startMethod(
                     "<init>",
-                    "(Lorg/mozilla/javascript/Scriptable;"
+                    "(Lorg/mozilla/javascript/JSScope;"
+                            + "Lorg/mozilla/javascript/Scriptable;"
                             + "Lorg/mozilla/javascript/ContextFactory;)V",
                     ClassFileWriter.ACC_PUBLIC);
 
@@ -599,7 +602,8 @@ public final class JavaAdapter implements IdFunctionCall {
         } else {
             StringBuilder sig =
                     new StringBuilder(
-                            "(Lorg/mozilla/javascript/Scriptable;"
+                            "(Lorg/mozilla/javascript/JSScope;"
+                                    + "Lorg/mozilla/javascript/Scriptable;"
                                     + "Lorg/mozilla/javascript/ContextFactory;");
             int marker = sig.length(); // lets us reuse buffer for super signature
             for (Class<?> c : parameters) {
@@ -610,7 +614,7 @@ public final class JavaAdapter implements IdFunctionCall {
 
             // Invoke base class constructor
             cfw.add(ByteCode.ALOAD_0); // this
-            int paramOffset = 3;
+            int paramOffset = 4;
             for (Class<?> parameter : parameters) {
                 paramOffset += generatePushParam(cfw, paramOffset, parameter);
             }
@@ -621,12 +625,12 @@ public final class JavaAdapter implements IdFunctionCall {
 
         // Save parameter in instance variable "delegee"
         cfw.add(ByteCode.ALOAD_0); // this
-        cfw.add(ByteCode.ALOAD_1); // first arg: Scriptable delegee
+        cfw.add(ByteCode.ALOAD_2); // first arg: Scriptable delegee
         cfw.add(ByteCode.PUTFIELD, adapterName, "delegee", "Lorg/mozilla/javascript/Scriptable;");
 
         // Save parameter in instance variable "factory"
         cfw.add(ByteCode.ALOAD_0); // this
-        cfw.add(ByteCode.ALOAD_2); // second arg: ContextFactory instance
+        cfw.add(ByteCode.ALOAD_3); // second arg: ContextFactory instance
         cfw.add(
                 ByteCode.PUTFIELD,
                 adapterName,
@@ -635,13 +639,15 @@ public final class JavaAdapter implements IdFunctionCall {
 
         cfw.add(ByteCode.ALOAD_0); // this for the following PUTFIELD for self
         // create a wrapper object to be used as "this" in method calls
-        cfw.add(ByteCode.ALOAD_1); // the Scriptable delegee
+        cfw.add(ByteCode.ALOAD_1); // the Scope
+        cfw.add(ByteCode.ALOAD_2); // the Scriptable delegee
         cfw.add(ByteCode.ALOAD_0); // this
         cfw.addInvoke(
                 ByteCode.INVOKESTATIC,
                 "org/mozilla/javascript/JavaAdapter",
                 "createAdapterWrapper",
-                "(Lorg/mozilla/javascript/Scriptable;"
+                "(Lorg/mozilla/javascript/JSScope;"
+                        + "Lorg/mozilla/javascript/Scriptable;"
                         + "Ljava/lang/Object;"
                         + ")Lorg/mozilla/javascript/Scriptable;");
         cfw.add(ByteCode.PUTFIELD, adapterName, "self", "Lorg/mozilla/javascript/Scriptable;");

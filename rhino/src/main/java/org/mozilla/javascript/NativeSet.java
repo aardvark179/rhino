@@ -68,12 +68,10 @@ public class NativeSet extends ScriptableObject {
 
         // The spec requires very specific handling of the "size" prototype
         // property that's not like other things that we already do.
-        ScriptableObject desc = (ScriptableObject) cx.newObject(scope);
-        desc.put("enumerable", desc, Boolean.FALSE);
-        desc.put("configurable", desc, Boolean.TRUE);
         LambdaFunction sizeFunc = new LambdaFunction(scope, "get size", 0, NativeSet::js_getSize);
         sizeFunc.setPrototypeProperty(Undefined.instance);
-        desc.put("get", desc, sizeFunc);
+        DescriptorInfo desc =
+                new DescriptorInfo(false, NOT_FOUND, true, sizeFunc, NOT_FOUND, NOT_FOUND);
         constructor.definePrototypeProperty(cx, "size", desc);
         constructor.definePrototypeProperty(cx, NativeSet.GETSIZE, desc);
 
