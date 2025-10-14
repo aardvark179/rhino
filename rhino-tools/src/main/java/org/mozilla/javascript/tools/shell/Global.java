@@ -39,12 +39,14 @@ import org.mozilla.javascript.ImporterTopLevel;
 import org.mozilla.javascript.JSScope;
 import org.mozilla.javascript.NativeArray;
 import org.mozilla.javascript.NativeConsole;
+import org.mozilla.javascript.NativeObject;
 import org.mozilla.javascript.RhinoException;
 import org.mozilla.javascript.Script;
 import org.mozilla.javascript.ScriptRuntime;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 import org.mozilla.javascript.Synchronizer;
+import org.mozilla.javascript.TopLevel;
 import org.mozilla.javascript.Undefined;
 import org.mozilla.javascript.Wrapper;
 import org.mozilla.javascript.commonjs.module.Require;
@@ -108,6 +110,7 @@ public class Global extends ImporterTopLevel {
         initStandardObjects(cx, sealedStdLib);
         NativeConsole.init(this, sealedStdLib, new ShellConsolePrinter());
         String[] names = {
+            "createRealm",
             "defineClass",
             "deserialize",
             "doctest",
@@ -901,4 +904,14 @@ public class Global extends ImporterTopLevel {
     public interface CommandExecutor {
         Process exec(String[] cmdarray, String[] envp, File dir) throws IOException;
     }
+
+    /** Create a separate realm that can be used to check cross realm
+        behaviour. If given an argument then that will determine if
+        the objects are created sealed. */
+    public static Object createRealm(Context cx, Scriptable thisObj, Object[] args, Function funObj) {
+        boolean seal = (args.length > 0) && ScriptRuntime.toBoolean(args[0]);
+        var realm = cx.initStandardObjects(new TopLevel(), seal);
+        return realm;
+    }
+
 }
