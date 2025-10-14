@@ -32,9 +32,7 @@ public abstract class ES6Iterator extends IdScriptableObject {
     protected boolean exhausted = false;
     private String tag;
 
-    protected ES6Iterator() {
-        new Error().printStackTrace();
-    }
+    protected ES6Iterator() {}
 
     protected ES6Iterator(JSScope scope, String tag) {
         // Set parent and prototype properties. Since we don't have a

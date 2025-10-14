@@ -9,8 +9,8 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ContextFactory;
+import org.mozilla.javascript.JSScope;
 import org.mozilla.javascript.RhinoException;
-import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.StackStyle;
 import org.mozilla.javascript.tools.shell.Global;
 
@@ -45,7 +45,7 @@ public class StackTraceExtensionV8Test {
             cx.setGeneratingDebug(true);
 
             Global global = new Global(cx);
-            Scriptable root = cx.newObject(global);
+            JSScope root = cx.newScope(global);
 
             try (FileReader rdr = new FileReader("testsrc/jstests/extensions/stack-traces-v8.js")) {
                 cx.evaluateReader(root, rdr, "stack-traces-v8.js", 1, null);

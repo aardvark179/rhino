@@ -7,7 +7,7 @@ import java.io.IOException;
 import org.junit.Test;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ContextFactory;
-import org.mozilla.javascript.Scriptable;
+import org.mozilla.javascript.JSScope;
 import org.mozilla.javascript.tools.shell.Global;
 
 public class StackTraceExtensionRhinoTest {
@@ -31,7 +31,7 @@ public class StackTraceExtensionRhinoTest {
             cx.setGeneratingDebug(debug);
 
             Global global = new Global(cx);
-            Scriptable root = cx.newObject(global);
+            JSScope root = cx.newScope(global);
             root.put("ExpectFileNames", global, interpretedMode || debug);
 
             try (FileReader rdr =

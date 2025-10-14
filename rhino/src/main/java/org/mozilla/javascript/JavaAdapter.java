@@ -179,7 +179,7 @@ public final class JavaAdapter implements IdFunctionCall {
                 ctorArgs[0] = scope;
                 ctorArgs[1] = obj;
                 ctorArgs[2] = cx.getFactory();
-                System.arraycopy(args, classCount + 1, ctorArgs, 2, argsCount);
+                System.arraycopy(args, classCount + 1, ctorArgs, 3, argsCount);
                 // TODO: cache class wrapper?
                 NativeJavaClass classWrapper = new NativeJavaClass(scope, adapterClass, true);
                 NativeJavaMethod ctors = classWrapper.members.ctors;

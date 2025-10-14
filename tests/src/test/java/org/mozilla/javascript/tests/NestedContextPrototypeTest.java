@@ -18,6 +18,7 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 import org.mozilla.javascript.ContextFactory;
 import org.mozilla.javascript.EvaluatorException;
+import org.mozilla.javascript.JSScope;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.tools.shell.Global;
 
@@ -96,24 +97,30 @@ public class NestedContextPrototypeTest {
         return ContextFactory.getGlobal()
                 .call(
                         context -> {
-                            Scriptable scope;
+                            JSScope scope;
                             switch (mode) {
                                 case GLOBAL:
                                     scope = global;
                                     break;
                                 case NESTED:
-                                    scope = context.newObject(global);
+                                    scope = context.newScope(global);
                                     break;
                                 case SEALED:
-                                    scope = context.newObject(global);
-                                    scope.setPrototype(global);
-                                    scope.setParentScope(null);
-                                    break;
+                                    {
+                                        Scriptable thing = context.newObject(global);
+                                        thing.setPrototype(global);
+                                        thing.setParentScope(null);
+                                        scope = thing;
+                                        break;
+                                    }
                                 case SEALED_OWN_OBJECTS:
-                                    scope = context.initStandardObjects(null);
-                                    scope.setPrototype(global);
-                                    scope.setParentScope(null);
-                                    break;
+                                    {
+                                        Scriptable thing = context.initStandardObjects(null);
+                                        thing.setPrototype(global);
+                                        thing.setParentScope(null);
+                                        scope = thing;
+                                        break;
+                                    }
                                 default:
                                     throw new UnsupportedOperationException();
                             }

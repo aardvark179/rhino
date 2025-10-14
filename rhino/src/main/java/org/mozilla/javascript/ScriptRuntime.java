@@ -6,6 +6,8 @@
 
 package org.mozilla.javascript;
 
+import static org.mozilla.javascript.ScriptableObject.getTopLevelScope;
+
 import java.io.Serializable;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -3356,8 +3358,20 @@ public class ScriptRuntime {
         }
 
         if (callType == Node.SPECIALCALL_EVAL) {
+            // This is not precisely correct. According to the spec
+            // (https://tc39.es/ecma262/#sec-function-calls-runtime-semantics-evaluation)
+            // we should only take this path of performing eval using
+            // the caller's scope if "If ref is a Reference Record,
+            // IsPropertyReference(ref) is false, and
+            // ref.[[ReferencedName]] is "eval", then..." but we do
+            // not preserver this information well enough to perform
+            // that check. So instead we will simply check if the
+            // `this` value is the same as globalThis. This will be
+            // sufficient unless somebody really plays silly games
+            // with bind or apply, but in that case they would not
+            // generally be coming via this code path.
             if (thisObj instanceof Scriptable
-                    && ((Scriptable) thisObj).getParentScope() == null
+                    && thisObj == getTopLevelScope(scope)
                     && NativeGlobal.isEvalFunction(fun)) {
                 return evalSpecial(cx, scope, callerThis, args, filename, lineNumber);
             }

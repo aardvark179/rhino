@@ -9,6 +9,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ExternalArrayData;
+import org.mozilla.javascript.JSScope;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 import org.mozilla.javascript.tools.shell.Global;
@@ -18,7 +19,7 @@ import org.mozilla.javascript.typedarrays.NativeInt32Array;
 
 public class ExternalArrayTest {
     private Context cx;
-    private Scriptable root;
+    private JSScope root;
 
     @Before
     public void init() {
@@ -27,7 +28,7 @@ public class ExternalArrayTest {
         cx.setGeneratingDebug(true);
 
         Global global = new Global(cx);
-        root = cx.newObject(global);
+        root = cx.newScope(global);
     }
 
     @After
