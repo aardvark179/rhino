@@ -2495,7 +2495,7 @@ public class ScriptRuntime {
     }
 
     public static Object strictSetName(
-            Scriptable bound, Object value, Context cx, JSScope scope, String id) {
+            JSScope bound, Object value, Context cx, JSScope scope, String id) {
         if (bound != null) {
             // TODO: The LeftHandSide also may not be a reference to a
             // data property with the attribute value {[[Writable]]:false},
@@ -2513,7 +2513,7 @@ public class ScriptRuntime {
         throw constructError("ReferenceError", msg);
     }
 
-    public static Object setConst(Scriptable bound, Object value, Context cx, String id) {
+    public static Object setConst(JSScope bound, Object value, Context cx, String id) {
         if (bound instanceof XMLObject) {
             bound.put(id, bound, value);
         } else {
@@ -4838,10 +4838,13 @@ public class ScriptRuntime {
             // Cleanup cached references
             cx.cachedXMLLib = null;
             cx.isTopLevelStrict = previousTopLevelStrict;
-            // Function should always call exitActivationFunction
-            // if it creates activation record
-            assert (cx.currentActivationCall == null);
         }
+        // Function should always call exitActivationFunction
+        // if it creates activation record
+        //
+        // We do this outside the finally block because we don't want
+        // to hide an actual exception.
+        assert (cx.currentActivationCall == null);
         return result;
     }
 
@@ -4923,7 +4926,7 @@ public class ScriptRuntime {
      *     boolean, boolean)} instead
      */
     @Deprecated
-    public static Scriptable createFunctionActivation(
+    public static JSScope createFunctionActivation(
             JSFunction funObj, Scriptable scope, Object[] args) {
         return createFunctionActivation(
                 funObj, Context.getCurrentContext(), scope, args, false, false);
@@ -4934,7 +4937,7 @@ public class ScriptRuntime {
      *     boolean, boolean, boolean)} instead
      */
     @Deprecated
-    public static Scriptable createFunctionActivation(
+    public static JSScope createFunctionActivation(
             JSFunction funObj, Scriptable scope, Object[] args, boolean isStrict) {
         return new NativeCall(
                 funObj, Context.getCurrentContext(), scope, args, false, isStrict, false, true);
@@ -4945,7 +4948,7 @@ public class ScriptRuntime {
      *     boolean, boolean, boolean)} instead
      */
     @Deprecated
-    public static Scriptable createFunctionActivation(
+    public static JSScope createFunctionActivation(
             JSFunction funObj,
             Context cx,
             Scriptable scope,
@@ -4955,7 +4958,7 @@ public class ScriptRuntime {
         return new NativeCall(funObj, cx, scope, args, false, isStrict, argsHasRest, true);
     }
 
-    public static Scriptable createFunctionActivation(
+    public static JSScope createFunctionActivation(
             JSFunction funObj,
             Context cx,
             JSScope scope,
@@ -4972,7 +4975,7 @@ public class ScriptRuntime {
      *     Object[], boolean, boolean, boolean)} instead
      */
     @Deprecated
-    public static Scriptable createArrowFunctionActivation(
+    public static JSScope createArrowFunctionActivation(
             JSFunction funObj, Scriptable scope, Object[] args, boolean isStrict) {
         return new NativeCall(
                 funObj, Context.getCurrentContext(), scope, args, true, isStrict, false, true);
@@ -4983,7 +4986,7 @@ public class ScriptRuntime {
      *     Object[], boolean, boolean, boolean)} instead
      */
     @Deprecated
-    public static Scriptable createArrowFunctionActivation(
+    public static JSScope createArrowFunctionActivation(
             JSFunction funObj,
             Context cx,
             Scriptable scope,
@@ -4993,7 +4996,7 @@ public class ScriptRuntime {
         return new NativeCall(funObj, cx, scope, args, true, isStrict, argsHasRest, true);
     }
 
-    public static Scriptable createArrowFunctionActivation(
+    public static JSScope createArrowFunctionActivation(
             JSFunction funObj,
             Context cx,
             JSScope scope,

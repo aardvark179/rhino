@@ -2837,7 +2837,7 @@ public final class Interpreter extends Icode implements Evaluator {
             final double[] sDbl = frame.sDbl;
             Object rhs = stack[state.stackTop];
             if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
-            Scriptable lhs = (Scriptable) stack[state.stackTop - 1];
+            JSScope lhs = (JSScope) stack[state.stackTop - 1];
             stack[state.stackTop - 1] =
                     op == Token.SETNAME
                             ? ScriptRuntime.setName(lhs, rhs, cx, frame.scope, state.stringReg)
@@ -2874,7 +2874,7 @@ public final class Interpreter extends Icode implements Evaluator {
             final double[] sDbl = frame.sDbl;
             Object rhs = stack[state.stackTop];
             if (rhs == DOUBLE_MARK) rhs = ScriptRuntime.wrapNumber(sDbl[state.stackTop]);
-            Scriptable lhs = (Scriptable) stack[state.stackTop - 1];
+            JSScope lhs = (JSScope) stack[state.stackTop - 1];
             stack[state.stackTop - 1] = ScriptRuntime.setConst(lhs, rhs, cx, state.stringReg);
             --state.stackTop;
             return null;
@@ -4085,7 +4085,7 @@ public final class Interpreter extends Icode implements Evaluator {
     private static class DoLeaveWith extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            frame.scope = (Scriptable) ScriptRuntime.leaveWith(frame.scope);
+            frame.scope = (JSScope) ScriptRuntime.leaveWith(frame.scope);
             return null;
         }
     }
@@ -4638,7 +4638,7 @@ public final class Interpreter extends Icode implements Evaluator {
             int localShift = frame.idata.itsMaxVars;
             int scopeLocal = localShift + table[indexReg + EXCEPTION_SCOPE_SLOT];
             int exLocal = localShift + table[indexReg + EXCEPTION_LOCAL_SLOT];
-            frame.scope = (Scriptable) frame.stack[scopeLocal];
+            frame.scope = (JSScope) frame.stack[scopeLocal];
             frame.stack[exLocal] = throwable;
 
             throwable = null;

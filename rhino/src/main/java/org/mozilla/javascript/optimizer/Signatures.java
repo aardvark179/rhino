@@ -189,7 +189,7 @@ interface Signatures {
      * back to ScriptRuntime.strictSetName.
      */
     String NAME_SET_STRICT =
-            "(Lorg/mozilla/javascript/Scriptable;"
+            "(Lorg/mozilla/javascript/JSScope;"
                     + "Ljava/lang/Object;"
                     + "Lorg/mozilla/javascript/Context;"
                     + "Lorg/mozilla/javascript/JSScope;"
@@ -200,7 +200,7 @@ interface Signatures {
      * ScriptRuntime.setConst.
      */
     String NAME_SET_CONST =
-            "(Lorg/mozilla/javascript/Scriptable;"
+            "(Lorg/mozilla/javascript/JSScope;"
                     + "Ljava/lang/Object;"
                     + "Lorg/mozilla/javascript/Context;"
                     + ")Ljava/lang/Object;";

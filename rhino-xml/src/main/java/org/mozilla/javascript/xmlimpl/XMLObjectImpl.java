@@ -91,26 +91,6 @@ abstract class XMLObjectImpl extends XMLObject {
     }
 
     @Override
-    public final Scriptable getPrototype() {
-        return super.getPrototype();
-    }
-
-    @Override
-    public final void setPrototype(Scriptable prototype) {
-        super.setPrototype(prototype);
-    }
-
-    @Override
-    public final Scriptable getParentScope() {
-        return super.getParentScope();
-    }
-
-    @Override
-    public final void setParentScope(JSScope parent) {
-        super.setParentScope(parent);
-    }
-
-    @Override
     public final Object getDefaultValue(Class<?> hint) {
         return this.toString();
     }

@@ -14,14 +14,12 @@ package org.mozilla.javascript;
  * @see org.mozilla.javascript.Arguments
  * @author Norris Boyd
  */
-public final class NativeCall extends IdScriptableObject {
+public final class NativeCall extends NativeScope {
     private static final long serialVersionUID = -7471457301304454454L;
 
-    private static final Object CALL_TAG = "Call";
-
     static void init(JSScope scope, boolean sealed) {
-        NativeCall obj = new NativeCall();
-        obj.exportAsJSClass(MAX_PROTOTYPE_ID, scope, sealed);
+        // NativeCall obj = new NativeCall();
+        // obj.exportAsJSClass(MAX_PROTOTYPE_ID, scope, sealed);
     }
 
     NativeCall() {}
@@ -60,17 +58,17 @@ public final class NativeCall extends IdScriptableObject {
                 for (int i = 0; i < paramCount; ++i) {
                     String name = function.getParamOrVarName(i);
                     Object val = i < args.length ? args[i] : Undefined.instance;
-                    defineProperty(name, val, PERMANENT);
+                    defineProperty(name, val, ScriptableObject.PERMANENT);
                 }
                 defineProperty(
                         function.getParamOrVarName(paramCount),
                         cx.newArray(scope, vals),
-                        PERMANENT);
+                        ScriptableObject.PERMANENT);
             } else {
                 for (int i = 0; i < paramCount; ++i) {
                     String name = function.getParamOrVarName(i);
                     Object val = i < args.length ? args[i] : Undefined.instance;
-                    defineProperty(name, val, PERMANENT);
+                    defineProperty(name, val, ScriptableObject.PERMANENT);
                 }
             }
         }
@@ -80,7 +78,7 @@ public final class NativeCall extends IdScriptableObject {
             // the parameter with the same name
             if (!super.has("arguments", this) && !isArrow) {
                 arguments = new Arguments(this, cx);
-                defineProperty("arguments", arguments, PERMANENT);
+                defineProperty("arguments", arguments, ScriptableObject.PERMANENT);
             }
         }
 
@@ -89,62 +87,18 @@ public final class NativeCall extends IdScriptableObject {
                 String name = function.getParamOrVarName(i);
                 if (!super.has(name, this)) {
                     if (function.getParamOrVarConst(i)) {
-                        defineProperty(name, Undefined.instance, CONST);
+                        defineProperty(name, Undefined.instance, ScriptableObject.CONST);
                     } else if (function.hasFunctionNamed(name)) {
-                        defineProperty(name, Undefined.instance, PERMANENT);
+                        defineProperty(name, Undefined.instance, ScriptableObject.PERMANENT);
                     }
                 }
             }
         }
     }
 
-    @Override
-    public String getClassName() {
-        return "Call";
-    }
-
-    @Override
-    protected int findPrototypeId(String s) {
-        return "constructor".equals(s) ? Id_constructor : 0;
-    }
-
-    @Override
-    protected void initPrototypeId(int id) {
-        String s;
-        int arity;
-        if (id == Id_constructor) {
-            arity = 1;
-            s = "constructor";
-        } else {
-            throw new IllegalArgumentException(String.valueOf(id));
-        }
-        initPrototypeMethod(CALL_TAG, id, s, arity);
-    }
-
-    @Override
-    public Object execIdCall(
-            IdFunctionObject f, Context cx, JSScope scope, Object thisObj, Object[] args) {
-        if (!f.hasTag(CALL_TAG)) {
-            return super.execIdCall(f, cx, scope, thisObj, args);
-        }
-        int id = f.methodId();
-        if (id == Id_constructor) {
-            if (thisObj != null) {
-                throw Context.reportRuntimeErrorById("msg.only.from.new", "Call");
-            }
-            ScriptRuntime.checkDeprecated(cx, "Call");
-            NativeCall result = new NativeCall();
-            result.setPrototype(getObjectPrototype(scope));
-            return result;
-        }
-        throw new IllegalArgumentException(String.valueOf(id));
-    }
-
     public Scriptable getHomeObject() {
         return function.getHomeObject();
     }
-
-    private static final int Id_constructor = 1, MAX_PROTOTYPE_ID = 1;
 
     JSFunction function;
     Object[] originalArgs;

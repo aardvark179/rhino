@@ -126,7 +126,7 @@ class BodyCodegen {
                         + "Z"
                         + "Z"
                         + "Z"
-                        + ")Lorg/mozilla/javascript/Scriptable;");
+                        + ")Lorg/mozilla/javascript/JSScope;");
         cfw.addAStore(variableObjectLocal);
 
         generateNestedFunctionInits();
@@ -417,7 +417,7 @@ class BodyCodegen {
                             + "Z"
                             + "Z"
                             + "Z"
-                            + ")Lorg/mozilla/javascript/Scriptable;");
+                            + ")Lorg/mozilla/javascript/JSScope;");
             cfw.addAStore(variableObjectLocal);
             cfw.addALoad(contextLocal);
             cfw.addALoad(variableObjectLocal);

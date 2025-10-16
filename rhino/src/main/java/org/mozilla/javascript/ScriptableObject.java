@@ -744,8 +744,8 @@ public abstract class ScriptableObject extends SlotMapOwner
 
     /** Returns the parent (enclosing) scope of the object. */
     @Override
-    public Scriptable getParentScope() {
-        return (Scriptable) parentScopeObject;
+    public JSScope getParentScope() {
+        return parentScopeObject;
     }
 
     /** Sets the parent (enclosing) scope of the object. */
