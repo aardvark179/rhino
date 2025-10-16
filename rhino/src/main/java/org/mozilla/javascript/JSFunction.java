@@ -132,14 +132,14 @@ public class JSFunction extends BaseFunction implements ScriptOrFn<JSFunction> {
     }
 
     @Override
-    public Scriptable construct(Context cx, JSScope scope, Object[] args) {
+    public Scriptable construct(Context cx, JSScope scope, Object target, Object[] args) {
         if (descriptor.getConstructor() == null) {
             throw ScriptRuntime.typeErrorById("msg.not.ctor", getFunctionName());
         }
         var thisObj = homeObject == null ? createObject(cx, scope) : null;
         // Pass `this` in as new.target for now. This can change when
         // the public `construct` signature changes.
-        var res = descriptor.getConstructor().execute(cx, this, this, scope, thisObj, args);
+        var res = descriptor.getConstructor().execute(cx, this, target, scope, thisObj, args);
         if (res instanceof Scriptable) {
             thisObj = (Scriptable) res;
         }

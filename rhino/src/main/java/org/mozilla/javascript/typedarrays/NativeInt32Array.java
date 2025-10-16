@@ -46,7 +46,7 @@ public class NativeInt32Array extends NativeTypedArrayView<Integer> {
                         CLASS_NAME,
                         3,
                         LambdaConstructor.CONSTRUCTOR_NEW,
-                        (Context lcx, JSScope lscope, Object[] args) ->
+                        (Context lcx, JSScope lscope, Object target, Object[] args) ->
                                 NativeTypedArrayView.js_constructor(
                                         lcx,
                                         lscope,

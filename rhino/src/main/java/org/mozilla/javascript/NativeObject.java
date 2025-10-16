@@ -42,8 +42,9 @@ public class NativeObject extends ScriptableObject implements Map {
                         NativeObject::js_constructorCall,
                         NativeObject::js_constructor) {
                     @Override
-                    public Scriptable construct(Context cx, JSScope scope, Object[] args) {
-                        return js_constructor(cx, scope, args);
+                    public Scriptable construct(
+                            Context cx, JSScope scope, Object target, Object[] args) {
+                        return js_constructor(cx, scope, target, args);
                     }
                 };
 
@@ -145,7 +146,8 @@ public class NativeObject extends ScriptableObject implements Map {
         return ScriptRuntime.toObject(cx, scope, args[0]);
     }
 
-    private static Scriptable js_constructor(Context cx, JSScope scope, Object[] args) {
+    private static Scriptable js_constructor(
+            Context cx, JSScope scope, Object target, Object[] args) {
         if (args.length == 0 || args[0] == null || Undefined.isUndefined(args[0])) {
             return cx.newObject(scope);
         }

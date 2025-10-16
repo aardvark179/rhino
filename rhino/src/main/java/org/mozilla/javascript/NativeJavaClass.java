@@ -130,11 +130,11 @@ public class NativeJavaClass extends NativeJavaObject implements Function {
                 p = p.getPrototype();
             } while (p != null);
         }
-        return construct(cx, scope, args);
+        return construct(cx, scope, null, args);
     }
 
     @Override
-    public Scriptable construct(Context cx, JSScope scope, Object[] args) {
+    public Scriptable construct(Context cx, JSScope scope, Object target, Object[] args) {
         Class<?> classObject = getClassObject();
         int modifiers = classObject.getModifiers();
         if (!(Modifier.isInterface(modifiers) || Modifier.isAbstract(modifiers))) {
@@ -169,7 +169,7 @@ public class NativeJavaClass extends NativeJavaObject implements Function {
             if (v != NOT_FOUND) {
                 // Args are (interface, js object)
                 Object[] adapterArgs = {this, args[0]};
-                return ((Constructable) v).construct(cx, topLevel, adapterArgs);
+                return ((Constructable) v).construct(cx, topLevel, target, adapterArgs);
             }
         } catch (Exception ex) {
             // fall through to error

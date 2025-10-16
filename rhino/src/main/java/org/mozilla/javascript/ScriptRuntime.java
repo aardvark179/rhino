@@ -1323,7 +1323,7 @@ public class ScriptRuntime {
         if (args == null) {
             args = ScriptRuntime.emptyArgs;
         }
-        return ctor.construct(cx, (Scriptable) scope, args);
+        return ctor.construct(cx, scope, ctor, args);
     }
 
     public static Scriptable newBuiltinObject(
@@ -1333,7 +1333,7 @@ public class ScriptRuntime {
         if (args == null) {
             args = ScriptRuntime.emptyArgs;
         }
-        return ctor.construct(cx, (Scriptable) scope, args);
+        return ctor.construct(cx, scope, ctor, args);
     }
 
     static Scriptable newNativeError(
@@ -1343,7 +1343,7 @@ public class ScriptRuntime {
         if (args == null) {
             args = ScriptRuntime.emptyArgs;
         }
-        return ctor.construct(cx, (Scriptable) scope, args);
+        return ctor.construct(cx, scope, ctor, args);
     }
 
     /** See ECMA 9.4. */
@@ -3337,7 +3337,7 @@ public class ScriptRuntime {
         if (!(ctor instanceof Constructable)) {
             throw notFunctionError(ctor);
         }
-        return ((Constructable) ctor).construct(cx, (Scriptable) scope, args);
+        return ((Constructable) ctor).construct(cx, scope, ctor, args);
     }
 
     public static Object callSpecial(

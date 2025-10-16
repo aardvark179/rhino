@@ -121,7 +121,8 @@ final class NativeNumber extends ScriptableObject {
         return CLASS_NAME;
     }
 
-    private static Scriptable js_constructor(Context cx, JSScope scope, Object[] args) {
+    private static Scriptable js_constructor(
+            Context cx, JSScope scope, Object target, Object[] args) {
         double val = (args.length > 0) ? ScriptRuntime.toNumeric(args[0]).doubleValue() : 0.0;
         return new NativeNumber(val);
     }

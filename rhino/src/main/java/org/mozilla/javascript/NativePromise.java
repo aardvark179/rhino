@@ -62,7 +62,7 @@ public class NativePromise extends ScriptableObject {
         return constructor;
     }
 
-    private static Scriptable constructor(Context cx, JSScope scope, Object[] args) {
+    private static Scriptable constructor(Context cx, JSScope scope, Object target, Object[] args) {
         if (args.length < 1 || !(args[0] instanceof Callable)) {
             throw ScriptRuntime.typeErrorById("msg.function.expected");
         }
@@ -713,7 +713,9 @@ public class NativePromise extends ScriptableObject {
                             (Context cx, JSScope scope, Object thisObj, Object[] args) ->
                                     executor(args));
 
-            promise = ((Constructable) pc).construct(topCx, topScope, new Object[] {executorFunc});
+            promise =
+                    ((Constructable) pc)
+                            .construct(topCx, topScope, pc, new Object[] {executorFunc});
 
             if (!(rawResolve instanceof Callable)) {
                 throw ScriptRuntime.typeErrorById("msg.function.expected");
