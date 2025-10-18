@@ -1039,9 +1039,7 @@ final class NativeProxy extends ScriptableObject implements Function {
                             callTrap(
                                     trap,
                                     new Object[] {
-                                        target,
-                                        id,
-                                        desc.toObject((Scriptable) trap.getDeclarationScope())
+                                        target, id, desc.toObject(trap.getDeclarationScope())
                                     }));
             if (!booleanTrapResult) {
                 return false;
@@ -1346,8 +1344,7 @@ final class NativeProxy extends ScriptableObject implements Function {
     }
 
     private Object callTrap(Function trap, Object[] args) {
-        return trap.call(
-                Context.getContext(), (Scriptable) trap.getDeclarationScope(), handlerObj, args);
+        return trap.call(Context.getContext(), trap.getDeclarationScope(), handlerObj, args);
     }
 
     ScriptableObject getTargetThrowIfRevoked() {

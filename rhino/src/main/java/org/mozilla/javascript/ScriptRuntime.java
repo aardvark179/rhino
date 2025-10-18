@@ -1232,6 +1232,13 @@ public class ScriptRuntime {
         return null;
     }
 
+    public static JSScope toScopeOrNull(Context cx, Object obj, JSScope scope) {
+        if (obj instanceof JSScope) {
+            return (JSScope) obj;
+        }
+        return null;
+    }
+
     /**
      * @deprecated Use {@link #toObject(Scriptable, Object)} instead.
      */
@@ -1795,8 +1802,12 @@ public class ScriptRuntime {
      * @param scope the scope that should be used to resolve primitive prototype
      */
     public static Object getObjectProp(Object obj, String property, Context cx, JSScope scope) {
-        Scriptable sobj = asScriptableOrThrowUndefReadError(cx, scope, obj, property);
-        return getObjectProp(sobj, property, cx);
+        if (obj instanceof JSScope && !(obj instanceof Scriptable)) {
+            return ((JSScope) obj).get(property, (JSScope) obj);
+        } else {
+            Scriptable sobj = asScriptableOrThrowUndefReadError(cx, scope, obj, property);
+            return getObjectProp(sobj, property, cx);
+        }
     }
 
     public static Object getObjectProp(Scriptable obj, String property, Context cx) {
@@ -2206,7 +2217,7 @@ public class ScriptRuntime {
      * define a return value. Here we assume that the [[Delete]] method doesn't return a value.
      */
     public static Object delete(Object obj, Object id, Context cx, JSScope scope, boolean isName) {
-        Scriptable sobj = toObjectOrNull(cx, obj, scope);
+        JSScope sobj = toScopeOrNull(cx, obj, scope);
         if (sobj == null) {
             if (isName) {
                 return Boolean.TRUE;
@@ -2558,7 +2569,7 @@ public class ScriptRuntime {
             }
             Function f = (Function) v;
             Object[] args = new Object[] {keyOnly ? Boolean.TRUE : Boolean.FALSE};
-            v = f.call(cx, (Scriptable) f.getDeclarationScope(), obj, args);
+            v = f.call(cx, f.getDeclarationScope(), obj, args);
             if (!(v instanceof Scriptable)) {
                 throw typeErrorById("msg.iterator.primitive");
             }
@@ -2722,7 +2733,7 @@ public class ScriptRuntime {
         Callable f = (Callable) v;
         JSScope scope;
         if (f instanceof Function) {
-            scope = (Scriptable) ((Function) f).getDeclarationScope();
+            scope = ((Function) f).getDeclarationScope();
         } else {
             scope = cx.topCallScope;
         }
@@ -3383,7 +3394,7 @@ public class ScriptRuntime {
             throw Kit.codeBug();
         }
 
-        return fun.call(cx, (Scriptable) scope, (Scriptable) thisObj, args);
+        return fun.call(cx, scope, (Scriptable) thisObj, args);
     }
 
     public static Object newSpecial(
@@ -4221,7 +4232,7 @@ public class ScriptRuntime {
             } else {
                 hint = "number";
             }
-            final Object result = func.call(cx, (Scriptable) scope, s, new Object[] {hint});
+            final Object result = func.call(cx, scope, s, new Object[] {hint});
             if (isObject(result)) {
                 throw typeErrorById("msg.cant.convert.to.primitive");
             }

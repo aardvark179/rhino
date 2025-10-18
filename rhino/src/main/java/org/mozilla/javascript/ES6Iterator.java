@@ -38,7 +38,6 @@ public abstract class ES6Iterator extends IdScriptableObject {
         // Set parent and prototype properties. Since we don't have a
         // "Iterator" constructor in the top scope, we stash the
         // prototype in the top scope's associated value.
-        new Error().printStackTrace();
         this.tag = tag;
         Scriptable top = ScriptableObject.getTopLevelScope(scope);
         ScriptableObject prototype = (ScriptableObject) ScriptableObject.getTopScopeValue(top, tag);

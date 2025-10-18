@@ -8,6 +8,8 @@
 
 package org.mozilla.javascript;
 
+import static org.mozilla.javascript.ScriptableObject.getTopLevelScope;
+
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.Closeable;
@@ -1276,7 +1278,7 @@ public class Context implements Closeable {
             throws IOException {
         Script script = compileReader(in, sourceName, lineno, securityDomain);
         if (script != null) {
-            return script.exec(this, scope, scope);
+            return script.exec(this, scope, getTopLevelScope(scope));
         }
         return null;
     }

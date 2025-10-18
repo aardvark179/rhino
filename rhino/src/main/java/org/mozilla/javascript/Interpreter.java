@@ -4102,11 +4102,11 @@ public final class Interpreter extends Icode implements Evaluator {
 
             boolean afterFirstScope = (frame.idata.itsICode[frame.pc] != 0);
             Throwable caughtException = (Throwable) frame.stack[state.stackTop + 1];
-            Scriptable lastCatchScope;
+            JSScope lastCatchScope;
             if (!afterFirstScope) {
                 lastCatchScope = null;
             } else {
-                lastCatchScope = (Scriptable) frame.stack[state.indexReg];
+                lastCatchScope = (JSScope) frame.stack[state.indexReg];
             }
             frame.stack[state.indexReg] =
                     ScriptRuntime.newCatchScope(
@@ -4221,7 +4221,7 @@ public final class Interpreter extends Icode implements Evaluator {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
             state.indexReg += frame.idata.itsMaxVars;
-            frame.scope = (Scriptable) frame.stack[state.indexReg];
+            frame.scope = (JSScope) frame.stack[state.indexReg];
             return null;
         }
     }
@@ -4423,7 +4423,7 @@ public final class Interpreter extends Icode implements Evaluator {
             Object x = ScriptRuntime.updateDotQuery(valBln, frame.scope);
             if (x != null) {
                 frame.stack[state.stackTop] = x;
-                frame.scope = (Scriptable) ScriptRuntime.leaveDotQuery(frame.scope);
+                frame.scope = ScriptRuntime.leaveDotQuery(frame.scope);
                 frame.pc += 2;
                 return null;
             }
@@ -4775,7 +4775,7 @@ public final class Interpreter extends Icode implements Evaluator {
                 // to expose the exception variable).
                 for (; ; ) {
                     if (scope instanceof NativeWith) {
-                        scope = (Scriptable) scope.getParentScope();
+                        scope = (JSScope) scope.getParentScope();
                         if (scope == null
                                 || (frame.parentFrame != null
                                         && frame.parentFrame.scope == scope)) {

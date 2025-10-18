@@ -257,7 +257,7 @@ public final class OptRuntime extends ScriptRuntime {
         Object value = getGeneratorReturnValue(genState);
         Object si =
                 (value == Undefined.instance)
-                        ? NativeIterator.getStopIterationObject((Scriptable) scope)
+                        ? NativeIterator.getStopIterationObject((JSScope) scope)
                         : new NativeIterator.StopIteration(value);
         throw new JavaScriptException(si, "", 0);
     }

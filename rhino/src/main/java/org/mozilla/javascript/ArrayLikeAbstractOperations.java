@@ -379,7 +379,7 @@ public class ArrayLikeAbstractOperations {
                     // This comparator is invoked only for non-undefined objects
                     cmpBuf[0] = x;
                     cmpBuf[1] = y;
-                    Object ret = compare.call(cx, (Scriptable) scope, compareThis, cmpBuf);
+                    Object ret = compare.call(cx, scope, compareThis, cmpBuf);
                     double d = ScriptRuntime.toNumber(ret);
                     int cmp = Double.compare(d, 0);
                     if (cmp < 0) {
