@@ -2217,15 +2217,20 @@ public class ScriptRuntime {
      * define a return value. Here we assume that the [[Delete]] method doesn't return a value.
      */
     public static Object delete(Object obj, Object id, Context cx, JSScope scope, boolean isName) {
-        JSScope sobj = toScopeOrNull(cx, obj, scope);
-        if (sobj == null) {
-            if (isName) {
-                return Boolean.TRUE;
+        JSScope objScope = toScopeOrNull(cx, obj, scope);
+        if (objScope != null) {
+            return deleteObjectElem(objScope, id, cx);
+        } else {
+            Scriptable sobj = toObjectOrNull(cx, obj, scope);
+            if (sobj == null) {
+                if (isName) {
+                    return Boolean.TRUE;
+                }
+                throw undefDeleteError(obj, id);
             }
-            throw undefDeleteError(obj, id);
+            boolean result = deleteObjectElem(sobj, id, cx);
+            return wrapBoolean(result);
         }
-        boolean result = deleteObjectElem(sobj, id, cx);
-        return wrapBoolean(result);
     }
 
     /** Looks up a name in the scope chain and returns its value. */
@@ -2380,7 +2385,7 @@ public class ScriptRuntime {
                 // scopes are useful for what ever reasons.
                 result = ScriptableObject.getProperty(scope, name);
                 if (result != Scriptable.NOT_FOUND) {
-                    thisObj = scope;
+                    thisObj = ScriptableObject.getTopLevelScope(parentScope);
                     break;
                 }
             }
@@ -2392,7 +2397,7 @@ public class ScriptRuntime {
                     throw notFoundError(scope, name);
                 }
                 // For top scope thisObj for functions is always scope itself.
-                thisObj = scope;
+                thisObj = ScriptableObject.getTopLevelScope(scope);
                 break;
             }
         }
@@ -2934,7 +2939,7 @@ public class ScriptRuntime {
                 }
             }
             // Top scope is not NativeWith or NativeCall => thisObj == scope
-            return new LookupResult(result, scope, name);
+            return new LookupResult(result, ScriptableObject.getTopLevelScope(scope), name);
         }
 
         // name will call storeScriptable(cx, thisObj);
@@ -3284,7 +3289,11 @@ public class ScriptRuntime {
         Callable f = (Callable) value;
         Object thisObj = null;
         if (f instanceof Function) {
-            thisObj = ((Function) f).getDeclarationScope();
+            var fDeclScope = ((Function) f).getDeclarationScope();
+            if (fDeclScope == null) {
+                throw new Error(String.format("%s has null declaration scope", f.getClass()));
+            }
+            thisObj = ScriptableObject.getTopLevelScope(fDeclScope);
         }
         if (thisObj == null) {
             if (cx.topCallScope == null) throw new IllegalStateException();

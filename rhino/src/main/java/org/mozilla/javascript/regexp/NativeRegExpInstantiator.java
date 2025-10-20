@@ -7,9 +7,9 @@ public class NativeRegExpInstantiator {
 
     private NativeRegExpInstantiator() {}
 
-    static NativeRegExp withLanguageVersion(int languageVersion) {
+    static NativeRegExp withLanguageVersion(JSScope scope, int languageVersion) {
         if (languageVersion < Context.VERSION_ES6) {
-            return new NativeRegExpCallable();
+            return new NativeRegExpCallable(scope);
         } else {
             return new NativeRegExp();
         }

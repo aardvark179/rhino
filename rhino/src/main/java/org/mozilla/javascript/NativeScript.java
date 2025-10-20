@@ -23,8 +23,6 @@ import java.util.EnumSet;
 class NativeScript extends BaseFunction {
     private static final long serialVersionUID = -6795101161980121700L;
 
-    private static final Object SCRIPT_TAG = "Script";
-
     static LambdaConstructor init(Context cx, JSScope scope, boolean sealed) {
         LambdaConstructor obj =
                 new LambdaConstructor(
@@ -34,7 +32,7 @@ class NativeScript extends BaseFunction {
                         NativeScript::js_constructorCall,
                         NativeScript::js_constructor);
 
-        var proto = new NativeScript(null);
+        var proto = new NativeScript(scope, null);
         proto.setPrototypeProperty(null);
         obj.setPrototypeProperty(proto);
 
@@ -73,8 +71,9 @@ class NativeScript extends BaseFunction {
         init(Context.getContext(), scope, sealed);
     }
 
-    private NativeScript(Script script) {
+    private NativeScript(JSScope scope, Script script) {
         this.script = script;
+        setParentScope(scope);
     }
 
     /** Returns the name of this JavaScript class, "Script". */
@@ -143,7 +142,7 @@ class NativeScript extends BaseFunction {
             Context cx, JSScope scope, Object target, Object[] args) {
         String source = (args.length == 0) ? "" : ScriptRuntime.toString(args[0]);
         Script script = compile(cx, source);
-        NativeScript nscript = new NativeScript(script);
+        NativeScript nscript = new NativeScript(scope, script);
         ScriptRuntime.setObjectProtoAndParent(nscript, scope);
         return nscript;
     }

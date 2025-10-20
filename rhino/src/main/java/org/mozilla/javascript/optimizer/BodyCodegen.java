@@ -1775,9 +1775,9 @@ class BodyCodegen {
             if (exprContext) {
                 String name = unnestedYields.get(node);
                 cfw.addALoad(variableObjectLocal);
-                cfw.addALoad(contextLocal);
                 cfw.addALoad(variableObjectLocal);
-                addDynamicInvoke("PROP:GETNOWARN:" + name, Signatures.PROP_GET_NOWARN);
+                cfw.addALoad(contextLocal);
+                addDynamicInvoke("NAME:GET:" + name, Signatures.NAME_GET);
             }
             return;
         }
@@ -1797,7 +1797,7 @@ class BodyCodegen {
             cfw.add(ByteCode.SWAP);
             cfw.addALoad(contextLocal);
             cfw.addALoad(variableObjectLocal);
-            addDynamicInvoke("PROP:SET:" + nn, Signatures.PROP_SET);
+            addDynamicInvoke("NAME:SET:" + nn, Signatures.NAME_SET);
             cfw.add(ByteCode.POP);
 
             unnestedYields.put(nestedYield, nn);

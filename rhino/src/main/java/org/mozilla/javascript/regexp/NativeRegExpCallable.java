@@ -12,10 +12,12 @@ class NativeRegExpCallable extends NativeRegExp implements Function {
 
     NativeRegExpCallable(JSScope scope, RECompiled compiled) {
         super(scope, compiled);
+        setParentScope(scope);
     }
 
-    NativeRegExpCallable() {
+    NativeRegExpCallable(JSScope scope) {
         super();
+        setParentScope(scope);
     }
 
     @Override
