@@ -1775,7 +1775,6 @@ class BodyCodegen {
             if (exprContext) {
                 String name = unnestedYields.get(node);
                 cfw.addALoad(variableObjectLocal);
-                cfw.addALoad(variableObjectLocal);
                 cfw.addALoad(contextLocal);
                 addDynamicInvoke("NAME:GET:" + name, Signatures.NAME_GET);
             }
