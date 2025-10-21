@@ -86,11 +86,11 @@ final class SuperBlock {
             boolean stackChanged = mergeState(this.stack, stack, stackTop, pool);
             return localsChanged || stackChanged;
         } else {
-            if (ClassFileWriter.StackMapTable.DEBUGSTACKMAP) {
-                System.out.println("bad merge");
-                System.out.println("current type state:");
+            if (ClassFileWriter.DEBUGSTACKMAP) {
+                System.err.println("bad merge");
+                System.err.println("current type state:");
                 TypeInfo.print(this.locals, this.stack, pool);
-                System.out.println("incoming type state:");
+                System.err.println("incoming type state:");
                 TypeInfo.print(locals, localsTop, stack, stackTop, pool);
             }
             throw new IllegalArgumentException("bad merge attempt");

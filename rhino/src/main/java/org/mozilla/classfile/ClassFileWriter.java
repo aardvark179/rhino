@@ -1252,6 +1252,13 @@ public class ClassFileWriter {
     }
 
     public void markLabel(int label) {
+        if (DEBUGLABELS) {
+            if (DEBUGCODEORIGINS) {
+                printOrigin();
+            }
+            int theLabel = label & 0x7FFFFFFF;
+            System.err.println("Marking label " + theLabel);
+        }
         if (!(label < 0)) throw new IllegalArgumentException("Bad label, no biscuit");
 
         label &= 0x7FFFFFFF;
@@ -2610,8 +2617,6 @@ public class ClassFileWriter {
         private int rawStackMapTop;
 
         private boolean wide;
-
-        static final boolean DEBUGSTACKMAP = false;
     }
 
     /** Convert a newarray operand into an internal type. */
@@ -4532,6 +4537,7 @@ public class ClassFileWriter {
     private static final int FileHeaderConstant = 0xCAFEBABE;
     // Set DEBUG flags to true to get better checking and progress info.
     private static final boolean DEBUGSTACK = RhinoConfig.get("rhino.cfw.debugStack", false);
+    static final boolean DEBUGSTACKMAP = RhinoConfig.get("rhino.cfw.debugStackMap", false);
     private static final boolean DEBUGLABELS = RhinoConfig.get("rhino.cfw.debugLabels", false);
     private static final boolean DEBUGCODE = RhinoConfig.get("rhino.cfw.debugBytecode", false);
     private static final boolean DEBUGCODEORIGINS =

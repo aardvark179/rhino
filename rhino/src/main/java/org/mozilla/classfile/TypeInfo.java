@@ -226,10 +226,10 @@ final class TypeInfo {
     }
 
     static void print(int[] locals, int localsTop, int[] stack, int stackTop, ConstantPool pool) {
-        System.out.print("locals: ");
-        System.out.println(toString(locals, localsTop, pool));
-        System.out.print("stack: ");
-        System.out.println(toString(stack, stackTop, pool));
-        System.out.println();
+        System.err.print("locals: ");
+        System.err.println(toString(locals, localsTop, pool));
+        System.err.print("stack: ");
+        System.err.println(toString(stack, stackTop, pool));
+        System.err.println();
     }
 }
