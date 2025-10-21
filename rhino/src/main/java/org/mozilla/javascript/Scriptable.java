@@ -257,7 +257,6 @@ public interface Scriptable extends JSScope {
      *
      * @param parent the parent scope to set
      */
-    @Override
     public void setParentScope(JSScope parent);
 
     /**

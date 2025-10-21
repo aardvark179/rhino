@@ -1639,8 +1639,7 @@ public class Context implements Closeable {
      * object.
      */
     public JSScope newScope(JSScope parent) {
-        var result = new NativeScope();
-        result.setParentScope(parent);
+        var result = new NativeScope(parent);
         return result;
     }
 

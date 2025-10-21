@@ -22,8 +22,6 @@ public final class NativeCall extends NativeScope {
         // obj.exportAsJSClass(MAX_PROTOTYPE_ID, scope, sealed);
     }
 
-    NativeCall() {}
-
     NativeCall(
             JSFunction function,
             Context cx,
@@ -33,10 +31,10 @@ public final class NativeCall extends NativeScope {
             boolean isStrict,
             boolean argsHasRest,
             boolean requiresArgumentObject) {
+        super(scope);
         this.function = function;
         this.isArrow = isArrow;
 
-        setParentScope(scope);
         // leave prototype null
 
         this.originalArgs = (args == null) ? ScriptRuntime.emptyArgs : args;

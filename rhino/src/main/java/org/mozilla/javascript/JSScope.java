@@ -44,11 +44,4 @@ public interface JSScope {
      * @return the parent scope
      */
     public JSScope getParentScope();
-
-    /**
-     * Set the parent scope of the object.
-     *
-     * @param parent the parent scope to set
-     */
-    public void setParentScope(JSScope parent);
 }

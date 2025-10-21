@@ -9,16 +9,15 @@ import java.io.Serializable;
 public class NativeScope extends SlotMapOwner implements JSScope, ConstProperties, Serializable {
     private static final long serialVersionUID = -7471457301304454454L;
 
-    private JSScope parentScope;
+    private final JSScope parentScope;
+
+    public NativeScope(JSScope parentScope) {
+        this.parentScope = parentScope;
+    }
 
     @Override
     public JSScope getParentScope() {
         return parentScope;
-    }
-
-    @Override
-    public void setParentScope(JSScope parent) {
-        parentScope = parent;
     }
 
     /**
