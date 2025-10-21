@@ -301,9 +301,15 @@ class CodeGenerator<T extends ScriptOrFn<T>> extends Icode {
                 addToken(Token.ENTERWITH);
                 stackChange(-1);
                 break;
-
             case Token.LEAVEWITH:
                 addToken(Token.LEAVEWITH);
+                break;
+
+            case Token.ENTERSCOPE:
+                addToken(Token.ENTERSCOPE);
+                break;
+            case Token.LEAVESCOPE:
+                addToken(Token.LEAVESCOPE);
                 break;
 
             case Token.LOCAL_BLOCK:

@@ -725,7 +725,7 @@ class BodyCodegen {
                                     + "Ljava/lang/String;"
                                     + "Lorg/mozilla/javascript/Context;"
                                     + "Lorg/mozilla/javascript/JSScope;"
-                                    + ")Lorg/mozilla/javascript/Scriptable;");
+                                    + ")Lorg/mozilla/javascript/JSScope;");
                     cfw.addAStore(local);
                 }
                 break;
@@ -785,6 +785,28 @@ class BodyCodegen {
                 break;
 
             case Token.LEAVEWITH:
+                cfw.addALoad(variableObjectLocal);
+                addScriptRuntimeInvoke(
+                        "leaveWith",
+                        "(Lorg/mozilla/javascript/JSScope;" + ")Lorg/mozilla/javascript/JSScope;");
+                cfw.addAStore(variableObjectLocal);
+                decReferenceWordLocal(variableObjectLocal);
+                break;
+
+            case Token.ENTERSCOPE:
+                generateExpression(child, node);
+                cfw.addALoad(contextLocal);
+                cfw.addALoad(variableObjectLocal);
+                addScriptRuntimeInvoke(
+                        "enterScope",
+                        "(Ljava/lang/Object;"
+                                + "Lorg/mozilla/javascript/Context;"
+                                + "Lorg/mozilla/javascript/JSScope;"
+                                + ")Lorg/mozilla/javascript/JSScope;");
+                cfw.addAStore(variableObjectLocal);
+                incReferenceWordLocal(variableObjectLocal);
+                break;
+            case Token.LEAVESCOPE:
                 cfw.addALoad(variableObjectLocal);
                 addScriptRuntimeInvoke(
                         "leaveWith",
@@ -913,6 +935,7 @@ class BodyCodegen {
                 break;
 
             default:
+                System.err.printf("Token was %d.\n", type);
                 throw Codegen.badTree();
         }
     }

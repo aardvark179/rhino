@@ -1566,6 +1566,8 @@ public final class Interpreter extends Icode implements Evaluator {
         instructionObjs[base + Token.FALSE] = new DoFalse();
         instructionObjs[base + Token.TRUE] = new DoTrue();
         instructionObjs[base + Icode_UNDEF] = new DoUndef();
+        instructionObjs[base + Token.ENTERSCOPE] = new DoEnterScope();
+        instructionObjs[base + Token.LEAVESCOPE] = new DoLeaveScope();
         instructionObjs[base + Token.ENTERWITH] = new DoEnterWith();
         instructionObjs[base + Token.LEAVEWITH] = new DoLeaveWith();
         instructionObjs[base + Token.CATCH_SCOPE] = new DoCatchScope();
@@ -4071,6 +4073,24 @@ public final class Interpreter extends Icode implements Evaluator {
         }
     }
 
+    private static class DoEnterScope extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            Object lhs = frame.stack[state.stackTop];
+            frame.scope = ScriptRuntime.enterScope(lhs, cx, frame.scope);
+            state.stackTop--;
+            return null;
+        }
+    }
+
+    private static class DoLeaveScope extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            frame.scope = (JSScope) ScriptRuntime.leaveWith(frame.scope);
+            return null;
+        }
+    }
+
     private static class DoEnterWith extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
@@ -4108,9 +4128,12 @@ public final class Interpreter extends Icode implements Evaluator {
             } else {
                 lastCatchScope = (JSScope) frame.stack[state.indexReg];
             }
-            frame.stack[state.indexReg] =
+            var excpScope =
                     ScriptRuntime.newCatchScope(
                             caughtException, lastCatchScope, state.stringReg, cx, frame.scope);
+
+            frame.stack[state.indexReg] = excpScope;
+            frame.scope = excpScope;
             ++frame.pc;
             return null;
         }

@@ -5050,7 +5050,7 @@ public class ScriptRuntime {
         return null;
     }
 
-    public static Scriptable newCatchScope(
+    public static JSScope newCatchScope(
             Throwable t, JSScope lastCatchScope, String exceptionName, Context cx, JSScope scope) {
         Object obj;
         boolean cacheObj;
@@ -5066,7 +5066,7 @@ public class ScriptRuntime {
             // the previous scope object
 
             if (lastCatchScope != null) {
-                NativeObject last = (NativeObject) lastCatchScope;
+                NativeScope last = (NativeScope) lastCatchScope;
                 obj = last.getAssociatedValue(t);
                 if (obj == null) Kit.codeBug();
                 break getObj;
@@ -5154,7 +5154,7 @@ public class ScriptRuntime {
             obj = errorObject;
         }
 
-        NativeObject catchScopeObject = new NativeObject();
+        NativeScope catchScopeObject = new NativeScope(scope);
         // See ECMA 12.4
         if (exceptionName != null) {
             catchScopeObject.defineProperty(exceptionName, obj, ScriptableObject.PERMANENT);
@@ -5256,6 +5256,14 @@ public class ScriptRuntime {
     private static boolean isVisible(Context cx, Object obj) {
         ClassShutter shutter = cx.getClassShutter();
         return shutter == null || shutter.visibleToScripts(obj.getClass().getName());
+    }
+
+    public static JSScope enterScope(Object newScope, Context cx, JSScope scope) {
+        return (JSScope) newScope;
+    }
+
+    public static JSScope leaveScope(JSScope scope) {
+        return scope.getParentScope();
     }
 
     public static Scriptable enterWith(Object obj, Context cx, JSScope scope) {

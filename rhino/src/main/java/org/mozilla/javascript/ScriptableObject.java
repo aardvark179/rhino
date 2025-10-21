@@ -22,11 +22,9 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -111,8 +109,6 @@ public abstract class ScriptableObject extends SlotMapOwner
 
     // Where external array data is stored.
     private transient ExternalArrayData externalData;
-
-    private volatile Map<Object, Object> associatedValues;
 
     private boolean isExtensible = true;
     private boolean isSealed = false;
@@ -2943,18 +2939,6 @@ public abstract class ScriptableObject extends SlotMapOwner
     }
 
     /**
-     * Get arbitrary application-specific value associated with this object.
-     *
-     * @param key key object to select particular value.
-     * @see #associateValue(Object key, Object value)
-     */
-    public final Object getAssociatedValue(Object key) {
-        Map<Object, Object> h = associatedValues;
-        if (h == null) return null;
-        return h.get(key);
-    }
-
-    /**
      * Get arbitrary application-specific value associated with the top scope of the given scope.
      * The method first calls {@link #getTopLevelScope(Scriptable scope)} and then searches the
      * prototype chain of the top scope for the first object containing the associated value with
@@ -2983,29 +2967,6 @@ public abstract class ScriptableObject extends SlotMapOwner
                 return null;
             }
         }
-    }
-
-    /**
-     * Associate arbitrary application-specific value with this object. Value can only be associated
-     * with the given object and key only once. The method ignores any subsequent attempts to change
-     * the already associated value.
-     *
-     * <p>The associated values are not serialized.
-     *
-     * @param key key object to select particular value.
-     * @param value the value to associate
-     * @return the passed value if the method is called first time for the given key or old value
-     *     for any subsequent calls.
-     * @see #getAssociatedValue(Object key)
-     */
-    public final synchronized Object associateValue(Object key, Object value) {
-        if (value == null) throw new IllegalArgumentException();
-        Map<Object, Object> h = associatedValues;
-        if (h == null) {
-            h = new HashMap<>();
-            associatedValues = h;
-        }
-        return Kit.initHash(h, key, value);
     }
 
     /**

@@ -3,7 +3,9 @@ package org.mozilla.javascript;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 
@@ -301,6 +303,8 @@ public abstract class SlotMapOwner {
      */
     private SlotMap slotMap;
 
+    private volatile Map<Object, Object> associatedValues;
+
     protected SlotMapOwner() {
         slotMap = createSlotMap(0);
     }
@@ -371,5 +375,40 @@ public abstract class SlotMapOwner {
      */
     final CompoundOperationMap startCompoundOp(boolean forWriting) {
         return slotMap.startCompoundOp(this, forWriting);
+    }
+
+    /**
+     * Get arbitrary application-specific value associated with this object.
+     *
+     * @param key key object to select particular value.
+     * @see #associateValue(Object key, Object value)
+     */
+    public final Object getAssociatedValue(Object key) {
+        Map<Object, Object> h = associatedValues;
+        if (h == null) return null;
+        return h.get(key);
+    }
+
+    /**
+     * Associate arbitrary application-specific value with this object. Value can only be associated
+     * with the given object and key only once. The method ignores any subsequent attempts to change
+     * the already associated value.
+     *
+     * <p>The associated values are not serialized.
+     *
+     * @param key key object to select particular value.
+     * @param value the value to associate
+     * @return the passed value if the method is called first time for the given key or old value
+     *     for any subsequent calls.
+     * @see #getAssociatedValue(Object key)
+     */
+    public final synchronized Object associateValue(Object key, Object value) {
+        if (value == null) throw new IllegalArgumentException();
+        Map<Object, Object> h = associatedValues;
+        if (h == null) {
+            h = new HashMap<>();
+            associatedValues = h;
+        }
+        return Kit.initHash(h, key, value);
     }
 }

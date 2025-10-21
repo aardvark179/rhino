@@ -42,7 +42,9 @@ public class Token {
             FIRST_BYTECODE_TOKEN = EOL + 1,
             ENTERWITH = FIRST_BYTECODE_TOKEN,
             LEAVEWITH = ENTERWITH + 1,
-            RETURN = LEAVEWITH + 1,
+            ENTERSCOPE = LEAVEWITH + 1,
+            LEAVESCOPE = ENTERSCOPE + 1,
+            RETURN = LEAVESCOPE + 1,
             GOTO = RETURN + 1,
             IFEQ = GOTO + 1,
             IFNE = IFEQ + 1,
@@ -278,6 +280,10 @@ public class Token {
                 return "ENTERWITH";
             case LEAVEWITH:
                 return "LEAVEWITH";
+            case ENTERSCOPE:
+                return "ENTERSCOPE";
+            case LEAVESCOPE:
+                return "LEAVESCOPE";
             case RETURN:
                 return "RETURN";
             case GOTO:

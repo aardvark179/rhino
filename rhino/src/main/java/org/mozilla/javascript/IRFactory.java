@@ -1849,7 +1849,7 @@ public final class IRFactory {
 
                 // Add with statement based on catch scope object
                 catchScopeBlock.addChildToBack(
-                        createWith(
+                        createLexicalScope(
                                 createUseLocal(catchScopeBlock),
                                 condStmt,
                                 catchLineno,
@@ -1890,6 +1890,16 @@ public final class IRFactory {
         }
         handlerBlock.addChildToBack(pn);
         return handlerBlock;
+    }
+
+    private Node createLexicalScope(Node scope, Node body, int lineno, int column) {
+        parser.setRequiresActivation();
+        Node result = new Node(Token.BLOCK, lineno, column);
+        result.addChildToBack(new Node(Token.ENTERSCOPE, scope));
+        Node bodyNode = new Node(Token.WITH, body, lineno, column);
+        result.addChildrenToBack(bodyNode);
+        result.addChildToBack(new Node(Token.LEAVESCOPE));
+        return result;
     }
 
     private Node createWith(Node obj, Node body, int lineno, int column) {

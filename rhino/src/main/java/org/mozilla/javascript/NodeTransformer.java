@@ -118,7 +118,8 @@ public class NodeTransformer {
                     {
                         loops.push(node);
                         Node leave = node.getNext();
-                        if (leave.getType() != Token.LEAVEWITH) {
+                        if (leave.getType() != Token.LEAVEWITH
+                                && leave.getType() != Token.LEAVESCOPE) {
                             Kit.codeBug();
                         }
                         loopEnds.push(leave);
@@ -139,6 +140,7 @@ public class NodeTransformer {
 
                 case Token.TARGET:
                 case Token.LEAVEWITH:
+                case Token.LEAVESCOPE:
                     if (!loopEnds.isEmpty() && loopEnds.peek() == node) {
                         loopEnds.pop();
                         loops.pop();
@@ -177,7 +179,7 @@ public class NodeTransformer {
                                     jsrnode.target = ((Jump) n).getFinally();
                                     unwind = jsrnode;
                                 } else {
-                                    unwind = new Node(Token.LEAVEWITH);
+                                    unwind = new Node(Token.LEAVESCOPE);
                                 }
                                 if (unwindBlock == null) {
                                     unwindBlock = new Node(Token.BLOCK);

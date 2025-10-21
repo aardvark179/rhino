@@ -967,6 +967,8 @@ public class Node implements Iterable<Node> {
             case Token.ASSIGN_NULLISH:
             case Token.ENTERWITH:
             case Token.LEAVEWITH:
+            case Token.ENTERSCOPE:
+            case Token.LEAVESCOPE:
             case Token.RETURN:
             case Token.GOTO:
             case Token.IFEQ:
