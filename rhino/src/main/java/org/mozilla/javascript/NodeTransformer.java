@@ -118,8 +118,18 @@ public class NodeTransformer {
                     {
                         loops.push(node);
                         Node leave = node.getNext();
-                        if (leave.getType() != Token.LEAVEWITH
-                                && leave.getType() != Token.LEAVESCOPE) {
+                        if (leave.getType() != Token.LEAVEWITH) {
+                            Kit.codeBug();
+                        }
+                        loopEnds.push(leave);
+                        break;
+                    }
+
+                case Token.CATCH_BLOCK:
+                    {
+                        loops.push(node);
+                        Node leave = node.getNext();
+                        if (leave.getType() != Token.LEAVESCOPE) {
                             Kit.codeBug();
                         }
                         loopEnds.push(leave);
@@ -161,7 +171,7 @@ public class NodeTransformer {
                             node.putIntProp(Node.GENERATOR_END_PROP, 1);
                         }
                         /* If we didn't support try/finally, it wouldn't be
-                         * necessary to put LEAVEWITH nodes here... but as
+                         * necessary to put LEAVESCOPE nodes here... but as
                          * we do need a series of JSR FINALLY nodes before
                          * each RETURN, we need to ensure that each finally
                          * block gets the correct scope... which could mean
@@ -172,12 +182,16 @@ public class NodeTransformer {
                         // Iterate from the top of the stack (most recently inserted) and down
                         for (Node n : loops) {
                             int elemtype = n.getType();
-                            if (elemtype == Token.TRY || elemtype == Token.WITH) {
+                            if (elemtype == Token.TRY
+                                    || elemtype == Token.WITH
+                                    || elemtype == Token.CATCH_BLOCK) {
                                 Node unwind;
                                 if (elemtype == Token.TRY) {
                                     Jump jsrnode = new Jump(Token.JSR);
                                     jsrnode.target = ((Jump) n).getFinally();
                                     unwind = jsrnode;
+                                } else if (elemtype == Token.WITH) {
+                                    unwind = new Node(Token.LEAVEWITH);
                                 } else {
                                     unwind = new Node(Token.LEAVESCOPE);
                                 }
@@ -231,6 +245,9 @@ public class NodeTransformer {
                             int elemtype = n.getType();
                             if (elemtype == Token.WITH) {
                                 Node leave = new Node(Token.LEAVEWITH);
+                                previous = addBeforeCurrent(parent, previous, node, leave);
+                            } else if (elemtype == Token.CATCH_BLOCK) {
+                                Node leave = new Node(Token.LEAVESCOPE);
                                 previous = addBeforeCurrent(parent, previous, node, leave);
                             } else if (elemtype == Token.TRY) {
                                 Jump tryNode = (Jump) n;

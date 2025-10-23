@@ -1825,10 +1825,10 @@ public final class IRFactory {
                 cb.removeChild(catchStatement);
 
                 // Add goto to the catch statement to jump out of catch
-                // but prefix it with LEAVEWITH since try..catch produces
-                // "with"code in order to limit the scope of the exception
+                // but prefix it with LEAVESCOPE since try..catch produces
+                // "scope"code in order to limit the scope of the exception
                 // object.
-                catchStatement.addChildToBack(new Node(Token.LEAVEWITH));
+                catchStatement.addChildToBack(new Node(Token.LEAVESCOPE));
                 catchStatement.addChildToBack(makeJump(Token.GOTO, endCatch));
 
                 // Create condition "if" when present
@@ -1896,7 +1896,7 @@ public final class IRFactory {
         parser.setRequiresActivation();
         Node result = new Node(Token.BLOCK, lineno, column);
         result.addChildToBack(new Node(Token.ENTERSCOPE, scope));
-        Node bodyNode = new Node(Token.WITH, body, lineno, column);
+        Node bodyNode = new Node(Token.CATCH_BLOCK, body, lineno, column);
         result.addChildrenToBack(bodyNode);
         result.addChildToBack(new Node(Token.LEAVESCOPE));
         return result;

@@ -199,7 +199,8 @@ public class Token {
              */
 
             BLOCK = COMPUTED_PROPERTY + 1, // statement block
-            LABEL = BLOCK + 1, // label
+            CATCH_BLOCK = BLOCK + 1, // statement block
+            LABEL = CATCH_BLOCK + 1, // label
             TARGET = LABEL + 1,
             LOOP = TARGET + 1,
             EXPR_VOID = LOOP + 1, // expression statement in functions
@@ -560,6 +561,8 @@ public class Token {
                 return "COMPUTED_PROPERTY";
             case BLOCK:
                 return "BLOCK";
+            case CATCH_BLOCK:
+                return "CATCH_BLOCK";
             case LABEL:
                 return "LABEL";
             case TARGET:

@@ -638,6 +638,7 @@ class BodyCodegen {
             case Token.WITH:
             case Token.SCRIPT:
             case Token.BLOCK:
+            case Token.CATCH_BLOCK:
             case Token.EMPTY:
                 // no-ops.
                 if (compilerEnv.isGenerateObserverCount()) {
@@ -809,7 +810,7 @@ class BodyCodegen {
             case Token.LEAVESCOPE:
                 cfw.addALoad(variableObjectLocal);
                 addScriptRuntimeInvoke(
-                        "leaveWith",
+                        "leaveScope",
                         "(Lorg/mozilla/javascript/JSScope;" + ")Lorg/mozilla/javascript/JSScope;");
                 cfw.addAStore(variableObjectLocal);
                 decReferenceWordLocal(variableObjectLocal);
@@ -935,7 +936,6 @@ class BodyCodegen {
                 break;
 
             default:
-                System.err.printf("Token was %d.\n", type);
                 throw Codegen.badTree();
         }
     }

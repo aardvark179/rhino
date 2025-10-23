@@ -2436,30 +2436,23 @@ public class ScriptRuntime {
         JSScope parent = scope.getParentScope();
         childScopesChecks:
         if (parent != null) {
-            // Check for possibly nested "with" scopes first
-            while (scope instanceof NativeWith) {
-                Scriptable withObj = ((Scriptable) scope).getPrototype();
-                if (withObj instanceof XMLObject) {
-                    XMLObject xmlObject = (XMLObject) withObj;
-                    if (xmlObject.has(cx, id)) {
-                        return xmlObject;
-                    }
-                    if (firstXMLObject == null) {
-                        firstXMLObject = xmlObject;
-                    }
-                } else {
-                    if (ScriptableObject.hasProperty(withObj, id)) {
-                        return withObj;
-                    }
-                }
-                scope = parent;
-                parent = parent.getParentScope();
-                if (parent == null) {
-                    break childScopesChecks;
-                }
-            }
             for (; ; ) {
-                if (scope instanceof Scriptable
+                if (scope instanceof NativeWith) {
+                    Scriptable withObj = ((Scriptable) scope).getPrototype();
+                    if (withObj instanceof XMLObject) {
+                        XMLObject xmlObject = (XMLObject) withObj;
+                        if (xmlObject.has(cx, id)) {
+                            return xmlObject;
+                        }
+                        if (firstXMLObject == null) {
+                            firstXMLObject = xmlObject;
+                        }
+                    } else {
+                        if (ScriptableObject.hasProperty(withObj, id)) {
+                            return withObj;
+                        }
+                    }
+                } else if (scope instanceof Scriptable
                         && ScriptableObject.hasProperty((Scriptable) scope, id)) {
                     return scope;
                 } else if (scope.has(id, scope)) {
@@ -5154,7 +5147,7 @@ public class ScriptRuntime {
             obj = errorObject;
         }
 
-        NativeScope catchScopeObject = new NativeScope(scope);
+        NativeScope catchScopeObject = new NativeLexicalScope(scope);
         // See ECMA 12.4
         if (exceptionName != null) {
             catchScopeObject.defineProperty(exceptionName, obj, ScriptableObject.PERMANENT);
@@ -5371,7 +5364,7 @@ public class ScriptRuntime {
                 // Always put function expression statements into initial
                 // activation object ignoring the with statement to follow
                 // SpiderMonkey
-                while (scope instanceof NativeWith) {
+                while (!scope.isBoundaryScope()) {
                     scope = scope.getParentScope();
                 }
                 scope.put(name, scope, function);

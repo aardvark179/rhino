@@ -1008,6 +1008,7 @@ public class Node implements Iterable<Node> {
             case Token.CATCH:
             case Token.FINALLY:
             case Token.BLOCK:
+            case Token.CATCH_BLOCK:
             case Token.LABEL:
             case Token.TARGET:
             case Token.LOOP:

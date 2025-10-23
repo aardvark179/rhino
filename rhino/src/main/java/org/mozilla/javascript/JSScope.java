@@ -44,4 +44,8 @@ public interface JSScope {
      * @return the parent scope
      */
     public JSScope getParentScope();
+
+    default boolean isBoundaryScope() {
+        return true;
+    }
 }

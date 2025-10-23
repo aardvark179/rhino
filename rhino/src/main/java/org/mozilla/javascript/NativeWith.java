@@ -34,7 +34,6 @@ public class NativeWith implements Scriptable, SymbolScriptable, IdFunctionCall,
     protected NativeWith(JSScope parent, JSScope prototype) {
         this.parent = parent;
         this.prototype = prototype;
-        System.err.printf("With %s.\n", prototype.getClass());
     }
 
     @Override
@@ -196,6 +195,11 @@ public class NativeWith implements Scriptable, SymbolScriptable, IdFunctionCall,
                         : ScriptRuntime.toObject(cx, scope, args[0]));
         thisObj.setParentScope(scope);
         return thisObj;
+    }
+
+    @Override
+    public boolean isBoundaryScope() {
+        return false;
     }
 
     private static final Object FTAG = "With";

@@ -4077,6 +4077,7 @@ public final class Interpreter extends Icode implements Evaluator {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
             Object lhs = frame.stack[state.stackTop];
+            if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(frame.sDbl[state.stackTop]);
             frame.scope = ScriptRuntime.enterScope(lhs, cx, frame.scope);
             state.stackTop--;
             return null;
@@ -4086,7 +4087,7 @@ public final class Interpreter extends Icode implements Evaluator {
     private static class DoLeaveScope extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            frame.scope = (JSScope) ScriptRuntime.leaveWith(frame.scope);
+            frame.scope = (JSScope) ScriptRuntime.leaveScope(frame.scope);
             return null;
         }
     }
@@ -4133,7 +4134,6 @@ public final class Interpreter extends Icode implements Evaluator {
                             caughtException, lastCatchScope, state.stringReg, cx, frame.scope);
 
             frame.stack[state.indexReg] = excpScope;
-            frame.scope = excpScope;
             ++frame.pc;
             return null;
         }
@@ -4797,7 +4797,7 @@ public final class Interpreter extends Icode implements Evaluator {
                 // block ("catch" implicitly uses NativeWith to create a scope
                 // to expose the exception variable).
                 for (; ; ) {
-                    if (scope instanceof NativeWith) {
+                    if (!scope.isBoundaryScope()) {
                         scope = (JSScope) scope.getParentScope();
                         if (scope == null
                                 || (frame.parentFrame != null

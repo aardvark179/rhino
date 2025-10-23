@@ -287,6 +287,7 @@ class CodeGenerator<T extends ScriptOrFn<T>> extends Icode {
             case Token.BLOCK:
             case Token.EMPTY:
             case Token.WITH:
+            case Token.CATCH_BLOCK:
                 updateLineNumber(node);
             // fall through
             case Token.SCRIPT:
@@ -306,7 +307,9 @@ class CodeGenerator<T extends ScriptOrFn<T>> extends Icode {
                 break;
 
             case Token.ENTERSCOPE:
+                visitExpression(child, 0);
                 addToken(Token.ENTERSCOPE);
+                stackChange(-1);
                 break;
             case Token.LEAVESCOPE:
                 addToken(Token.LEAVESCOPE);
