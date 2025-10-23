@@ -780,7 +780,7 @@ class BodyCodegen {
                         "(Ljava/lang/Object;"
                                 + "Lorg/mozilla/javascript/Context;"
                                 + "Lorg/mozilla/javascript/JSScope;"
-                                + ")Lorg/mozilla/javascript/Scriptable;");
+                                + ")Lorg/mozilla/javascript/JSScope;");
                 cfw.addAStore(variableObjectLocal);
                 incReferenceWordLocal(variableObjectLocal);
                 break;
@@ -4476,7 +4476,7 @@ class BodyCodegen {
                 "enterDotQuery",
                 "(Ljava/lang/Object;"
                         + "Lorg/mozilla/javascript/JSScope;"
-                        + ")Lorg/mozilla/javascript/Scriptable;");
+                        + ")Lorg/mozilla/javascript/JSScope;");
         cfw.addAStore(variableObjectLocal);
 
         // add push null/pop with label in between to simplify code for loop

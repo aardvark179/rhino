@@ -72,7 +72,7 @@ class ConstAwareLinker implements TypeBasedGuardingDynamicLinker {
     private Object getConstValue(Object t, String name) {
         if (t instanceof NativeWith) {
             // Support constants referenced from inside functions
-            return getConstValue(((NativeWith) t).getPrototype(), name);
+            return getConstValue(((NativeWith) t).getObject(), name);
         }
         assert t instanceof ScriptableObject;
         try {

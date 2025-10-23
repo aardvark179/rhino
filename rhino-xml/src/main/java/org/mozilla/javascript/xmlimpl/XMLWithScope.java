@@ -19,13 +19,13 @@ final class XMLWithScope extends NativeWith {
     private XMLList _xmlList;
     private XMLObject _dqPrototype;
 
-    XMLWithScope(XMLLibImpl lib, JSScope parent, XMLObject prototype) {
-        super(parent, prototype);
+    XMLWithScope(XMLLibImpl lib, JSScope parent, XMLObject object) {
+        super(parent, object);
         this.lib = lib;
     }
 
     void initAsDotQuery() {
-        XMLObject prototype = (XMLObject) getPrototype();
+        XMLObject prototype = (XMLObject) getObject();
         // XMLWithScope also handles the .(xxx) DotQuery for XML
         // basically DotQuery is a for/in/with statement and in
         // the following 3 statements we setup to signal it's
@@ -38,7 +38,7 @@ final class XMLWithScope extends NativeWith {
         if (prototype instanceof XMLList) {
             XMLList xl = (XMLList) prototype;
             if (xl.length() > 0) {
-                setPrototype((Scriptable) xl.get(0, (Scriptable) null));
+                setObject((Scriptable) xl.get(0, (Scriptable) null));
             }
         }
         // Always return the outer-most type of XML lValue of
@@ -71,7 +71,7 @@ final class XMLWithScope extends NativeWith {
                 // reset the expression to run with this object as
                 // the WITH selector.
                 _currIndex = idx;
-                setPrototype((Scriptable) orgXmlL.get(idx, (Scriptable) null));
+                setObject((Scriptable) orgXmlL.get(idx, (Scriptable) null));
 
                 // continue looping
                 return null;

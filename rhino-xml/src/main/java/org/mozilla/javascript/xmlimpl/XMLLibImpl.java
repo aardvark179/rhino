@@ -314,7 +314,7 @@ public final class XMLLibImpl extends XMLLib implements Serializable {
             // XML object can only present on scope chain as a wrapper
             // of XMLWithScope
             if (scope instanceof XMLWithScope) {
-                xmlObj = (XMLObjectImpl) ((XMLWithScope) scope).getPrototype();
+                xmlObj = (XMLObjectImpl) ((XMLWithScope) scope).getObject();
                 if (xmlObj.hasXMLProperty(xmlName)) {
                     break;
                 }

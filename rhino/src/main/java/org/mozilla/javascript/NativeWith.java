@@ -6,74 +6,64 @@
 
 package org.mozilla.javascript;
 
-import java.io.Serializable;
-
 /**
  * This class implements the object lookup required for the {@code with} statement. It simply
- * delegates every action to its prototype except for operations on its parent.
+ * delegates every action to its object except for operations on its parent.
  */
-public class NativeWith implements Scriptable, SymbolScriptable, IdFunctionCall, Serializable {
+public class NativeWith extends NativeScope {
     private static final long serialVersionUID = 1L;
 
+    private static final Object WITH_TAG = new Object();
+
     static void init(JSScope scope, boolean sealed) {
-        NativeWith obj = new NativeWith();
 
-        obj.setParentScope(scope);
-        obj.setPrototype(ScriptableObject.getObjectPrototype(scope));
+        LambdaConstructor ctor = new LambdaConstructor(scope, "with", 0, NativeWith::js_construct);
 
-        IdFunctionObject ctor = new IdFunctionObject(obj, FTAG, Id_constructor, "With", 0, scope);
-        ctor.markAsConstructor(obj);
         if (sealed) {
             ctor.sealObject();
         }
-        ctor.exportAsScopeProperty();
+        ctor.associateValue(WITH_TAG, WITH_TAG);
+        scope.put("With", scope, ctor);
     }
 
-    private NativeWith() {}
-
-    protected NativeWith(JSScope parent, JSScope prototype) {
-        this.parent = parent;
-        this.prototype = prototype;
-    }
-
-    @Override
-    public String getClassName() {
-        return "With";
+    protected NativeWith(JSScope parent, Scriptable object) {
+        super(parent);
+        this.object = object;
     }
 
     @Override
     public boolean has(String id, JSScope start) {
-        return prototype.has(id, prototype);
+        return object.has(id, object);
     }
 
     @Override
     public boolean has(Symbol key, JSScope start) {
-        if (prototype instanceof SymbolScriptable) {
-            return ((SymbolScriptable) prototype).has(key, prototype);
+        if (object instanceof SymbolScriptable) {
+            return ((SymbolScriptable) object).has(key, object);
         }
         return false;
     }
 
     @Override
     public boolean has(int index, JSScope start) {
-        return prototype.has(index, prototype);
+        return object.has(index, object);
     }
 
     @Override
     public Object get(String id, JSScope start) {
         if (start == this) {
-            start = prototype;
+            start = object;
         }
-        return prototype.get(id, start);
+        return object.get(id, start);
     }
 
     @Override
     public Object get(Symbol key, JSScope start) {
         if (start == this) {
-            start = prototype;
+            start = object;
         }
-        if (prototype instanceof SymbolScriptable) {
-            return ((SymbolScriptable) prototype).get(key, start);
+        if (object instanceof SymbolScriptable) {
+            return ((SymbolScriptable) object).get(key, start);
         }
         return Scriptable.NOT_FOUND;
     }
@@ -81,83 +71,56 @@ public class NativeWith implements Scriptable, SymbolScriptable, IdFunctionCall,
     @Override
     public Object get(int index, JSScope start) {
         if (start == this) {
-            start = prototype;
+            start = object;
         }
-        return prototype.get(index, start);
+        return object.get(index, start);
     }
 
     @Override
     public void put(String id, JSScope start, Object value) {
-        if (start == this) start = prototype;
-        prototype.put(id, start, value);
+        if (start == this) start = object;
+        object.put(id, start, value);
     }
 
     @Override
     public void put(Symbol symbol, JSScope start, Object value) {
         if (start == this) {
-            start = prototype;
+            start = object;
         }
-        if (prototype instanceof SymbolScriptable) {
-            ((SymbolScriptable) prototype).put(symbol, start, value);
+        if (object instanceof SymbolScriptable) {
+            ((SymbolScriptable) object).put(symbol, start, value);
         }
     }
 
     @Override
     public void put(int index, JSScope start, Object value) {
-        if (start == this) start = prototype;
-        prototype.put(index, start, value);
+        if (start == this) start = object;
+        object.put(index, start, value);
     }
 
     @Override
     public void delete(String id) {
-        prototype.delete(id);
+        object.delete(id);
     }
 
     @Override
     public void delete(Symbol key) {
-        if (prototype instanceof SymbolScriptable) {
-            ((SymbolScriptable) prototype).delete(key);
+        if (object instanceof SymbolScriptable) {
+            ((SymbolScriptable) object).delete(key);
         }
     }
 
     @Override
     public void delete(int index) {
-        prototype.delete(index);
+        object.delete(index);
     }
 
-    @Override
-    public Scriptable getPrototype() {
-        return (Scriptable) prototype;
+    public Scriptable getObject() {
+        return object;
     }
 
-    @Override
-    public void setPrototype(Scriptable prototype) {
-        this.prototype = prototype;
-    }
-
-    @Override
-    public JSScope getParentScope() {
-        return parent;
-    }
-
-    @Override
-    public void setParentScope(JSScope parent) {
-        this.parent = parent;
-    }
-
-    @Override
-    public Object[] getIds() {
-        return ((Scriptable) prototype).getIds();
-    }
-
-    @Override
-    public Object getDefaultValue(Class<?> typeHint) {
-        return ((Scriptable) prototype).getDefaultValue(typeHint);
-    }
-
-    @Override
-    public boolean hasInstance(Scriptable value) {
-        return ((Scriptable) prototype).hasInstance(value);
+    public void setObject(Scriptable object) {
+        this.object = object;
     }
 
     /** Must return null to continue looping or the final collection result. */
@@ -166,21 +129,14 @@ public class NativeWith implements Scriptable, SymbolScriptable, IdFunctionCall,
         throw new IllegalStateException();
     }
 
-    @Override
-    public Object execIdCall(
-            IdFunctionObject f, Context cx, JSScope scope, Object thisObj, Object[] args) {
-        if (f.hasTag(FTAG)) {
-            if (f.methodId() == Id_constructor) {
-                throw Context.reportRuntimeErrorById("msg.cant.call.indirect", "With");
-            }
-        }
-        throw f.unknown();
+    private static Scriptable js_construct(
+            Context cx, JSScope scope, Object target, Object[] args) {
+        throw Context.reportRuntimeErrorById("msg.cant.call.indirect", "With");
     }
 
     static boolean isWithFunction(Object functionObj) {
-        if (functionObj instanceof IdFunctionObject) {
-            IdFunctionObject f = (IdFunctionObject) functionObj;
-            return f.hasTag(FTAG) && f.methodId() == Id_constructor;
+        if (functionObj instanceof LambdaConstructor) {
+            return ((LambdaConstructor) functionObj).getAssociatedValue(WITH_TAG) == WITH_TAG;
         }
         return false;
     }
@@ -188,13 +144,11 @@ public class NativeWith implements Scriptable, SymbolScriptable, IdFunctionCall,
     static Object newWithSpecial(Context cx, JSScope scope, Object[] args) {
         ScriptRuntime.checkDeprecated(cx, "With");
         scope = ScriptableObject.getTopLevelScope(scope);
-        NativeWith thisObj = new NativeWith();
-        thisObj.setPrototype(
+        Scriptable proto =
                 args.length == 0
                         ? ScriptableObject.getObjectPrototype(scope)
-                        : ScriptRuntime.toObject(cx, scope, args[0]));
-        thisObj.setParentScope(scope);
-        return thisObj;
+                        : ScriptRuntime.toObject(cx, scope, args[0]);
+        return new NativeWith(scope, proto);
     }
 
     @Override
@@ -206,6 +160,5 @@ public class NativeWith implements Scriptable, SymbolScriptable, IdFunctionCall,
 
     private static final int Id_constructor = 1;
 
-    protected JSScope prototype;
-    protected JSScope parent;
+    protected Scriptable object;
 }

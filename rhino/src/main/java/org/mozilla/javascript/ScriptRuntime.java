@@ -2260,7 +2260,7 @@ public class ScriptRuntime {
         XMLObject firstXMLObject = null;
         for (; ; ) {
             if (scope instanceof NativeWith) {
-                Scriptable withObj = ((NativeWith) scope).getPrototype();
+                Scriptable withObj = ((NativeWith) scope).getObject();
                 if (withObj instanceof XMLObject) {
                     XMLObject xmlObj = (XMLObject) withObj;
                     if (xmlObj.has(name, xmlObj)) {
@@ -2350,7 +2350,7 @@ public class ScriptRuntime {
         XMLObject firstXMLObject = null;
         for (; ; ) {
             if (scope instanceof NativeWith) {
-                Scriptable withObj = ((NativeWith) scope).getPrototype();
+                Scriptable withObj = ((NativeWith) scope).getObject();
                 if (withObj instanceof XMLObject) {
                     XMLObject xmlObj = (XMLObject) withObj;
                     if (xmlObj.has(name, xmlObj)) {
@@ -2438,7 +2438,7 @@ public class ScriptRuntime {
         if (parent != null) {
             for (; ; ) {
                 if (scope instanceof NativeWith) {
-                    Scriptable withObj = ((Scriptable) scope).getPrototype();
+                    Scriptable withObj = ((NativeWith) scope).getObject();
                     if (withObj instanceof XMLObject) {
                         XMLObject xmlObject = (XMLObject) withObj;
                         if (xmlObject.has(cx, id)) {
@@ -3975,7 +3975,7 @@ public class ScriptRuntime {
                 target = scopeChain;
                 do {
                     if (target instanceof NativeWith
-                            && ((NativeWith) target).getPrototype() instanceof XMLObject) {
+                            && ((NativeWith) target).getObject() instanceof XMLObject) {
                         break;
                     }
                     value = target.get(id, scopeChain);
@@ -5259,7 +5259,7 @@ public class ScriptRuntime {
         return scope.getParentScope();
     }
 
-    public static Scriptable enterWith(Object obj, Context cx, JSScope scope) {
+    public static JSScope enterWith(Object obj, Context cx, JSScope scope) {
         Scriptable sobj = toObjectOrNull(cx, obj, scope);
         if (sobj == null) {
             throw typeErrorById("msg.undef.with", toString(obj));
@@ -5276,7 +5276,7 @@ public class ScriptRuntime {
         return nw.getParentScope();
     }
 
-    public static Scriptable enterDotQuery(Object value, JSScope scope) {
+    public static JSScope enterDotQuery(Object value, JSScope scope) {
         if (!(value instanceof XMLObject)) {
             throw notXmlError(value);
         }
