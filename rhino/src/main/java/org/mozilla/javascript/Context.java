@@ -1562,7 +1562,7 @@ public class Context implements Closeable {
     }
 
     final Function compileFunction(
-            Scriptable scope,
+            JSScope scope,
             String source,
             Evaluator compiler,
             ErrorReporter compilationErrorReporter,

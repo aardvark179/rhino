@@ -12,31 +12,12 @@ package org.mozilla.javascript;
  * Interface that represents an the bindings of an ECMAScript environment record. Unlike {@link
  * Scriptable} scopes do not have prototypes.
  */
-public interface JSScope {
+public interface JSScope extends PropHolder<JSScope> {
 
-    public Object get(Symbol key, JSScope start);
-
-    public Object get(String name, JSScope start);
-
-    public Object get(int index, JSScope start);
-
-    public boolean has(Symbol name, JSScope start);
-
-    public boolean has(String name, JSScope start);
-
-    public boolean has(int index, JSScope start);
-
-    public boolean put(Symbol name, JSScope start, Object value);
-
-    public boolean put(String name, JSScope start, Object value);
-
-    public boolean put(int index, JSScope start, Object value);
-
-    public boolean delete(Symbol name);
-
-    public boolean delete(String name);
-
-    public boolean delete(int index);
+    @Override
+    default JSScope getAncestor() {
+        return getParentScope();
+    }
 
     /**
      * Get the parent scope of the object.

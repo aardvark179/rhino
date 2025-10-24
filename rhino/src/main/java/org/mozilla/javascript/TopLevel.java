@@ -6,6 +6,7 @@
 
 package org.mozilla.javascript;
 
+import java.io.Serializable;
 import java.util.EnumMap;
 
 /**
@@ -29,7 +30,7 @@ import java.util.EnumMap;
  * dynamic scopes) embeddings should explicitly call {@link #cacheBuiltins(Scriptable, boolean)} to
  * initialize the class cache for each top-level scope.
  */
-public class TopLevel extends IdScriptableObject {
+public class TopLevel extends NativeScope {
 
     private static final long serialVersionUID = -4648046356662472260L;
 
@@ -98,13 +99,18 @@ public class TopLevel extends IdScriptableObject {
         JavaException
     }
 
+    public TopLevel() {
+        super(null);
+    }
+
     private EnumMap<Builtins, BaseFunction> ctors;
     private EnumMap<NativeErrors, BaseFunction> errors;
-
-    @Override
-    public String getClassName() {
-        return "global";
-    }
+    private final Scriptable globalThis = new NativeObject() {
+        @Override
+        public String getClassName() {
+            return "global";
+        }
+    };
 
     /**
      * Cache the built-in ECMAScript objects to protect them against modifications by the script.
@@ -113,10 +119,10 @@ public class TopLevel extends IdScriptableObject {
      * only has to be called by the embedding if a top-level scope is not initialized through {@code
      * initStandardObjects()}.
      */
-    public void cacheBuiltins(Scriptable scope, boolean sealed) {
+    public void cacheBuiltins(TopLevel scope, boolean sealed) {
         ctors = new EnumMap<>(Builtins.class);
         for (Builtins builtin : Builtins.values()) {
-            Object value = ScriptableObject.getProperty(this, builtin.name());
+            Object value = ScriptableObject.getProperty(globalThis, builtin.name());
             if (value instanceof BaseFunction) {
                 ctors.put(builtin, (BaseFunction) value);
             } else if (builtin == Builtins.GeneratorFunction) {
@@ -129,7 +135,7 @@ public class TopLevel extends IdScriptableObject {
         }
         errors = new EnumMap<>(NativeErrors.class);
         for (NativeErrors error : NativeErrors.values()) {
-            Object value = ScriptableObject.getProperty(this, error.name());
+            Object value = ScriptableObject.getProperty(globalThis, error.name());
             if (value instanceof BaseFunction) {
                 errors.put(error, (BaseFunction) value);
             }
@@ -262,5 +268,74 @@ public class TopLevel extends IdScriptableObject {
         BaseFunction func = getBuiltinCtor(type);
         Object proto = func != null ? func.getPrototypeProperty() : null;
         return proto instanceof Scriptable ? (Scriptable) proto : null;
+    }
+
+    @Override
+    public Object get(Symbol key, JSScope start) {
+        return globalThis.get(key, globalThis);
+    }
+
+    @Override
+    public Object get(String name, JSScope start) {
+        return globalThis.get(name, globalThis);
+    }
+
+    @Override
+    public Object get(int index, JSScope start) {
+        return globalThis.get(index, globalThis);
+    }
+
+    @Override
+    public boolean has(Symbol name, JSScope start) {
+        return globalThis.has(name, globalThis);
+    }
+
+    @Override
+    public boolean has(String name, JSScope start) {
+        return globalThis.has(name, globalThis);
+    }
+
+    @Override
+    public boolean has(int index, JSScope start) {
+        return globalThis.has(index, globalThis);
+    }
+
+    @Override
+    public boolean put(Symbol name, JSScope start, Object value) {
+        return globalThis.put(name, globalThis, value);
+    }
+
+    @Override
+    public boolean put(String name, JSScope start, Object value) {
+        return globalThis.put(name, globalThis, value);
+    }
+
+    @Override
+    public boolean put(int index, JSScope start, Object value) {
+        return globalThis.put(index, globalThis, value);
+    }
+
+    @Override
+    public boolean delete(Symbol name) {
+        return globalThis.delete(name);
+    }
+
+    @Override
+    public boolean delete(String name) {
+        return globalThis.delete(name);
+    }
+
+    @Override
+    public boolean delete(int index) {
+        return globalThis.delete(index);
+    }
+
+    @Override
+    public JSScope getParentScope() {
+        return null;
+    }
+
+    public Scriptable getGlobalThis() {
+        return globalThis;
     }
 }

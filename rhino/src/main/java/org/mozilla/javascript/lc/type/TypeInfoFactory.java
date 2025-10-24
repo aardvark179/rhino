@@ -24,6 +24,7 @@ import java.util.function.Supplier;
 import org.mozilla.javascript.JSScope;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
+import org.mozilla.javascript.TopLevel;
 import org.mozilla.javascript.lc.type.impl.factory.NoCacheFactory;
 import org.mozilla.javascript.lc.type.impl.factory.WeakReferenceFactory;
 
@@ -362,10 +363,7 @@ public interface TypeInfoFactory extends Serializable {
      * @throws IllegalArgumentException if provided scope is not top scope
      * @see #get(Scriptable scope)
      */
-    default TypeInfoFactory associate(ScriptableObject topScope) {
-        if (topScope.getParentScope() != null) {
-            throw new IllegalArgumentException("provided scope not top scope");
-        }
+    default TypeInfoFactory associate(TopLevel topScope) {
         return (TypeInfoFactory) topScope.associateValue("TypeInfoFactory", this);
     }
 

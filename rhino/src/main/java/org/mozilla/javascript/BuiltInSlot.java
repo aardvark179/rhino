@@ -22,24 +22,24 @@ import org.mozilla.javascript.ScriptableObject.DescriptorInfo;
  * map from which a slot was fetched. We store it in the slot's value field as this is not used for
  * any real value storage on a built in slot.
  */
-public class BuiltInSlot<T extends ScriptableObject> extends Slot {
+public class BuiltInSlot<T extends ScriptableObject, U extends PropHolder<U>> extends Slot {
 
-    public interface Getter<U extends ScriptableObject> extends Serializable {
-        Object apply(U builtIn, JSScope start);
+    public interface Getter<T extends ScriptableObject, U extends PropHolder<U>> extends Serializable {
+        Object apply(T builtIn, U start);
     }
 
-    public interface Setter<U extends ScriptableObject> extends Serializable {
-        boolean apply(U builtIn, Object value, JSScope owner, JSScope start, boolean isThrow);
+    public interface Setter<T extends ScriptableObject, U extends PropHolder<U>> extends Serializable {
+        boolean apply(T builtIn, Object value, U owner, U start, boolean isThrow);
     }
 
     public interface AttributeSetter<U extends ScriptableObject> extends Serializable {
         void apply(U builtIn, int attributes);
     }
 
-    public interface PropDescriptionSetter<U extends ScriptableObject> extends Serializable {
+    public interface PropDescriptionSetter<T extends ScriptableObject, U extends PropHolder<U>> extends Serializable {
         boolean apply(
-                U builtIn,
-                BuiltInSlot<U> current,
+                T builtIn,
+                BuiltInSlot<T, U> current,
                 Object id,
                 DescriptorInfo info,
                 boolean checkValid,
@@ -47,12 +47,12 @@ public class BuiltInSlot<T extends ScriptableObject> extends Slot {
                 int index);
     }
 
-    private final Getter<T> getter;
-    private final Setter<T> setter;
+    private final Getter<T, U> getter;
+    private final Setter<T, U> setter;
     private final AttributeSetter<T> attrUpdater;
-    private final PropDescriptionSetter<T> propDescSetter;
+    private final PropDescriptionSetter<T,U> propDescSetter;
 
-    BuiltInSlot(Object name, int index, int attr, T builtIn, Getter<T> getter) {
+    BuiltInSlot(Object name, int index, int attr, T builtIn, Getter<T, U> getter) {
         this(
                 name,
                 index,
@@ -64,7 +64,7 @@ public class BuiltInSlot<T extends ScriptableObject> extends Slot {
                 BuiltInSlot::defaultPropDescSetter);
     }
 
-    BuiltInSlot(Object name, int index, int attr, T builtIn, Getter<T> getter, Setter<T> setter) {
+    BuiltInSlot(Object name, int index, int attr, T builtIn, Getter<T,U> getter, Setter<T, U> setter) {
         this(
                 name,
                 index,
@@ -81,8 +81,8 @@ public class BuiltInSlot<T extends ScriptableObject> extends Slot {
             int index,
             int attr,
             T builtIn,
-            Getter<T> getter,
-            Setter<T> setter,
+            Getter<T, U > getter,
+            Setter<T, U> setter,
             AttributeSetter<T> attrUpdater) {
         this(
                 name,
@@ -100,10 +100,10 @@ public class BuiltInSlot<T extends ScriptableObject> extends Slot {
             int index,
             int attr,
             T builtIn,
-            Getter<T> getter,
-            Setter<T> setter,
+            Getter<T,U> getter,
+            Setter<T,U> setter,
             AttributeSetter<T> attrUpdater,
-            PropDescriptionSetter<T> propDescSetter) {
+            PropDescriptionSetter<T,U> propDescSetter) {
         super(name, index, attr);
         this.value = builtIn;
         this.getter = getter;
@@ -112,7 +112,7 @@ public class BuiltInSlot<T extends ScriptableObject> extends Slot {
         this.propDescSetter = propDescSetter;
     }
 
-    BuiltInSlot(BuiltInSlot<T> slot) {
+    BuiltInSlot(BuiltInSlot<T,U> slot) {
         super(slot);
         this.getter = slot.getter;
         this.setter = slot.setter;
@@ -122,7 +122,7 @@ public class BuiltInSlot<T extends ScriptableObject> extends Slot {
 
     @Override
     Slot copySlot() {
-        var res = new BuiltInSlot<T>(this);
+        var res = new BuiltInSlot<T,U>(this);
         res.next = null;
         res.orderedNext = null;
         return res;
@@ -130,13 +130,13 @@ public class BuiltInSlot<T extends ScriptableObject> extends Slot {
 
     @Override
     @SuppressWarnings("unchecked")
-    public Object getValue(JSScope start) {
+    public Object getValue(U start) {
         return getter.apply(((T) this.value), start);
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public boolean setValue(Object value, JSScope owner, JSScope start, boolean isThrow) {
+    public boolean setValue(Object value, U owner, U start, boolean isThrow) {
         if ((getAttributes() & ScriptableObject.READONLY) != 0) {
             if (isThrow) {
                 throw ScriptRuntime.typeErrorById("msg.modify.readonly", name);
@@ -153,7 +153,7 @@ public class BuiltInSlot<T extends ScriptableObject> extends Slot {
     _without_ the normal checks on readonly and similar. */
     @SuppressWarnings("unchecked")
     public void setValueFromDescriptor(
-            Object value, JSScope owner, JSScope start, boolean isThrow) {
+            Object value, U owner, U start, boolean isThrow) {
         setter.apply(((T) this.value), value, owner, start, isThrow);
     }
 
@@ -166,7 +166,7 @@ public class BuiltInSlot<T extends ScriptableObject> extends Slot {
 
     @Override
     @SuppressWarnings("unchecked")
-    DescriptorInfo getPropertyDescriptor(Context cx, JSScope scope) {
+    DescriptorInfo getPropertyDescriptor(Context cx, U scope) {
         return ScriptableObject.buildDataDescriptor(getValue((T) this.value), getAttributes());
     }
 
@@ -176,18 +176,18 @@ public class BuiltInSlot<T extends ScriptableObject> extends Slot {
         return propDescSetter.apply(((T) this.value), this, id, info, checkValid, key, index);
     }
 
-    private static <T extends ScriptableObject> boolean defaultSetter(
-            T builtIn, Object value, JSScope owner, JSScope start, boolean isThrow) {
+    private static <T extends ScriptableObject, U extends PropHolder<U>> boolean defaultSetter(
+            T builtIn, Object value, U owner, U start, boolean isThrow) {
         return true;
     }
 
-    private static <T extends ScriptableObject> void defaultAttrSetter(T builtIn, int attributes) {
+    private static <T extends ScriptableObject, U extends PropHolder<U>> void defaultAttrSetter(T builtIn, int attributes) {
         // Do nothing.
     }
 
-    private static <T extends ScriptableObject> boolean defaultPropDescSetter(
+    private static <T extends ScriptableObject, U extends PropHolder<U>> boolean defaultPropDescSetter(
             T builtIn,
-            BuiltInSlot<T> current,
+            BuiltInSlot<T, U> current,
             Object id,
             DescriptorInfo info,
             boolean checkValid,

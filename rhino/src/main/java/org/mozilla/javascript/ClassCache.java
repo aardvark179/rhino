@@ -26,7 +26,7 @@ public class ClassCache implements Serializable {
     private transient volatile Map<JavaAdapter.JavaAdapterSignature, Class<?>> classAdapterCache;
     private transient volatile Map<Class<?>, Object> interfaceAdapterCache;
     private int generatedClassSerial;
-    private Scriptable associatedScope;
+    private TopLevel associatedScope;
 
     /**
      * CacheKey is a combination of class and securityContext. This is required when classes are
@@ -98,7 +98,7 @@ public class ClassCache implements Serializable {
      *     ClassCache were successfully associated or false otherwise.
      * @see #get(JSScope scope)
      */
-    public boolean associate(ScriptableObject topScope) {
+    public boolean associate(TopLevel topScope) {
         if (topScope.getParentScope() != null) {
             // Can only associate cache with top level scope
             throw new IllegalArgumentException();

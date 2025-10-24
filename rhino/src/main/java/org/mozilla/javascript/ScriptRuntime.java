@@ -185,10 +185,10 @@ public class ScriptRuntime {
                 || ScriptableClass.isAssignableFrom(cl));
     }
 
-    public static ScriptableObject initSafeStandardObjects(
-            Context cx, ScriptableObject scope, boolean sealed) {
+    public static JSScope initSafeStandardObjects(
+            Context cx, TopLevel scope, boolean sealed) {
         if (scope == null) {
-            scope = new NativeObject();
+            scope = new TopLevel();
         } else if (scope instanceof TopLevel) {
             ((TopLevel) scope).clearCache();
         }
@@ -209,7 +209,7 @@ public class ScriptRuntime {
         obj.setPrototype(functionPrototype);
 
         // Set the prototype of the object passed in if need be
-        if (scope.getPrototype() == null) scope.setPrototype(objectPrototype);
+        if (scope.getGlobalThis().getPrototype() == null) scope.getGlobalThis().setPrototype(objectPrototype);
 
         // must precede NativeGlobal since it's needed therein
         NativeError.init(scope, sealed);
@@ -284,23 +284,21 @@ public class ScriptRuntime {
             new LazilyLoadedCtor(scope, "Reflect", sealed, true, NativeReflect::init);
         }
 
-        if (scope instanceof TopLevel) {
-            ((TopLevel) scope).cacheBuiltins(scope, sealed);
-        }
+        scope.cacheBuiltins(scope, sealed);
 
         return scope;
     }
 
-    private static void registerRegExp(Context cx, ScriptableObject scope, boolean sealed) {
+    private static void registerRegExp(Context cx, JSScope scope, boolean sealed) {
         RegExpProxy regExpProxy = getRegExpProxy(cx);
         if (regExpProxy != null) {
             regExpProxy.register(scope, sealed);
         }
     }
 
-    public static ScriptableObject initStandardObjects(
-            Context cx, ScriptableObject scope, boolean sealed) {
-        ScriptableObject s = initSafeStandardObjects(cx, scope, sealed);
+    public static JSScope initStandardObjects(
+            Context cx, TopLevel scope, boolean sealed) {
+        JSScope s = initSafeStandardObjects(cx, scope, sealed);
 
         NativeJavaObject.init(s, sealed);
         NativeJavaMap.init(s, sealed);
@@ -879,7 +877,7 @@ public class ScriptRuntime {
      * length, if necessary. Also the rest parameter array construction is done here.
      */
     public static Object[] padAndRestArguments(
-            Context cx, Scriptable scope, Object[] args, int argCount) {
+            Context cx, JSScope scope, Object[] args, int argCount) {
         Object[] result = new Object[argCount];
         int paramCount = argCount - 1;
         if (args.length < paramCount) {
@@ -1126,7 +1124,7 @@ public class ScriptRuntime {
                 Object v = ScriptableObject.getProperty(obj, "toSource");
                 if (v instanceof Function) {
                     Function f = (Function) v;
-                    return toString(f.call(cx, (Scriptable) scope, obj, emptyArgs));
+                    return toString(f.call(cx, scope, obj, emptyArgs));
                 }
             }
             return toString(value);
@@ -1243,7 +1241,7 @@ public class ScriptRuntime {
      * @deprecated Use {@link #toObject(Scriptable, Object)} instead.
      */
     @Deprecated
-    public static Scriptable toObject(Scriptable scope, Object val, Class<?> staticClass) {
+    public static Scriptable toObject(JSScope scope, Object val, Class<?> staticClass) {
         if (val instanceof Scriptable) {
             return (Scriptable) val;
         }
@@ -1304,7 +1302,7 @@ public class ScriptRuntime {
      */
     @Deprecated
     public static Scriptable toObject(
-            Context cx, Scriptable scope, Object val, Class<?> staticClass) {
+            Context cx, JSScope scope, Object val, Class<?> staticClass) {
         return toObject(cx, scope, val);
     }
 
@@ -1313,7 +1311,7 @@ public class ScriptRuntime {
      */
     @Deprecated
     public static Object call(
-            Context cx, Object fun, Object thisArg, Object[] args, Scriptable scope) {
+            Context cx, Object fun, Object thisArg, Object[] args, JSScope scope) {
         if (!(fun instanceof Function)) {
             throw notFunctionError(toString(fun));
         }
@@ -1512,7 +1510,7 @@ public class ScriptRuntime {
         for (; ; ) {
             JSScope parent = scope.getParentScope();
             if (parent == null) {
-                nsObject = ScriptableObject.getProperty(scope, DEFAULT_NS_TAG);
+                nsObject = scope.get(DEFAULT_NS_TAG, scope);
                 if (nsObject == Scriptable.NOT_FOUND) {
                     return null;
                 }
@@ -1527,13 +1525,13 @@ public class ScriptRuntime {
         return nsObject;
     }
 
-    public static Object getTopLevelProp(Scriptable scope, String id) {
+    public static Object getTopLevelProp(JSScope scope, String id) {
         scope = ScriptableObject.getTopLevelScope(scope);
-        return ScriptableObject.getProperty(scope, id);
+        return scope.get(id, scope);
     }
 
     public static Function getExistingCtor(Context cx, JSScope scope, String constructorName) {
-        Object ctorVal = ScriptableObject.getProperty((Scriptable) scope, constructorName);
+        Object ctorVal = scope.get(constructorName, scope);
         if (ctorVal instanceof Function) {
             return (Function) ctorVal;
         }
@@ -2115,7 +2113,7 @@ public class ScriptRuntime {
         return value;
     }
 
-    public static boolean deleteObjectElem(JSScope target, Object elem, Context cx) {
+    public static <T extends PropHolder<T>> boolean deleteObjectElem(T target, Object elem, Context cx) {
         if (isSymbol(elem)) {
             Symbol s = (Symbol) elem;
             target.delete(s);
@@ -2130,7 +2128,7 @@ public class ScriptRuntime {
         return !target.has(s.stringId, target);
     }
 
-    public static boolean hasObjectElem(Scriptable target, Object elem, Context cx) {
+    public static <T extends PropHolder<T>> boolean hasObjectElem(T target, Object elem, Context cx) {
         boolean result;
 
         if (isSymbol(elem)) {
@@ -2295,7 +2293,7 @@ public class ScriptRuntime {
             } else {
                 // Can happen if Rhino embedding decided that nested
                 // scopes are useful for what ever reasons.
-                result = ScriptableObject.getProperty(scope, name);
+                result = scope.get(name, scope);
                 if (result != Scriptable.NOT_FOUND) {
                     thisObj = scope;
                     break;
@@ -2383,7 +2381,7 @@ public class ScriptRuntime {
             } else {
                 // Can happen if Rhino embedding decided that nested
                 // scopes are useful for what ever reasons.
-                result = ScriptableObject.getProperty(scope, name);
+                result = scope.get(name, scope);
                 if (result != Scriptable.NOT_FOUND) {
                     thisObj = ScriptableObject.getTopLevelScope(parentScope);
                     break;
@@ -2417,7 +2415,7 @@ public class ScriptRuntime {
         if (cx.useDynamicScope) {
             scope = checkDynamicScope(cx.topCallScope, scope);
         }
-        return ScriptableObject.getProperty(scope, name);
+        return scope.get(name, scope);
     }
 
     /**
@@ -2432,7 +2430,7 @@ public class ScriptRuntime {
      * <p>See ECMA 10.1.4
      */
     public static JSScope bind(Context cx, JSScope scope, String id) {
-        Scriptable firstXMLObject = null;
+        JSScope firstXMLScope = null;
         JSScope parent = scope.getParentScope();
         childScopesChecks:
         if (parent != null) {
@@ -2442,19 +2440,16 @@ public class ScriptRuntime {
                     if (withObj instanceof XMLObject) {
                         XMLObject xmlObject = (XMLObject) withObj;
                         if (xmlObject.has(cx, id)) {
-                            return xmlObject;
+                            return scope;
                         }
-                        if (firstXMLObject == null) {
-                            firstXMLObject = xmlObject;
+                        if (firstXMLScope == null) {
+                            firstXMLScope = scope;
                         }
                     } else {
                         if (ScriptableObject.hasProperty(withObj, id)) {
-                            return withObj;
+                            return scope;
                         }
                     }
-                } else if (scope instanceof Scriptable
-                        && ScriptableObject.hasProperty((Scriptable) scope, id)) {
-                    return scope;
                 } else if (scope.has(id, scope)) {
                     return scope;
                 }
@@ -2469,14 +2464,12 @@ public class ScriptRuntime {
         if (cx.useDynamicScope) {
             scope = checkDynamicScope(cx.topCallScope, scope);
         }
-        if (scope instanceof Scriptable && ScriptableObject.hasProperty((Scriptable) scope, id)) {
-            return scope;
-        } else if (scope.has(id, scope)) {
+        if (scope.has(id, scope)) {
             return scope;
         }
         // Nothing was found, but since XML objects always bind
         // return one if found
-        return firstXMLObject;
+        return firstXMLScope;
     }
 
     public static Object setName(
@@ -2523,8 +2516,8 @@ public class ScriptRuntime {
     }
 
     public static Object setConst(JSScope bound, Object value, Context cx, String id) {
-        if (bound instanceof XMLObject) {
-            bound.put(id, bound, value);
+        if (bound instanceof NativeWith && ((NativeWith)bound).getObject() instanceof XMLObject) {
+            ((XMLObject) ((NativeWith)bound).getObject()).put(id, bound, value);
         } else {
             ScriptableObject.putConstProperty(bound, id, value);
         }
@@ -3407,7 +3400,7 @@ public class ScriptRuntime {
             }
         } else if (callType == Node.SPECIALCALL_WITH) {
             if (NativeWith.isWithFunction(fun)) {
-                return NativeWith.newWithSpecial(cx, (Scriptable) scope, args);
+                return NativeWith.newWithSpecial(cx, scope, args);
             }
         } else {
             throw Kit.codeBug();
@@ -3442,7 +3435,7 @@ public class ScriptRuntime {
             }
         }
 
-        return function.call(cx, (Scriptable) scope, (Scriptable) callThis, callArgs);
+        return function.call(cx, scope, callThis, callArgs);
     }
 
     public static Object getApplyOrCallThis(
@@ -3959,7 +3952,7 @@ public class ScriptRuntime {
      * @deprecated Use {@link #nameIncrDecr(Scriptable, String, Context, int)} instead
      */
     @Deprecated
-    public static Object nameIncrDecr(Scriptable scopeChain, String id, int incrDecrMask) {
+    public static Object nameIncrDecr(JSScope scopeChain, String id, int incrDecrMask) {
         return nameIncrDecr(scopeChain, id, Context.getContext(), incrDecrMask);
     }
 
@@ -3982,10 +3975,7 @@ public class ScriptRuntime {
                     if (value != Scriptable.NOT_FOUND) {
                         break search;
                     }
-                    target =
-                            (target instanceof Scriptable)
-                                    ? ((Scriptable) target).getPrototype()
-                                    : null;
+                    target = null;
                 } while (target != null);
                 scopeChain = scopeChain.getParentScope();
             } while (scopeChain != null);
@@ -4023,8 +4013,8 @@ public class ScriptRuntime {
         return doScriptableIncrDecr(target, id, start, value, incrDecrMask);
     }
 
-    private static Object doScriptableIncrDecr(
-            JSScope target, String id, JSScope protoChainStart, Object value, int incrDecrMask) {
+    private static <T extends PropHolder<T>> Object doScriptableIncrDecr(
+            T target, String id, T protoChainStart, Object value, int incrDecrMask) {
         final boolean post = (incrDecrMask & Node.POST_FLAG) != 0;
 
         Number number;

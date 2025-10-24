@@ -23,7 +23,7 @@ package org.mozilla.javascript;
  * @author Nick Thompson
  * @author Brendan Eich
  */
-public interface Scriptable extends JSScope {
+public interface Scriptable extends PropHolder<Scriptable> {
 
     /**
      * Get the name of the set of objects implemented by this Java class. This corresponds to the
@@ -77,7 +77,7 @@ public interface Scriptable extends JSScope {
      * @see org.mozilla.javascript.Context#getUndefinedValue
      */
     @Override
-    public Object get(String name, JSScope start);
+    public Object get(String name, Scriptable start);
 
     /**
      * Get a property from the object selected by an integral index.
@@ -91,7 +91,7 @@ public interface Scriptable extends JSScope {
      * @see org.mozilla.javascript.Scriptable#get(String,Scriptable)
      */
     @Override
-    public Object get(int index, JSScope start);
+    public Object get(int index, Scriptable start);
 
     /**
      * Indicates whether or not a named property is defined in an object.
@@ -107,7 +107,7 @@ public interface Scriptable extends JSScope {
      * @see org.mozilla.javascript.ScriptableObject#getProperty(Scriptable, String)
      */
     @Override
-    public boolean has(String name, JSScope start);
+    public boolean has(String name, Scriptable start);
 
     /**
      * Indicates whether or not an indexed property is defined in an object.
@@ -123,7 +123,7 @@ public interface Scriptable extends JSScope {
      * @see org.mozilla.javascript.ScriptableObject#getProperty(Scriptable, int)
      */
     @Override
-    public boolean has(int index, JSScope start);
+    public boolean has(int index, Scriptable start);
 
     /**
      * Sets a named property in this object.
@@ -172,7 +172,7 @@ public interface Scriptable extends JSScope {
      * @see org.mozilla.javascript.Context#toObject(Object, Scriptable)
      */
     @Override
-    public boolean put(String name, JSScope start, Object value);
+    public boolean put(String name, Scriptable start, Object value);
 
     /**
      * Sets an indexed property in this object.
@@ -191,7 +191,7 @@ public interface Scriptable extends JSScope {
      * @see org.mozilla.javascript.Context#toObject(Object, Scriptable)
      */
     @Override
-    public boolean put(int index, JSScope start, Object value);
+    public boolean put(int index, Scriptable start, Object value);
 
     /**
      * Removes a property from this object. This operation corresponds to the ECMA [[Delete]] except
@@ -230,6 +230,11 @@ public interface Scriptable extends JSScope {
     @Override
     public boolean delete(int index);
 
+    @Override
+    default Scriptable getAncestor() {
+        return getPrototype();
+    }
+
     /**
      * Get the prototype of the object.
      *
@@ -245,11 +250,10 @@ public interface Scriptable extends JSScope {
     public void setPrototype(Scriptable prototype);
 
     /**
-     * Get the parent scope of the object.
+     * Get the parent scope of the object if it has been set.
      *
      * @return the parent scope
      */
-    @Override
     public JSScope getParentScope();
 
     /**
@@ -307,19 +311,19 @@ public interface Scriptable extends JSScope {
 
     /** Return the value of the property with the specified key, or NOT_FOUND. */
     @Override
-    default Object get(Symbol key, JSScope start) {
+    default Object get(Symbol key, Scriptable start) {
         return NOT_FOUND;
     }
 
     /** Return true if the specified property exists. */
     @Override
-    default boolean has(Symbol key, JSScope start) {
+    default boolean has(Symbol key, Scriptable start) {
         return false;
     }
 
     /** Add a new property to to the object. */
     @Override
-    default boolean put(Symbol key, JSScope start, Object value) {
+    default boolean put(Symbol key, Scriptable start, Object value) {
         throw ScriptRuntime.typeErrorById(
                 "msg.object.not.symbolscriptable", ScriptRuntime.typeof(this));
     }

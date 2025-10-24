@@ -116,16 +116,16 @@ public class BaseFunction extends ScriptableObject implements Function {
         init(Context.getContext(), scope, sealed);
     }
 
-    static Object initAsGeneratorFunction(Scriptable scope, boolean sealed) {
+    static Object initAsGeneratorFunction(JSScope scope, boolean sealed) {
         var proto = new NativeObject();
-        Scriptable top = ScriptableObject.getTopLevelScope(scope);
+        JSScope top = ScriptableObject.getTopLevelScope(scope);
 
-        var function = (Scriptable) ScriptableObject.getProperty(scope, FUNCTION_CLASS);
+        var function = (Scriptable) scope.get(FUNCTION_CLASS, scope);
         var functionProto =
                 (Scriptable) ScriptableObject.getProperty(function, PROTOTYPE_PROPERTY_NAME);
         proto.setPrototype(functionProto);
 
-        var iterator = (Scriptable) ScriptableObject.getProperty(scope, "Iterator");
+        var iterator = scope.get("Iterator", scope);
         ScriptableObject.putProperty(
                 proto,
                 PROTOTYPE_PROPERTY_NAME,
@@ -240,7 +240,7 @@ public class BaseFunction extends ScriptableObject implements Function {
                 0,
                 (k, i, s, m, o) -> {
                     if (s == null) {
-                        return new BuiltInSlot<BaseFunction>(
+                        return new BuiltInSlot<BaseFunction, Scriptable>(
                                 PROTOTYPE_PROPERTY_NAME,
                                 0,
                                 prototypePropertyAttributes,
@@ -254,12 +254,12 @@ public class BaseFunction extends ScriptableObject implements Function {
                 });
     }
 
-    private static Object prototypeGetter(BaseFunction function, JSScope start) {
+    private static Object prototypeGetter(BaseFunction function, Scriptable start) {
         return function.getPrototypeProperty();
     }
 
     private static boolean prototypeSetter(
-            BaseFunction function, Object value, JSScope owner, JSScope start, boolean isThrow) {
+            BaseFunction function, Object value, Scriptable owner, Scriptable start, boolean isThrow) {
         function.prototypeProperty = value == null ? UniqueTag.NULL_VALUE : value;
         return true;
     }
@@ -270,7 +270,7 @@ public class BaseFunction extends ScriptableObject implements Function {
 
     protected static boolean prototypeDescSetter(
             BaseFunction builtIn,
-            BuiltInSlot<BaseFunction> current,
+            BuiltInSlot<BaseFunction, Scriptable> current,
             Object id,
             ScriptableObject.DescriptorInfo info,
             boolean checkValid,
@@ -520,7 +520,7 @@ public class BaseFunction extends ScriptableObject implements Function {
         if (protoVal instanceof Scriptable) {
             return (Scriptable) protoVal;
         }
-        return ScriptableObject.getObjectPrototype(this);
+        return ScriptableObject.getObjectPrototype(getDeclarationScope());
     }
 
     /** Should be overridden. */
@@ -557,9 +557,7 @@ public class BaseFunction extends ScriptableObject implements Function {
             }
             if (result.getParentScope() == null) {
                 JSScope parent = getParentScope();
-                if (result != parent) {
-                    result.setParentScope(parent);
-                }
+                result.setParentScope(parent);
             }
         } else {
             Object val = call(cx, scope, result, args);
@@ -753,7 +751,7 @@ public class BaseFunction extends ScriptableObject implements Function {
 
         String sourceURI = ScriptRuntime.makeUrlForGeneratedScript(false, filename, linep[0]);
 
-        Scriptable global = ScriptableObject.getTopLevelScope(scope);
+        JSScope global = ScriptableObject.getTopLevelScope(scope);
 
         ErrorReporter reporter;
         reporter = DefaultErrorReporter.forEval(cx.getErrorReporter());

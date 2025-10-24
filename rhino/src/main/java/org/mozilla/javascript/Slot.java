@@ -64,11 +64,11 @@ public class Slot implements Serializable {
         }
     }
 
-    public final boolean setValue(Object value, JSScope owner, JSScope start) {
+    public final <T extends PropHolder<T>> boolean setValue(Object value, T owner, T start) {
         return setValue(value, owner, start, Context.isCurrentContextStrict());
     }
 
-    public boolean setValue(Object value, JSScope owner, JSScope start, boolean isThrow) {
+    public <T extends PropHolder<T>> boolean setValue(Object value, T owner, T start, boolean isThrow) {
         if ((attributes & ScriptableObject.READONLY) != 0) {
             if (isThrow) {
                 throw ScriptRuntime.typeErrorById("msg.modify.readonly", name);
@@ -82,7 +82,7 @@ public class Slot implements Serializable {
         return false;
     }
 
-    public Object getValue(JSScope start) {
+    public <T extends PropHolder<T>> Object getValue(T start) {
         return value;
     }
 
@@ -95,11 +95,11 @@ public class Slot implements Serializable {
         attributes = (short) value;
     }
 
-    DescriptorInfo getPropertyDescriptor(Context cx, JSScope scope) {
+     <T extends PropHolder<T>> DescriptorInfo getPropertyDescriptor(Context cx, T scope) {
         return ScriptableObject.buildDataDescriptor(value, attributes);
     }
 
-    protected void throwNoSetterException(JSScope start, Object newValue) {
+    protected <T extends PropHolder<T>> void throwNoSetterException(T start, Object newValue) {
         Context cx = Context.getContext();
         if (cx.isStrictMode()
                 ||
@@ -120,12 +120,12 @@ public class Slot implements Serializable {
      * Return a JavaScript function that represents the "setter". This is used by some legacy
      * functionality. Return null if there is no setter.
      */
-    Function getSetterFunction(String name, JSScope scope) {
+    <T extends PropHolder<T>> Function getSetterFunction(String name, T scope) {
         return null;
     }
 
     /** Same for the "getter." */
-    Function getGetterFunction(String name, JSScope scope) {
+    <T extends PropHolder<T>> Function getGetterFunction(String name, T scope) {
         return null;
     }
 
