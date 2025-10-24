@@ -507,11 +507,11 @@ final class NativeString extends ScriptableObject {
     }
 
     @Override
-    public void put(int index, JSScope start, Object value) {
+    public boolean put(int index, JSScope start, Object value) {
         if (0 <= index && index < string.length()) {
-            return;
+            return false;
         }
-        super.put(index, start, value);
+        return super.put(index, start, value);
     }
 
     @Override

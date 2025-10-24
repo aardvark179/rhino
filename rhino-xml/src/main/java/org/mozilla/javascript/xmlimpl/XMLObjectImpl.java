@@ -262,9 +262,10 @@ abstract class XMLObjectImpl extends XMLObject {
     }
 
     @Override
-    public void put(String name, JSScope start, Object value) {
+    public boolean put(String name, JSScope start, Object value) {
         Context cx = Context.getCurrentContext();
         putXMLProperty(lib.toXMLNameFromString(cx, name), value);
+        return true;
     }
 
     /** Implementation of ECMAScript [[Delete]]. */
@@ -283,9 +284,10 @@ abstract class XMLObjectImpl extends XMLObject {
     }
 
     @Override
-    public void delete(String name) {
+    public boolean delete(String name) {
         Context cx = Context.getCurrentContext();
         deleteXMLProperty(lib.toXMLNameFromString(cx, name));
+        return true;
     }
 
     @Override

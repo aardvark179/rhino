@@ -33,11 +33,11 @@ public class NativeScope extends SlotMapOwner implements JSScope, ConstPropertie
      * @param value value to set the property to
      */
     @Override
-    public void put(String name, JSScope start, Object value) {
-        if (putOwnProperty(name, start, value, Context.isCurrentContextStrict())) return;
+    public boolean put(String name, JSScope start, Object value) {
+        if (putOwnProperty(name, start, value, Context.isCurrentContextStrict())) return true;
 
         if (start == this) throw Kit.codeBug();
-        start.put(name, start, value);
+        return start.put(name, start, value);
     }
 
     /**
@@ -60,11 +60,11 @@ public class NativeScope extends SlotMapOwner implements JSScope, ConstPropertie
      */
     @SuppressWarnings("resource")
     @Override
-    public void put(int index, JSScope start, Object value) {
-        if (putOwnProperty(index, start, value, Context.isCurrentContextStrict())) return;
+    public boolean put(int index, JSScope start, Object value) {
+        if (putOwnProperty(index, start, value, Context.isCurrentContextStrict())) return true;
 
         if (start == this) throw Kit.codeBug();
-        start.put(index, start, value);
+        return start.put(index, start, value);
     }
 
     /**
@@ -80,11 +80,11 @@ public class NativeScope extends SlotMapOwner implements JSScope, ConstPropertie
 
     /** Implementation of put required by SymbolScriptable objects. */
     @Override
-    public void put(Symbol key, JSScope start, Object value) {
-        if (putOwnProperty(key, start, value, Context.isCurrentContextStrict())) return;
+    public boolean put(Symbol key, JSScope start, Object value) {
+        if (putOwnProperty(key, start, value, Context.isCurrentContextStrict())) return true;
 
         if (start == this) throw Kit.codeBug();
-        start.put(key, start, value);
+        return start.put(key, start, value);
     }
 
     /**
@@ -197,18 +197,18 @@ public class NativeScope extends SlotMapOwner implements JSScope, ConstPropertie
     }
 
     @Override
-    public void delete(String name) {
-        getMap().compute(this, name, 0, ScriptableObject::checkSlotRemoval);
+    public boolean delete(String name) {
+        return null != getMap().compute(this, name, 0, ScriptableObject::checkSlotRemoval);
     }
 
     @Override
-    public void delete(int index) {
-        getMap().compute(this, null, index, ScriptableObject::checkSlotRemoval);
+    public boolean delete(int index) {
+        return null != getMap().compute(this, null, index, ScriptableObject::checkSlotRemoval);
     }
 
     @Override
-    public void delete(Symbol key) {
-        getMap().compute(this, key, 0, ScriptableObject::checkSlotRemoval);
+    public boolean delete(Symbol key) {
+        return null != getMap().compute(this, key, 0, ScriptableObject::checkSlotRemoval);
     }
 
     /**

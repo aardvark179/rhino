@@ -77,42 +77,45 @@ public class NativeWith extends NativeScope {
     }
 
     @Override
-    public void put(String id, JSScope start, Object value) {
+    public boolean put(String id, JSScope start, Object value) {
         if (start == this) start = object;
-        object.put(id, start, value);
+        return object.put(id, start, value);
     }
 
     @Override
-    public void put(Symbol symbol, JSScope start, Object value) {
+    public boolean put(Symbol symbol, JSScope start, Object value) {
         if (start == this) {
             start = object;
         }
         if (object instanceof SymbolScriptable) {
-            ((SymbolScriptable) object).put(symbol, start, value);
+            return ((SymbolScriptable) object).put(symbol, start, value);
+        } else {
+            return false;
         }
     }
 
     @Override
-    public void put(int index, JSScope start, Object value) {
+    public boolean put(int index, JSScope start, Object value) {
         if (start == this) start = object;
-        object.put(index, start, value);
+        return object.put(index, start, value);
     }
 
     @Override
-    public void delete(String id) {
-        object.delete(id);
+    public boolean delete(String id) {
+        return object.delete(id);
     }
 
     @Override
-    public void delete(Symbol key) {
+    public boolean delete(Symbol key) {
         if (object instanceof SymbolScriptable) {
-            ((SymbolScriptable) object).delete(key);
+            return ((SymbolScriptable) object).delete(key);
         }
+        return false;
     }
 
     @Override
-    public void delete(int index) {
-        object.delete(index);
+    public boolean delete(int index) {
+        return object.delete(index);
     }
 
     public Scriptable getObject() {

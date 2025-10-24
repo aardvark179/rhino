@@ -104,33 +104,38 @@ public abstract class NativeTypedArrayView<T> extends NativeArrayBufferView
     }
 
     @Override
-    public void put(int index, JSScope start, Object val) {
+    public boolean put(int index, JSScope start, Object val) {
         js_set(index, val);
+        return true;
     }
 
     @Override
-    public void put(String name, JSScope start, Object val) {
+    public boolean put(String name, JSScope start, Object val) {
         Optional<Double> num = ScriptRuntime.canonicalNumericIndexString(name);
         if (num.isPresent()) {
             int ix = toIndex(num.get());
             if (ix >= 0) {
                 js_set(ix, val);
             }
+            return true;
         } else {
-            super.put(name, start, val);
+            return super.put(name, start, val);
         }
     }
 
     @Override
-    public void delete(int index) {}
+    public boolean delete(int index) {
+        return false;
+    }
 
     @Override
-    public void delete(String name) {
+    public boolean delete(String name) {
         Optional<Double> num = ScriptRuntime.canonicalNumericIndexString(name);
         if (!num.isPresent()) {
             // No delete for indexed elements, so only delete if "name" is not a number
-            super.delete(name);
+            return super.delete(name);
         }
+        return false;
     }
 
     @Override

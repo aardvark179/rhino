@@ -113,22 +113,24 @@ public class NativeJavaMap extends NativeJavaObject {
     }
 
     @Override
-    public void put(String name, JSScope start, Object value) {
+    public boolean put(String name, JSScope start, Object value) {
         Context cx = Context.getCurrentContext();
         if (cx != null && cx.hasFeature(Context.FEATURE_ENABLE_JAVA_MAP_ACCESS)) {
             map.put(name, Context.jsToJava(value, valueType));
+            return true;
         } else {
-            super.put(name, start, value);
+            return super.put(name, start, value);
         }
     }
 
     @Override
-    public void put(int index, JSScope start, Object value) {
+    public boolean put(int index, JSScope start, Object value) {
         Context cx = Context.getCurrentContext();
         if (cx != null && cx.hasFeature(Context.FEATURE_ENABLE_JAVA_MAP_ACCESS)) {
             map.put(index, Context.jsToJava(value, valueType));
+            return true;
         } else {
-            super.put(index, start, value);
+            return super.put(index, start, value);
         }
     }
 

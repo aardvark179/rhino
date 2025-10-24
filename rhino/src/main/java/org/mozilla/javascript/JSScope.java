@@ -26,17 +26,17 @@ public interface JSScope {
 
     public boolean has(int index, JSScope start);
 
-    public void put(Symbol name, JSScope start, Object value);
+    public boolean put(Symbol name, JSScope start, Object value);
 
-    public void put(String name, JSScope start, Object value);
+    public boolean put(String name, JSScope start, Object value);
 
-    public void put(int index, JSScope start, Object value);
+    public boolean put(int index, JSScope start, Object value);
 
-    public void delete(Symbol name);
+    public boolean delete(Symbol name);
 
-    public void delete(String name);
+    public boolean delete(String name);
 
-    public void delete(int index);
+    public boolean delete(int index);
 
     /**
      * Get the parent scope of the object.

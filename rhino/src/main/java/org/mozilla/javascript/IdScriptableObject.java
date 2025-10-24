@@ -417,7 +417,7 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
     }
 
     @Override
-    public void put(String name, JSScope start, Object value) {
+    public boolean put(String name, JSScope start, Object value) {
         int info = findInstanceIdInfo(name);
         if (info != 0) {
             if (start == this && isSealed()) {
@@ -428,11 +428,12 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
                 if (start == this) {
                     int id = (info & 0xFFFF);
                     setInstanceIdValue(id, value);
+                    return true;
                 } else {
-                    start.put(name, start, value);
+                    return start.put(name, start, value);
                 }
             }
-            return;
+            return false;
         }
         if (prototypeValues != null) {
             int id = prototypeValues.findId(name);
@@ -441,14 +442,14 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
                     throw Context.reportRuntimeErrorById("msg.modify.sealed", name);
                 }
                 prototypeValues.set(id, start, value);
-                return;
+                return true;
             }
         }
-        super.put(name, start, value);
+        return super.put(name, start, value);
     }
 
     @Override
-    public void put(Symbol key, JSScope start, Object value) {
+    public boolean put(Symbol key, JSScope start, Object value) {
         int info = findInstanceIdInfo(key);
         if (info != 0) {
             if (start == this && isSealed()) {
@@ -459,11 +460,11 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
                 if (start == this) {
                     int id = (info & 0xFFFF);
                     setInstanceIdValue(id, value);
+                    return true;
                 } else {
-                    start.put(key, start, value);
+                    return start.put(key, start, value);
                 }
             }
-            return;
         }
         if (prototypeValues != null) {
             int id = prototypeValues.findId(key);
@@ -472,14 +473,14 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
                     throw Context.reportRuntimeErrorById("msg.modify.sealed");
                 }
                 prototypeValues.set(id, start, value);
-                return;
+                return true;
             }
         }
-        super.put(key, start, value);
+        return super.put(key, start, value);
     }
 
     @Override
-    public void delete(String name) {
+    public boolean delete(String name) {
         int info = findInstanceIdInfo(name);
         if (info != 0) {
             // Let the super class to throw exceptions for sealed objects
@@ -492,11 +493,12 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
                         throw ScriptRuntime.typeErrorById(
                                 "msg.delete.property.with.configurable.false", name);
                     }
+                    return false;
                 } else {
                     int id = (info & 0xFFFF);
                     setInstanceIdValue(id, NOT_FOUND);
+                    return true;
                 }
-                return;
             }
         }
         if (prototypeValues != null) {
@@ -504,15 +506,16 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
             if (id != 0) {
                 if (!isSealed()) {
                     prototypeValues.delete(id);
+                    return true;
                 }
-                return;
+                return false;
             }
         }
-        super.delete(name);
+        return super.delete(name);
     }
 
     @Override
-    public void delete(Symbol key) {
+    public boolean delete(Symbol key) {
         int info = findInstanceIdInfo(key);
         if (info != 0) {
             // Let the super class to throw exceptions for sealed objects
@@ -525,11 +528,12 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
                         throw ScriptRuntime.typeErrorById(
                                 "msg.delete.property.with.configurable.false");
                     }
+                    return false;
                 } else {
                     int id = (info & 0xFFFF);
                     setInstanceIdValue(id, NOT_FOUND);
+                    return true;
                 }
-                return;
             }
         }
         if (prototypeValues != null) {
@@ -538,10 +542,10 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
                 if (!isSealed()) {
                     prototypeValues.delete(id);
                 }
-                return;
+                return true;
             }
         }
-        super.delete(key);
+        return super.delete(key);
     }
 
     @Override

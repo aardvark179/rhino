@@ -96,16 +96,18 @@ public class NativeJavaArray extends NativeJavaObject implements SymbolScriptabl
     }
 
     @Override
-    public void put(String id, JSScope start, Object value) {
+    public boolean put(String id, JSScope start, Object value) {
         // Ignore assignments to "length"--it's readonly.
         if (!"length".equals(id))
             throw Context.reportRuntimeErrorById("msg.java.array.member.not.found", id);
+        return false;
     }
 
     @Override
-    public void put(int index, JSScope start, Object value) {
+    public boolean put(int index, JSScope start, Object value) {
         if (0 <= index && index < length) {
             Array.set(array, index, Context.jsToJava(value, componentType));
+            return true;
         } else {
             throw Context.reportRuntimeErrorById(
                     "msg.java.array.index.out.of.bounds",
@@ -115,8 +117,9 @@ public class NativeJavaArray extends NativeJavaObject implements SymbolScriptabl
     }
 
     @Override
-    public void delete(Symbol key) {
+    public boolean delete(Symbol key) {
         // All symbols are read-only
+        return false;
     }
 
     @Override

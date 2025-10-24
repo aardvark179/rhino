@@ -80,16 +80,24 @@ public class Undefined implements Serializable {
                 }
 
                 @Override
-                public void put(String name, JSScope start, Object value) {}
+                public boolean put(String name, JSScope start, Object value) {
+                    return false;
+                }
 
                 @Override
-                public void put(int index, JSScope start, Object value) {}
+                public boolean put(int index, JSScope start, Object value) {
+                    return false;
+                }
 
                 @Override
-                public void delete(String name) {}
+                public boolean delete(String name) {
+                    return false;
+                }
 
                 @Override
-                public void delete(int index) {}
+                public boolean delete(int index) {
+                    return false;
+                }
 
                 @Override
                 public Scriptable getPrototype() {

@@ -136,51 +136,53 @@ public class Delegator implements Function, SymbolScriptable {
      * @see org.mozilla.javascript.Scriptable#put(String, Scriptable, Object)
      */
     @Override
-    public void put(String name, JSScope start, Object value) {
-        getDelegee().put(name, start, value);
+    public boolean put(String name, JSScope start, Object value) {
+        return getDelegee().put(name, start, value);
     }
 
     /**
      * @see org.mozilla.javascript.SymbolScriptable#put(Symbol, Scriptable, Object)
      */
     @Override
-    public void put(Symbol symbol, JSScope start, Object value) {
+    public boolean put(Symbol symbol, JSScope start, Object value) {
         final Scriptable delegee = getDelegee();
         if (delegee instanceof SymbolScriptable) {
-            ((SymbolScriptable) delegee).put(symbol, start, value);
+            return ((SymbolScriptable) delegee).put(symbol, start, value);
         }
+        return false;
     }
 
     /**
      * @see org.mozilla.javascript.Scriptable#put(int, Scriptable, Object)
      */
     @Override
-    public void put(int index, JSScope start, Object value) {
-        getDelegee().put(index, start, value);
+    public boolean put(int index, JSScope start, Object value) {
+        return getDelegee().put(index, start, value);
     }
 
     /**
      * @see org.mozilla.javascript.Scriptable#delete(String)
      */
     @Override
-    public void delete(String name) {
-        getDelegee().delete(name);
+    public boolean delete(String name) {
+        return getDelegee().delete(name);
     }
 
     @Override
-    public void delete(Symbol key) {
+    public boolean delete(Symbol key) {
         final Scriptable delegee = getDelegee();
         if (delegee instanceof SymbolScriptable) {
-            ((SymbolScriptable) delegee).delete(key);
+            return ((SymbolScriptable) delegee).delete(key);
         }
+        return false;
     }
 
     /**
      * @see org.mozilla.javascript.Scriptable#delete(int)
      */
     @Override
-    public void delete(int index) {
-        getDelegee().delete(index);
+    public boolean delete(int index) {
+        return getDelegee().delete(index);
     }
 
     /**

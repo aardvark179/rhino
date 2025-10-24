@@ -172,7 +172,7 @@ public interface Scriptable extends JSScope {
      * @see org.mozilla.javascript.Context#toObject(Object, Scriptable)
      */
     @Override
-    public void put(String name, JSScope start, Object value);
+    public boolean put(String name, JSScope start, Object value);
 
     /**
      * Sets an indexed property in this object.
@@ -191,7 +191,7 @@ public interface Scriptable extends JSScope {
      * @see org.mozilla.javascript.Context#toObject(Object, Scriptable)
      */
     @Override
-    public void put(int index, JSScope start, Object value);
+    public boolean put(int index, JSScope start, Object value);
 
     /**
      * Removes a property from this object. This operation corresponds to the ECMA [[Delete]] except
@@ -211,7 +211,7 @@ public interface Scriptable extends JSScope {
      * @see org.mozilla.javascript.ScriptableObject#deleteProperty(Scriptable, String)
      */
     @Override
-    public void delete(String name);
+    public boolean delete(String name);
 
     /**
      * Removes a property from this object.
@@ -228,7 +228,7 @@ public interface Scriptable extends JSScope {
      * @see org.mozilla.javascript.ScriptableObject#deleteProperty(Scriptable, int)
      */
     @Override
-    public void delete(int index);
+    public boolean delete(int index);
 
     /**
      * Get the prototype of the object.
@@ -301,7 +301,9 @@ public interface Scriptable extends JSScope {
 
     /** Delete a property with the specified key. */
     @Override
-    default void delete(Symbol key) {}
+    default boolean delete(Symbol key) {
+        return false;
+    }
 
     /** Return the value of the property with the specified key, or NOT_FOUND. */
     @Override
@@ -317,7 +319,7 @@ public interface Scriptable extends JSScope {
 
     /** Add a new property to to the object. */
     @Override
-    default void put(Symbol key, JSScope start, Object value) {
+    default boolean put(Symbol key, JSScope start, Object value) {
         throw ScriptRuntime.typeErrorById(
                 "msg.object.not.symbolscriptable", ScriptRuntime.typeof(this));
     }

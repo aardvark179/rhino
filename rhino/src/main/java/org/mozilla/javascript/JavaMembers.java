@@ -123,7 +123,7 @@ class JavaMembers {
         return cx.getWrapFactory().wrap(cx, ScriptableObject.getTopLevelScope(scope), got, type);
     }
 
-    void put(JSScope scope, String name, Object javaObject, Object value, boolean isStatic) {
+    boolean put(JSScope scope, String name, Object javaObject, Object value, boolean isStatic) {
         Map<String, Object> ht = isStatic ? staticMembers : members;
         Object member = ht.get(name);
         if (!isStatic && member == null) {
@@ -147,6 +147,7 @@ class JavaMembers {
                     ScriptableObject.getTopLevelScope(scope),
                     scope,
                     new Object[] {value});
+            return true;
         } else if (member instanceof NativeJavaField) {
             var field = (NativeJavaField) member;
             var type = field.type();
@@ -157,6 +158,7 @@ class JavaMembers {
             }
             try {
                 field.set(javaObject, Context.jsToJava(value, type));
+                return true;
             } catch (IllegalAccessException accessEx) {
                 throw Context.throwAsScriptRuntimeEx(accessEx);
             } catch (IllegalArgumentException argEx) {

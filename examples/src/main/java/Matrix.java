@@ -149,7 +149,9 @@ public class Matrix implements Scriptable {
      * <p>We do nothing here, so all properties are effectively read-only.
      */
     @Override
-    public void put(String name, JSScope start, Object value) {}
+    public boolean put(String name, JSScope start, Object value) {
+        return false;
+    }
 
     /**
      * Set an indexed property.
@@ -157,7 +159,9 @@ public class Matrix implements Scriptable {
      * <p>We do nothing here, so all properties are effectively read-only.
      */
     @Override
-    public void put(int index, JSScope start, Object value) {}
+    public boolean put(int index, JSScope start, Object value) {
+        return false;
+    }
 
     /**
      * Remove a named property.
@@ -165,7 +169,9 @@ public class Matrix implements Scriptable {
      * <p>This method shouldn't even be called since we define all properties as PERMANENT.
      */
     @Override
-    public void delete(String id) {}
+    public boolean delete(String id) {
+        return false;
+    }
 
     /**
      * Remove an indexed property.
@@ -173,7 +179,9 @@ public class Matrix implements Scriptable {
      * <p>This method shouldn't even be called since we define all properties as PERMANENT.
      */
     @Override
-    public void delete(int index) {}
+    public boolean delete(int index) {
+        return false;
+    }
 
     /** Get prototype. */
     @Override

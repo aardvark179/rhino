@@ -93,8 +93,8 @@ public class NativeJavaClass extends NativeJavaObject implements Function {
     }
 
     @Override
-    public void put(String name, JSScope start, Object value) {
-        members.put(this, name, javaObject, value, true);
+    public boolean put(String name, JSScope start, Object value) {
+        return members.put(this, name, javaObject, value, true);
     }
 
     @Override

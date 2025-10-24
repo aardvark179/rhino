@@ -38,13 +38,15 @@ public class BindingsObject extends ScriptableObject {
     }
 
     @Override
-    public void put(String name, JSScope start, Object value) {
+    public boolean put(String name, JSScope start, Object value) {
         bindings.put(name, Context.javaToJS(value, start));
+        return true;
     }
 
     @Override
-    public void delete(String name) {
+    public boolean delete(String name) {
         bindings.remove(name);
+        return true;
     }
 
     @Override

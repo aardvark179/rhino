@@ -270,11 +270,11 @@ public abstract class ScriptableObject extends SlotMapOwner
      * @param value value to set the property to
      */
     @Override
-    public void put(String name, JSScope start, Object value) {
-        if (putOwnProperty(name, start, value, Context.isCurrentContextStrict())) return;
+    public boolean put(String name, JSScope start, Object value) {
+        if (putOwnProperty(name, start, value, Context.isCurrentContextStrict())) return true;
 
         if (start == this) throw Kit.codeBug();
-        start.put(name, start, value);
+        return start.put(name, start, value);
     }
 
     /**
@@ -297,7 +297,7 @@ public abstract class ScriptableObject extends SlotMapOwner
      */
     @SuppressWarnings("resource")
     @Override
-    public void put(int index, JSScope start, Object value) {
+    public boolean put(int index, JSScope start, Object value) {
         if (externalData != null) {
             if (index < externalData.getArrayLength()) {
                 externalData.setArrayElement(index, value);
@@ -311,13 +311,13 @@ public abstract class ScriptableObject extends SlotMapOwner
                         null,
                         0);
             }
-            return;
+            return true;
         }
 
-        if (putOwnProperty(index, start, value, Context.isCurrentContextStrict())) return;
+        if (putOwnProperty(index, start, value, Context.isCurrentContextStrict())) return true;
 
         if (start == this) throw Kit.codeBug();
-        start.put(index, start, value);
+        return start.put(index, start, value);
     }
 
     /**
@@ -333,11 +333,11 @@ public abstract class ScriptableObject extends SlotMapOwner
 
     /** Implementation of put required by SymbolScriptable objects. */
     @Override
-    public void put(Symbol key, JSScope start, Object value) {
-        if (putOwnProperty(key, start, value, Context.isCurrentContextStrict())) return;
+    public boolean put(Symbol key, JSScope start, Object value) {
+        if (putOwnProperty(key, start, value, Context.isCurrentContextStrict())) return true;
 
         if (start == this) throw Kit.codeBug();
-        start.put(key, start, value);
+        return start.put(key, start, value);
     }
 
     /**
@@ -359,9 +359,9 @@ public abstract class ScriptableObject extends SlotMapOwner
      * @param name the name of the property
      */
     @Override
-    public void delete(String name) {
+    public boolean delete(String name) {
         checkNotSealed(name, 0);
-        getMap().compute(this, name, 0, ScriptableObject::checkSlotRemoval);
+        return null != getMap().compute(this, name, 0, ScriptableObject::checkSlotRemoval);
     }
 
     /**
@@ -372,16 +372,16 @@ public abstract class ScriptableObject extends SlotMapOwner
      * @param index the numeric index for the property
      */
     @Override
-    public void delete(int index) {
+    public boolean delete(int index) {
         checkNotSealed(null, index);
-        getMap().compute(this, null, index, ScriptableObject::checkSlotRemoval);
+        return null != getMap().compute(this, null, index, ScriptableObject::checkSlotRemoval);
     }
 
     /** Removes an object like the others, but using a Symbol as the key. */
     @Override
-    public void delete(Symbol key) {
+    public boolean delete(Symbol key) {
         checkNotSealed(key, 0);
-        getMap().compute(this, key, 0, ScriptableObject::checkSlotRemoval);
+        return null != getMap().compute(this, key, 0, ScriptableObject::checkSlotRemoval);
     }
 
     protected static Slot checkSlotRemoval(

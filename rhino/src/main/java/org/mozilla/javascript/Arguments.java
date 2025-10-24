@@ -98,9 +98,9 @@ class Arguments extends ScriptableObject {
 
     // the following helper methods assume that 0 < index < args.length
 
-    private void putIntoActivation(int index, Object value) {
+    private boolean putIntoActivation(int index, Object value) {
         String argName = activation.function.getParamOrVarName(index);
-        activation.put(argName, activation, value);
+        return activation.put(argName, activation, value);
     }
 
     private Object getFromActivation(int index) {
@@ -108,26 +108,29 @@ class Arguments extends ScriptableObject {
         return activation.get(argName, activation);
     }
 
-    private void replaceArg(int index, Object value) {
+    private boolean replaceArg(int index, Object value) {
         if (sharedWithActivation(index)) {
-            putIntoActivation(index, value);
+            return putIntoActivation(index, value);
         }
         synchronized (this) {
             if (args == activation.originalArgs) {
                 args = args.clone();
             }
             args[index] = value;
+            return true;
         }
     }
 
-    private void removeArg(int index) {
+    private boolean removeArg(int index) {
         synchronized (this) {
             if (args[index] != NOT_FOUND) {
                 if (args == activation.originalArgs) {
                     args = args.clone();
                 }
                 args[index] = NOT_FOUND;
+                return true;
             }
+            return false;
         }
     }
 
@@ -183,30 +186,30 @@ class Arguments extends ScriptableObject {
     }
 
     @Override
-    public void put(int index, JSScope start, Object value) {
+    public boolean put(int index, JSScope start, Object value) {
         if (arg(index) == NOT_FOUND) {
-            super.put(index, start, value);
+            return super.put(index, start, value);
         } else {
-            replaceArg(index, value);
+            return replaceArg(index, value);
         }
     }
 
     @Override
-    public void put(String name, JSScope start, Object value) {
-        super.put(name, start, value);
+    public boolean put(String name, JSScope start, Object value) {
+        return super.put(name, start, value);
     }
 
     @Override
-    public void put(Symbol key, JSScope start, Object value) {
+    public boolean put(Symbol key, JSScope start, Object value) {
         super.put(key, start, value);
     }
 
     @Override
-    public void delete(int index) {
+    public boolean delete(int index) {
         if (0 <= index && index < args.length) {
             removeArg(index);
         }
-        super.delete(index);
+        return super.delete(index);
     }
 
     @Override

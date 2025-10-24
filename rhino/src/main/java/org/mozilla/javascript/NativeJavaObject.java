@@ -111,30 +111,31 @@ public class NativeJavaObject implements Scriptable, SymbolScriptable, Wrapper, 
     }
 
     @Override
-    public void put(String name, JSScope start, Object value) {
+    public boolean put(String name, JSScope start, Object value) {
         // We could be asked to modify the value of a property in the
         // prototype. Since we can't add a property to a Java object,
         // we modify it in the prototype rather than copy it down.
         if (prototype == null || members.has(name, false))
-            members.put(this, name, javaObject, value, false);
-        else prototype.put(name, prototype, value);
+            return members.put(this, name, javaObject, value, false);
+        else return prototype.put(name, prototype, value);
     }
 
     @Override
-    public void put(Symbol symbol, JSScope start, Object value) {
+    public boolean put(Symbol symbol, JSScope start, Object value) {
         // We could be asked to modify the value of a property in the
         // prototype. Since we can't add a property to a Java object,
         // we modify it in the prototype rather than copy it down.
         String name = symbol.toString();
         if (prototype == null || members.has(name, false)) {
-            members.put(this, name, javaObject, value, false);
+            return members.put(this, name, javaObject, value, false);
         } else if (prototype instanceof SymbolScriptable) {
-            ((SymbolScriptable) prototype).put(symbol, prototype, value);
+            return ((SymbolScriptable) prototype).put(symbol, prototype, value);
         }
+        return false;
     }
 
     @Override
-    public void put(int index, JSScope start, Object value) {
+    public boolean put(int index, JSScope start, Object value) {
         throw members.reportMemberNotFound(Integer.toString(index));
     }
 
@@ -145,13 +146,19 @@ public class NativeJavaObject implements Scriptable, SymbolScriptable, Wrapper, 
     }
 
     @Override
-    public void delete(String name) {}
+    public boolean delete(String name) {
+        return false;
+    }
 
     @Override
-    public void delete(Symbol key) {}
+    public boolean delete(Symbol key) {
+        return false;
+    }
 
     @Override
-    public void delete(int index) {}
+    public boolean delete(int index) {
+        return false;
+    }
 
     @Override
     public Scriptable getPrototype() {
