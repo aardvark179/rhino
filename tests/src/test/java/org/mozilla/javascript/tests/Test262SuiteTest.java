@@ -54,6 +54,7 @@ import org.mozilla.javascript.SymbolKey;
 import org.mozilla.javascript.TopLevel;
 import org.mozilla.javascript.Undefined;
 import org.mozilla.javascript.VarScope;
+import org.mozilla.javascript.Context.EvaluationMethod;
 import org.mozilla.javascript.debug.DebugFrame;
 import org.mozilla.javascript.debug.DebuggableScript;
 import org.mozilla.javascript.debug.Debugger;
@@ -831,19 +832,19 @@ public class Test262SuiteTest {
                 "interpreted",
                 true,
                 cx -> {
-                    cx.setInterpretedMode(true);
+                    cx.setEvaluationMethod(EvaluationMethod.Interpreter);
                 }),
         COMPILED(
                 "compiled",
                 true,
                 cx -> {
-                    cx.setInterpretedMode(false);
+                    cx.setEvaluationMethod(EvaluationMethod.Compiler);
                 }),
         DEBUGGER_INTERPRETED(
                 "debugger",
                 true,
                 cx -> {
-                    cx.setInterpretedMode(true);
+                    cx.setEvaluationMethod(EvaluationMethod.Interpreter);
                     cx.setDebugger(new NoOpDebugger(), null);
                 }),
         SKIPPED("skipped", false, cx -> {});
