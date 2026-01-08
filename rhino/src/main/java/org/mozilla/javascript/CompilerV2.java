@@ -23,7 +23,7 @@ import org.mozilla.javascript.interpreterv2.operand.*;
  * Compiler for InterpreterV2 that transforms AST/IR into instruction arrays. This is a simplified
  * implementation that will be expanded as more instructions are added.
  */
-public class CompilerV2 {
+public class CompilerV2 <T extends ScriptOrFn<T>> {
 
     private CompilerEnvirons compilerEnv;
     private ScriptNode scriptOrFn;
@@ -59,11 +59,9 @@ public class CompilerV2 {
     }
 
     /** Compile a script or function node into InterpreterDataV2. */
-    public <T extends ScriptOrFn<T>> InterpreterDataV2<T> compile(
+    public InterpreterDataV2<T> compile(
             CompilerEnvirons compilerEnv,
-            ScriptNode scriptOrFn,
-            String encodedSource,
-            boolean returnFunction) {
+            ScriptNode scriptOrFn) {
 
         this.compilerEnv = compilerEnv;
         this.scriptOrFn = scriptOrFn;
