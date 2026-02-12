@@ -40,6 +40,7 @@ public class LambdaFunction extends BaseFunction {
             int length,
             SerializableCallable target,
             boolean defaultPrototype) {
+        super(scope);
         this.target = target;
         this.name = name;
         this.length = length;
@@ -80,6 +81,7 @@ public class LambdaFunction extends BaseFunction {
             int length,
             Object prototype,
             SerializableCallable target) {
+        super(scope);
         this.target = target;
         this.name = name;
         this.length = length;
@@ -89,6 +91,7 @@ public class LambdaFunction extends BaseFunction {
 
     /** Create a new built-in function, with no name, and no default prototype. */
     public LambdaFunction(VarScope scope, int length, SerializableCallable target) {
+        super(scope);
         this.target = target;
         this.length = length;
         this.name = "";

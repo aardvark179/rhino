@@ -26,7 +26,8 @@ public class NativeJavaConstructor extends BaseFunction {
 
     ExecutableBox ctor;
 
-    public NativeJavaConstructor(ExecutableBox ctor) {
+    public NativeJavaConstructor(VarScope scope, ExecutableBox ctor) {
+        super(scope);
         this.ctor = ctor;
     }
 
