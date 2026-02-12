@@ -6,7 +6,6 @@ import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Callable;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptRuntime;
-import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.interpreterv2.InstructionFormatter;
 import org.mozilla.javascript.interpreterv2.operand.Operand;
 
@@ -37,7 +36,7 @@ final class CallN extends Call {
         // are already Scriptable and Callable objects respectively
         Object[] args = frame.getArguments(cx, arguments);
         var result = (ScriptRuntime.LookupResult) lookupResult.retrieve(cx, frame);
-        Scriptable funThisObj = result.getThis();
+        Object funThisObj = result.getThis();
         Callable fun = result.getCallable();
         if (callType == Call.Type.CallOnSuper) {
             // funThisObj would have been the "super" object, which we

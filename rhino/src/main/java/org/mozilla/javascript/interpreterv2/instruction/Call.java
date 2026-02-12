@@ -7,7 +7,6 @@ import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Callable;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptRuntime;
-import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 import org.mozilla.javascript.VarScope;
 import org.mozilla.javascript.interpreterv2.InstructionFormatter;
@@ -70,7 +69,7 @@ public abstract class Call extends Instruction {
         // CALL generation ensures that fun and funThisObj
         // are already Scriptable and Callable objects respectively
         var result = (ScriptRuntime.LookupResult) lookupResult.retrieve(cx, frame);
-        Scriptable funThisObj = result.getThis();
+        Object funThisObj = result.getThis();
         Callable fun = result.getCallable();
 
         VarScope calleeScope = frame.scope;
