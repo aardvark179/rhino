@@ -24,7 +24,7 @@ public class MethodExpression extends Instruction {
         var desc = frame.fnOrScript.getDescriptor();
         var fdesc = desc.getFunction(fnIndex);
         boolean isArrow = fdesc.getFunctionType() == FunctionNode.ARROW_FUNCTION;
-        Scriptable lexicalThis = isArrow ? frame.thisObj : null;
+        Object lexicalThis = isArrow ? frame.thisObj : null;
         Scriptable homeObject = (Scriptable) homeObjectOperand.retrieve(cx, frame);
 
         JSFunction fn = new JSFunction(cx, frame.scope, fdesc, lexicalThis, homeObject);

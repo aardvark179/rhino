@@ -70,7 +70,7 @@ public abstract class Call extends Instruction {
         // CALL generation ensures that fun and funThisObj
         // are already Scriptable and Callable objects respectively
         var result = (ScriptRuntime.LookupResult) lookupResult.retrieve(cx, frame);
-        Scriptable funThisObj = result.getThis();
+        Object funThisObj = result.getThis();
         Callable fun = result.getCallable();
 
         VarScope calleeScope = frame.scope;

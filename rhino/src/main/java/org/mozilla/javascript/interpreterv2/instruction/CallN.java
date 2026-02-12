@@ -35,7 +35,7 @@ final class CallN extends Call {
         // are already Scriptable and Callable objects respectively
         Object[] args = frame.getArguments(cx, arguments);
         var result = (ScriptRuntime.LookupResult) lookupResult.retrieve(cx, frame);
-        Scriptable funThisObj = result.getThis();
+        Object funThisObj = result.getThis();
         Callable fun = result.getCallable();
         if (callType == Call.Type.CallOnSuper) {
             // funThisObj would have been the "super" object, which we
