@@ -46,15 +46,8 @@ import org.mozilla.javascript.Context.EvaluationMethod;
 import org.mozilla.javascript.EvaluatorException;
 import org.mozilla.javascript.Kit;
 import org.mozilla.javascript.RhinoException;
-import org.mozilla.javascript.ScopeObject;
 import org.mozilla.javascript.Script;
-import org.mozilla.javascript.ScriptRuntime;
-import org.mozilla.javascript.Scriptable;
-import org.mozilla.javascript.ScriptableObject;
-import org.mozilla.javascript.SymbolKey;
 import org.mozilla.javascript.TopLevel;
-import org.mozilla.javascript.Undefined;
-import org.mozilla.javascript.VarScope;
 import org.mozilla.javascript.debug.DebugFrame;
 import org.mozilla.javascript.debug.DebuggableScript;
 import org.mozilla.javascript.debug.Debugger;
@@ -63,7 +56,7 @@ import org.mozilla.javascript.testutils.Sharding;
 import org.mozilla.javascript.testutils.TestSource;
 import org.mozilla.javascript.tools.SourceReader;
 import org.mozilla.javascript.tools.shell.ShellContextFactory;
-import org.mozilla.javascript.typedarrays.NativeArrayBuffer;
+import org.mozilla.javascript.tools.shell.Test262;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.error.YAMLException;
 
@@ -241,88 +234,6 @@ public class Test262SuiteTest {
         return sb.toString();
     }
 
-    /**
-     * @see https://github.com/tc39/test262/blob/main/INTERPRETING.md#host-defined-functions
-     */
-    public static class $262 extends ScriptableObject {
-
-        $262() {
-            super();
-        }
-
-        $262(VarScope scope, Scriptable prototype) {
-            super(scope, prototype);
-        }
-
-        static $262 init(Context cx, VarScope scope) {
-            $262 proto = new $262();
-            proto.setPrototype(getObjectPrototype(scope));
-            proto.setParentScope(scope);
-
-            proto.defineProperty(scope, "gc", 0, $262::gc);
-            proto.defineProperty(scope, "createRealm", 0, $262::createRealm);
-            proto.defineProperty(scope, "evalScript", 1, $262::evalScript);
-            proto.defineProperty(scope, "detachArrayBuffer", 0, $262::detachArrayBuffer);
-
-            proto.defineProperty(cx, scope, "global", $262::getGlobal, null, DONTENUM | READONLY);
-            proto.defineProperty(cx, scope, "agent", $262::getAgent, null, DONTENUM | READONLY);
-
-            proto.defineProperty(SymbolKey.TO_STRING_TAG, "__262__", DONTENUM | READONLY);
-
-            ScriptableObject.defineProperty(scope, "__262__", proto, DONTENUM);
-            return proto;
-        }
-
-        static $262 install(ScopeObject scope, Scriptable parentScope) {
-            $262 instance = new $262(scope, parentScope);
-
-            scope.put("$262", scope, instance);
-            scope.setAttributes("$262", ScriptableObject.DONTENUM);
-
-            return instance;
-        }
-
-        private static Object gc(Context cx, VarScope scope, Object thisObj, Object[] args) {
-            System.gc();
-            return Undefined.instance;
-        }
-
-        public static Object evalScript(Context cx, VarScope scope, Object thisObj, Object[] args) {
-            if (args.length == 0) {
-                throw ScriptRuntime.throwError(cx, scope, "not enough args");
-            }
-            String source = Context.toString(args[0]);
-            return cx.evaluateString(scope, source, "<evalScript>", 1, null);
-        }
-
-        public static Object getGlobal(Scriptable scriptable) {
-            return ((TopLevel) scriptable.getParentScope()).getGlobalThis();
-        }
-
-        public static $262 createRealm(Context cx, VarScope scope, Object thisObj, Object[] args) {
-            TopLevel realm = cx.initSafeStandardObjects(new TopLevel());
-            return install(realm, ScriptRuntime.toObject(realm, thisObj).getPrototype());
-        }
-
-        public static Object detachArrayBuffer(
-                Context cx, VarScope scope, Object thisObj, Object[] args) {
-            Scriptable buf = ScriptRuntime.toObject(scope, args[0]);
-            if (buf instanceof NativeArrayBuffer) {
-                ((NativeArrayBuffer) buf).detach();
-            }
-            return Undefined.instance;
-        }
-
-        public static Object getAgent(Scriptable scriptable) {
-            throw new UnsupportedOperationException("$262.agent property not yet implemented");
-        }
-
-        @Override
-        public String getClassName() {
-            return "__262__";
-        }
-    }
-
     private TopLevel buildScope(Context cx, Test262Case testCase, TestMode mode) {
         TopLevel scope = cx.initSafeStandardObjects(new TopLevel());
 
@@ -345,8 +256,8 @@ public class Test262SuiteTest {
             harnessScript.exec(cx, scope, scope.getGlobalThis());
         }
 
-        $262 proto = $262.init(cx, scope);
-        $262.install(scope, proto);
+        Test262 proto = Test262.init(cx, scope, Test262.RealmMode.SAFE);
+        Test262.install(scope, proto, Test262.RealmMode.SAFE);
         return scope;
     }
 
