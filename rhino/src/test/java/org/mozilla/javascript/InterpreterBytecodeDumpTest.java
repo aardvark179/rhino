@@ -477,7 +477,7 @@ class InterpreterBytecodeDumpTest {
                         " [29] POP",
                         " [30] REG_STR_C2 \"$0\"",
                         " [31] NAME",
-                        " [32] LEAVEWITH",
+                        " [32] LEAVE_SCOPE",
                         " [33] POP",
                         " [34] RETURN_RESULT",
                         ""),
