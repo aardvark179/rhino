@@ -101,6 +101,7 @@ import org.mozilla.javascript.interpreterv2.instruction.Neg;
 import org.mozilla.javascript.interpreterv2.instruction.New;
 import org.mozilla.javascript.interpreterv2.instruction.NewObjectLiteral;
 import org.mozilla.javascript.interpreterv2.instruction.NewObjectLiteralWithSpread;
+import org.mozilla.javascript.interpreterv2.instruction.NewTarget;
 import org.mozilla.javascript.interpreterv2.instruction.Nop;
 import org.mozilla.javascript.interpreterv2.instruction.Not;
 import org.mozilla.javascript.interpreterv2.instruction.NotEqual;
@@ -167,6 +168,7 @@ import org.mozilla.javascript.interpreterv2.operand.BooleanOperand;
 import org.mozilla.javascript.interpreterv2.operand.DoubleOperand;
 import org.mozilla.javascript.interpreterv2.operand.GetVarOperand;
 import org.mozilla.javascript.interpreterv2.operand.IntOperand;
+import org.mozilla.javascript.interpreterv2.operand.NewTargetOperand;
 import org.mozilla.javascript.interpreterv2.operand.NullOperand;
 import org.mozilla.javascript.interpreterv2.operand.OneOperand;
 import org.mozilla.javascript.interpreterv2.operand.Operand;
@@ -1326,6 +1328,11 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     addInstruction(ThisFunction.instance);
                     return;
                 }
+            case Token.NEW_TARGET:
+                {
+                    addInstruction(NewTarget.instance);
+                    return;
+                }
             case Token.FALSE:
                 {
                     addInstruction(new PushConstant(Boolean.FALSE));
@@ -1661,6 +1668,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
             case Token.FALSE:
             case Token.THIS:
             case Token.SUPER:
+            case Token.NEW_TARGET:
             case Token.GETVAR:
                 return true;
             default:
@@ -1690,6 +1698,8 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 return BooleanOperand.FALSE;
             case Token.THIS:
                 return ThisOperand.instance;
+            case Token.NEW_TARGET:
+                return NewTargetOperand.instance;
             case Token.SUPER:
                 return SuperOperand.instance;
             case Token.GETVAR:
@@ -1737,6 +1747,9 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 return BooleanOperand.FALSE;
             case Token.THIS:
                 return ThisOperand.instance;
+            case Token.NEW_TARGET:
+                updateLineNumber(node);
+                return NewTargetOperand.instance;
             case Token.SUPER:
                 return SuperOperand.instance;
             default:
