@@ -410,6 +410,7 @@ public class InterpreterV2 extends AInterpreter<CallFrameV2, CompilerData<?>> {
             Context cx,
             VarScope scope,
             Object thisObj,
+            Object newTarget,
             Object[] args) {
         if (!ScriptRuntime.hasTopCall(cx)) {
             Kit.codeBug();
@@ -434,6 +435,7 @@ public class InterpreterV2 extends AInterpreter<CallFrameV2, CompilerData<?>> {
                         cx,
                         scope,
                         thisObj,
+                        newTarget,
                         fun.getHomeObject(),
                         args,
                         null,
