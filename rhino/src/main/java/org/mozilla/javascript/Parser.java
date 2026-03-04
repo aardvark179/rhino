@@ -22,6 +22,7 @@ import org.mozilla.javascript.ast.ArrayLiteral;
 import org.mozilla.javascript.ast.Assignment;
 import org.mozilla.javascript.ast.AstNode;
 import org.mozilla.javascript.ast.AstRoot;
+import org.mozilla.javascript.ast.AwaitExpression;
 import org.mozilla.javascript.ast.BigIntLiteral;
 import org.mozilla.javascript.ast.Block;
 import org.mozilla.javascript.ast.BreakStatement;
@@ -551,6 +552,92 @@ public class Parser {
         return nestingOfFunction != 0;
     }
 
+    private boolean insideAsyncFunction() {
+        return currentScriptOrFn instanceof FunctionNode
+                && ((FunctionNode) currentScriptOrFn).isAsync();
+    }
+
+    private boolean insideGenerator() {
+        return currentScriptOrFn instanceof FunctionNode
+                && ((FunctionNode) currentScriptOrFn).isES6Generator();
+    }
+
+    /**
+     * Report an error if {@code id} may not be used as a binding identifier in the current context.
+     * This consolidates the strict-mode checks that were previously duplicated at each binding
+     * site.
+     */
+    private void checkValidBindingIdentifier(String id) {
+        if (inUseStrictDirective) {
+            // Behavior for all language versions: "eval" and "arguments" are not valid binding
+            // identifiers in strict mode.
+            if ("eval".equals(id) || "arguments".equals(id)) {
+                reportError("msg.bad.id.strict", id);
+            }
+            // ES6 and later additionally reserve a set of words in strict mode. Older language
+            // versions must not see any change in behavior, so this is gated on the version.
+            if (compilerEnv.getLanguageVersion() >= Context.VERSION_ES6
+                    && isStrictModeReservedWord(id)) {
+                reportError("msg.bad.id.strict", id);
+            }
+        }
+        checkContextuallyReservedWord(id);
+    }
+
+    /**
+     * Report an error if {@code id} may not be used as an identifier reference (or label) in the
+     * current context. Unlike a binding identifier, {@code eval} and {@code arguments} are valid
+     * references in strict mode, so only the reserved words are rejected here.
+     */
+    private void checkValidIdentifierReference(String id) {
+        if (inUseStrictDirective
+                && compilerEnv.getLanguageVersion() >= Context.VERSION_ES6
+                && isStrictModeReservedWord(id)) {
+            reportError("msg.bad.id.strict", id);
+        }
+        checkContextuallyReservedWord(id);
+    }
+
+    /**
+     * Report an error if {@code id} is a word that is reserved by the surrounding context: {@code
+     * await} when used as an identifier inside an async function, or {@code yield} inside a
+     * generator. These are reserved regardless of strict mode. {@code yield} is normally a distinct
+     * token rather than a name, so it is the tokenizer that rejects most of its uses; this check
+     * covers the remaining cases where the word reaches the parser as an ordinary name.
+     */
+    private void checkContextuallyReservedWord(String id) {
+        if (compilerEnv.getLanguageVersion() < Context.VERSION_ES6) {
+            return;
+        }
+        if ("await".equals(id) && insideAsyncFunction()) {
+            reportError("msg.await.as.identifier");
+        } else if ("yield".equals(id) && insideGenerator()) {
+            reportError("msg.yield.as.identifier");
+        }
+    }
+
+    /**
+     * Words that are reserved and may not be used as identifiers in strict-mode ES6+ code. Used as
+     * an extension point for context-sensitive reservations such as {@code yield} in generators and
+     * {@code await} in async functions.
+     */
+    private static boolean isStrictModeReservedWord(String id) {
+        switch (id) {
+            case "implements":
+            case "interface":
+            case "let":
+            case "package":
+            case "private":
+            case "protected":
+            case "public":
+            case "static":
+            case "yield":
+                return true;
+            default:
+                return false;
+        }
+    }
+
     boolean insideFunctionParams() {
         return nestingOfFunctionParams != 0;
     }
@@ -952,10 +1039,8 @@ public class Parser {
                         fnNode.addParam(paramNameNode);
                         String paramName = ts.getString();
                         defineSymbol(Token.LP, paramName);
+                        checkValidBindingIdentifier(paramName);
                         if (this.inUseStrictDirective) {
-                            if ("eval".equals(paramName) || "arguments".equals(paramName)) {
-                                reportError("msg.bad.id.strict", paramName);
-                            }
                             if (paramNames.contains(paramName))
                                 addError("msg.dup.param.strict", paramName);
                             paramNames.add(paramName);
@@ -1002,10 +1087,15 @@ public class Parser {
     }
 
     private FunctionNode function(int type) throws IOException {
-        return function(type, false);
+        return function(type, false, false);
     }
 
     private FunctionNode function(int type, boolean isMethodDefiniton) throws IOException {
+        return function(type, isMethodDefiniton, false);
+    }
+
+    private FunctionNode function(int type, boolean isMethodDefiniton, boolean isAsync)
+            throws IOException {
         boolean isGenerator = false;
         int syntheticType = type;
         int baseLineno = lineNumber(); // line number where source starts
@@ -1017,12 +1107,7 @@ public class Parser {
         do {
             if (matchToken(Token.NAME, true) || matchToken(Token.UNDEFINED, true)) {
                 name = createNameNode(true, Token.NAME);
-                if (inUseStrictDirective) {
-                    String id = name.getIdentifier();
-                    if ("eval".equals(id) || "arguments".equals(id)) {
-                        reportError("msg.bad.id.strict", id);
-                    }
-                }
+                checkValidBindingIdentifier(name.getIdentifier());
                 if (!matchToken(Token.LP, true)) {
                     if (compilerEnv.isAllowMemberExprAsFunctionName()) {
                         AstNode memberExprHead = name;
@@ -1071,6 +1156,9 @@ public class Parser {
         }
         if (isGenerator) {
             fnNode.setIsES6Generator();
+        }
+        if (isAsync) {
+            fnNode.setIsAsync();
         }
         if (lpPos != -1) fnNode.setLp(lpPos - functionSourceStart);
 
@@ -1147,7 +1235,28 @@ public class Parser {
         }
     }
 
-    private AstNode arrowFunction(AstNode params, int startLine, int startColumn)
+    private ParenthesizedExpression callArgsToArrowParams(FunctionCall call) {
+        int absoluteLp = call.getPosition() + call.getLp();
+        int absoluteRp = call.getPosition() + call.getRp();
+        List<AstNode> args = call.getArguments();
+        AstNode inner;
+        if (args.isEmpty()) {
+            inner = new EmptyExpression(absoluteLp + 1, 0);
+        } else {
+            inner = args.get(0);
+            for (int i = 1; i < args.size(); i++) {
+                inner = new InfixExpression(Token.COMMA, inner, args.get(i), 0);
+            }
+        }
+        ParenthesizedExpression paren =
+                new ParenthesizedExpression(absoluteLp, absoluteRp - absoluteLp + 1, inner);
+        if (call.getIntProp(Node.TRAILING_COMMA, 0) == 1) {
+            paren.putIntProp(Node.TRAILING_COMMA, 1);
+        }
+        return paren;
+    }
+
+    private AstNode arrowFunction(AstNode params, int startLine, int startColumn, boolean isAsync)
             throws IOException {
         int baseLineno = lineNumber(); // line number where source starts
         int functionSourceStart =
@@ -1156,6 +1265,9 @@ public class Parser {
         FunctionNode fnNode = new FunctionNode(functionSourceStart);
         fnNode.setFunctionType(FunctionNode.ARROW_FUNCTION);
         fnNode.setJsDocNode(getAndResetJsDoc());
+        if (isAsync) {
+            fnNode.setIsAsync();
+        }
 
         // Would prefer not to call createDestructuringAssignment until codegen,
         // but the symbol definitions have to happen now, before body is parsed.
@@ -1265,11 +1377,7 @@ public class Parser {
             }
             paramNames.add(paramName);
 
-            if (this.inUseStrictDirective) {
-                if ("eval".equals(paramName) || "arguments".equals(paramName)) {
-                    reportError("msg.bad.id.strict", paramName);
-                }
-            }
+            checkValidBindingIdentifier(paramName);
         } else if (params instanceof Assignment) {
             if (compilerEnv.getLanguageVersion() >= Context.VERSION_ES6) {
                 AstNode rhs = ((Assignment) params).getRight();
@@ -1316,11 +1424,7 @@ public class Parser {
                 }
                 paramNames.add(paramName);
 
-                if (this.inUseStrictDirective) {
-                    if ("eval".equals(paramName) || "arguments".equals(paramName)) {
-                        reportError("msg.bad.id.strict", paramName);
-                    }
-                }
+                checkValidBindingIdentifier(paramName);
             } else {
                 reportError("msg.no.parm", restParam.getPosition(), restParam.getLength());
                 fnNode.addParam(makeErrorNode());
@@ -2124,12 +2228,7 @@ public class Parser {
                                 if ("undefined".equals(varNameString)) {
                                     hasUndefinedBeenRedefined = true;
                                 }
-                                if (inUseStrictDirective) {
-                                    if ("eval".equals(varNameString)
-                                            || "arguments".equals(varNameString)) {
-                                        reportError("msg.bad.id.strict", varNameString);
-                                    }
-                                }
+                                checkValidBindingIdentifier(varNameString);
                             }
 
                             // Non-standard extension: we support "catch (e if cond)
@@ -2456,6 +2555,19 @@ public class Parser {
         return ret;
     }
 
+    private AstNode awaitExpression() throws IOException {
+        if (!insideAsyncFunction()) {
+            reportError("msg.bad.await");
+        }
+        consumeToken(); // consume the "await" NAME token
+        int pos = ts.tokenBeg;
+        int lineno = lineNumber(), column = columnNumber();
+        AstNode value = unaryExpr();
+        AwaitExpression node = new AwaitExpression(pos, getNodeEnd(value) - pos, value);
+        node.setLineColumnNumber(lineno, column);
+        return node;
+    }
+
     private AstNode block() throws IOException {
         if (currentToken != Token.LC) codeBug();
         consumeToken();
@@ -2539,6 +2651,18 @@ public class Parser {
         // set check for label and call down to primaryExpr
         currentFlaggedToken |= TI_CHECK_LABEL;
         AstNode expr = expr(false);
+
+        if (expr instanceof FunctionNode) {
+            FunctionNode fn = (FunctionNode) expr;
+            if (fn.isAsync()
+                    && fn.getFunctionType() == FunctionNode.FUNCTION_EXPRESSION
+                    && fn.getFunctionName() != null
+                    && fn.getFunctionName().length() > 0) {
+                fn.setFunctionType(FunctionNode.FUNCTION_EXPRESSION_STATEMENT);
+                defineSymbol(Token.FUNCTION, fn.getFunctionName().getIdentifier());
+                return fn;
+            }
+        }
 
         if (expr.getType() != Token.LABEL) {
             AstNode n = new ExpressionStatement(expr, !insideFunctionBody());
@@ -2638,12 +2762,7 @@ public class Parser {
                 }
                 name = createNameNode();
                 name.setLineColumnNumber(lineNumber(), columnNumber());
-                if (inUseStrictDirective) {
-                    String id = ts.getString();
-                    if ("eval".equals(id) || "arguments".equals(ts.getString())) {
-                        reportError("msg.bad.id.strict", id);
-                    }
-                }
+                checkValidBindingIdentifier(ts.getString());
                 defineSymbol(declType, ts.getString(), inForInit);
             }
 
@@ -3056,7 +3175,17 @@ public class Parser {
             }
         } else if (!hasEOL && tt == Token.ARROW) {
             consumeToken();
-            pn = arrowFunction(pn, startLine, startColumn);
+            boolean isAsyncArrow = false;
+            AstNode arrowParams = pn;
+            if (pn instanceof FunctionCall) {
+                FunctionCall call = (FunctionCall) pn;
+                AstNode target = call.getTarget();
+                if (target instanceof Name && "async".equals(((Name) target).getIdentifier())) {
+                    isAsyncArrow = true;
+                    arrowParams = callArgsToArrowParams(call);
+                }
+            }
+            pn = arrowFunction(arrowParams, startLine, startColumn, isAsyncArrow);
         } else if (pn.getIntProp(Node.OBJECT_LITERAL_DESTRUCTURING, 0) == 1
                 && !inDestructuringAssignment) {
             reportError("msg.syntax");
@@ -3284,6 +3413,10 @@ public class Parser {
             tt = peekUntilNonComment(tt);
         }
         int line, column;
+
+        if (tt == Token.NAME && "await".equals(ts.getString()) && insideAsyncFunction()) {
+            return awaitExpression();
+        }
 
         switch (tt) {
             case Token.VOID:
@@ -3941,6 +4074,13 @@ public class Parser {
 
             case Token.NAME:
                 consumeToken();
+                if ("async".equals(ts.getString())) {
+                    int nextTT = peekTokenOrEOL();
+                    if (nextTT == Token.FUNCTION) {
+                        consumeToken();
+                        return function(FunctionNode.FUNCTION_EXPRESSION, false, true);
+                    }
+                }
                 return name(ttFlagged, tt);
 
             case Token.NUMBER:
@@ -4112,6 +4252,7 @@ public class Parser {
             label.setLineColumnNumber(lineNumber(), columnNumber());
             return label;
         }
+        checkValidIdentifierReference(nameString);
         // Not a label.  Unfortunately peeking the next token to check for
         // a colon has biffed ts.tokenBeg, ts.tokenEnd.  We store the name's
         // bounds in instance vars and createNameNode uses them.
@@ -4472,9 +4613,15 @@ public class Parser {
                             entryKind = GET_ENTRY;
                         } else if ("set".equals(propertyName)) {
                             entryKind = SET_ENTRY;
+                        } else if ("async".equals(propertyName)) {
+                            entryKind = METHOD_ENTRY;
                         }
                     }
-                    if (entryKind == GET_ENTRY || entryKind == SET_ENTRY) {
+                    boolean isAsyncMethod =
+                            pname.getType() == Token.NAME
+                                    && "async".equals(propertyName)
+                                    && peeked != Token.LP;
+                    if (entryKind == GET_ENTRY || entryKind == SET_ENTRY || isAsyncMethod) {
                         pname = objliteralProperty();
                         if (pname == null) {
                             reportError("msg.bad.prop");
@@ -4492,7 +4639,8 @@ public class Parser {
                                         pname,
                                         entryKind,
                                         pname instanceof GeneratorMethodDefinition,
-                                        true);
+                                        true,
+                                        isAsyncMethod);
                         ((FunctionNode) objectProp.getValue()).setRawSourceStart(propStart);
                         pname.setJsDocNode(jsdocNode);
                         elems.add(objectProp);
@@ -4656,6 +4804,9 @@ public class Parser {
                     && compilerEnv.getLanguageVersion() < Context.VERSION_ES6) {
                 reportError("msg.bad.object.init");
             }
+            // The shorthand `{ x }` introduces a reference to `x` (or, in a destructuring
+            // pattern, a binding) named by the property. Reserved words are not valid here.
+            checkValidIdentifierReference(property.getString());
             AstNode nn = new Name(property.getPosition(), property.getString());
             ObjectProperty pn = new ObjectProperty();
             pn.setKeyAndValue(property, nn);
@@ -4676,9 +4827,14 @@ public class Parser {
     }
 
     private ObjectProperty methodDefinition(
-            int pos, AstNode propName, int entryKind, boolean isGenerator, boolean isShorthand)
+            int pos,
+            AstNode propName,
+            int entryKind,
+            boolean isGenerator,
+            boolean isShorthand,
+            boolean isAsync)
             throws IOException {
-        FunctionNode fn = function(FunctionNode.FUNCTION_EXPRESSION, true);
+        FunctionNode fn = function(FunctionNode.FUNCTION_EXPRESSION, true, isAsync);
         // We've already parsed the function name, so fn should be anonymous.
         Name name = fn.getFunctionName();
         if (name != null && name.length() != 0) {

@@ -26,7 +26,6 @@ import java.util.NoSuchElementException;
 import org.mozilla.javascript.ArrayLikeAbstractOperations.IterativeOperation;
 import org.mozilla.javascript.ArrayLikeAbstractOperations.ReduceOperation;
 import org.mozilla.javascript.ClassDescriptor.BuiltInJSCodeExec;
-import org.mozilla.javascript.InstrumentEmitter.Type;
 import org.mozilla.javascript.xml.XMLObject;
 
 /**

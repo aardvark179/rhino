@@ -27,18 +27,24 @@ public class CodeGenUtils {
                 || fnParent instanceof Block)) {
             builder.declaredAsFunctionExpression = true;
             boolean isArrow = fn.getFunctionType() == FunctionNode.ARROW_FUNCTION;
+            boolean isAsyncNonGenerator = fn.isAsync() && !fn.isES6Generator();
             builder.hasLexicalThis = isArrow;
-            // Arrow functions and methods have no prototype property, generator methods do
-            builder.hasPrototype = !isArrow && (!fn.isShorthand() || fn.isES6Generator());
-            if (!isArrow) {
+            builder.hasPrototype =
+                    !isArrow && (!fn.isShorthand() || fn.isES6Generator()) && !isAsyncNonGenerator;
+            if (builder.hasPrototype) {
                 builder.constructor = builder.code;
             } else {
                 builder.constructor = new JSCode.NullBuilder<JSFunction>();
             }
         } else {
             builder.hasLexicalThis = false;
-            builder.hasPrototype = true;
-            builder.constructor = builder.code;
+            boolean isAsyncNonGenerator = fn.isAsync() && !fn.isES6Generator();
+            builder.hasPrototype = !isAsyncNonGenerator;
+            if (!isAsyncNonGenerator) {
+                builder.constructor = builder.code;
+            } else {
+                builder.constructor = new JSCode.NullBuilder<JSFunction>();
+            }
         }
 
         fillInForFunction(builder, fn, compilerEnv);
@@ -59,6 +65,9 @@ public class CodeGenUtils {
         }
         if (fn.isES6Generator()) {
             builder.isES6Generator = true;
+        }
+        if (fn.isAsync()) {
+            builder.isAsync = true;
         }
         if (fn.isShorthand()) {
             builder.isShorthand = true;
@@ -135,7 +144,8 @@ public class CodeGenUtils {
         if (scriptOrFn instanceof FunctionNode) {
             FunctionNode f = (FunctionNode) scriptOrFn;
             boolean isArrow = f.getFunctionType() == FunctionNode.ARROW_FUNCTION;
-            if (isArrow || f.isMethodDefinition() || f.isGenerator()) {
+            boolean isAsyncNonGenerator = f.isAsync() && !f.isES6Generator();
+            if (isArrow || f.isMethodDefinition() || f.isGenerator() || isAsyncNonGenerator) {
                 builder.constructor = new JSCode.NullBuilder<T>();
             } else {
                 builder.constructor = builder.code;

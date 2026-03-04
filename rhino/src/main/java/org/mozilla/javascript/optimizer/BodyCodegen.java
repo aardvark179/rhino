@@ -2285,10 +2285,10 @@ class BodyCodegen {
             // The descriptors array always lives on the main class, even when this body method has
             // been placed in a different (split) chunk class.
             cfw.add(
-                ByteCode.GETSTATIC,
-                codegen.mainClassName,
-                Codegen.DESCRIPTORS_FIELD_NAME,
-                Codegen.DESCRIPTORS_FIELD_SIGNATURE);
+                    ByteCode.GETSTATIC,
+                    codegen.mainClassName,
+                    Codegen.DESCRIPTORS_FIELD_NAME,
+                    Codegen.DESCRIPTORS_FIELD_SIGNATURE);
             cfw.addPush(fnIndex);
             cfw.add(ByteCode.AALOAD);
             cfw.add(ByteCode.SWAP);

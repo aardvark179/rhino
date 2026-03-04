@@ -280,7 +280,8 @@ public class Token {
             // Replaces the current block scope with a fresh copy of itself, so that the bindings
             // the next loop iteration sees are distinct from the ones it leaves behind.
             SCOPE_REPLACE = ITERATION_SCOPE + 1,
-            LAST_TOKEN = SCOPE_REPLACE + 1;
+            AWAIT = SCOPE_REPLACE + 1, // ES2017 await expression
+            LAST_TOKEN = AWAIT + 1;
 
     /**
      * Returns a name for the token. If Rhino is compiled with certain hardcoded debugging flags in
@@ -655,6 +656,8 @@ public class Token {
                 return "TO_DOUBLE";
             case OBJECT_REST:
                 return "OBJECT_REST";
+            case AWAIT:
+                return "AWAIT";
             case GET:
                 return "GET";
             case SET:
