@@ -2181,6 +2181,16 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
                 getTopLevelScope(scope), TopLevel.Builtins.GeneratorFunction);
     }
 
+    public static Scriptable getAsyncFunctionPrototype(VarScope scope) {
+        return TopLevel.getBuiltinPrototype(
+                getTopLevelScope(scope), TopLevel.Builtins.AsyncFunction);
+    }
+
+    public static Scriptable getAsyncGeneratorFunctionPrototype(VarScope scope) {
+        return TopLevel.getBuiltinPrototype(
+                getTopLevelScope(scope), TopLevel.Builtins.AsyncGeneratorFunction);
+    }
+
     public static Scriptable getArrayPrototype(VarScope scope) {
         return TopLevel.getBuiltinPrototype(getTopLevelScope(scope), TopLevel.Builtins.Array);
     }

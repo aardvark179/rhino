@@ -128,6 +128,7 @@ public class FunctionNode extends ScriptNode {
     private boolean isES6Generator;
     // ES2024, B.3.2.1: block-scoped function that should also be var-hoisted
     private boolean annexBHoisted;
+    private boolean isAsync;
     private List<Node> generatorResumePoints;
     private Map<Node, int[]> liveLocals;
     private Node generatorParamInitBlock; // IR block for default parameters init in generators
@@ -345,6 +346,15 @@ public class FunctionNode extends ScriptNode {
         needsActivation = true;
     }
 
+    public boolean isAsync() {
+        return isAsync;
+    }
+
+    public void setIsAsync() {
+        isAsync = true;
+        needsActivation = true;
+    }
+
     @Override
     public boolean hasRestParameter() {
         return hasRestParameter;
@@ -461,6 +471,9 @@ public class FunctionNode extends ScriptNode {
         boolean isArrow = functionType == ARROW_FUNCTION;
         if (!isMethod()) {
             sb.append(makeIndent(depth));
+            if (isAsync) {
+                sb.append("async ");
+            }
             if (!isArrow) {
                 sb.append("function");
             }
@@ -565,6 +578,7 @@ public class FunctionNode extends ScriptNode {
         this.requiresArgumentObject = source.requiresArgumentObject;
         this.isGenerator = source.isGenerator;
         this.isES6Generator = source.isES6Generator;
+        this.isAsync = source.isAsync;
         this.generatorResumePoints = source.generatorResumePoints;
         this.liveLocals = source.liveLocals;
         this.generatorParamInitBlock = source.generatorParamInitBlock;

@@ -32,6 +32,7 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
     private static final int REQUIRES_ARGUMENT_OBJECT_FLAG = 1 << 11;
     private static final int DECLARED_AS_FUNCTION_EXPRESSION_FLAG = 1 << 12;
     private static final int DERIVED_CONSTRUCTOR_FLAG = 1 << 13;
+    private static final int IS_ASYNC_FLAG = 1 << 14;
 
     private final JSCode<T> code;
     private final JSCode<T> constructor;
@@ -83,6 +84,7 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
             boolean requiresArgumentObject,
             boolean declaredAsFunctionExpression,
             boolean derivedConstructor,
+            boolean isAsync,
             SecurityController securityController,
             Object securityDomain,
             int functionType,
@@ -108,6 +110,7 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
         flags = flags | (requiresArgumentObject ? REQUIRES_ARGUMENT_OBJECT_FLAG : 0);
         flags = flags | (declaredAsFunctionExpression ? DECLARED_AS_FUNCTION_EXPRESSION_FLAG : 0);
         flags = flags | (derivedConstructor ? DERIVED_CONSTRUCTOR_FLAG : 0);
+        flags = flags | (isAsync ? IS_ASYNC_FLAG : 0);
         this.flags = flags;
 
         this.sourceFile = sourceFile;
@@ -165,6 +168,10 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
 
     public boolean isES6Generator() {
         return (flags & IS_ES6_GENERATOR_FLAG) != 0;
+    }
+
+    public boolean isAsync() {
+        return (flags & IS_ASYNC_FLAG) != 0;
     }
 
     public boolean isShorthand() {
@@ -312,6 +319,7 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
         public boolean isScript;
         public boolean isTopLevel;
         public boolean isES6Generator;
+        public boolean isAsync;
         public boolean isShorthand;
         public boolean hasPrototype;
         public boolean hasLexicalThis;
@@ -402,6 +410,7 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
                             requiresArgumentObject,
                             declaredAsFunctionExpression,
                             false,
+                            isAsync,
                             securityController,
                             securityDomain,
                             functionType,

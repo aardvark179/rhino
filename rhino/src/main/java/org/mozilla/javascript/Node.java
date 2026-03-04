@@ -1107,7 +1107,8 @@ public class Node implements Iterable<Node> {
         map.put(this, copy);
         if (copy.type == Token.TARGET
                 || copy.type == Token.YIELD
-                || copy.type == Token.YIELD_STAR) {
+                || copy.type == Token.YIELD_STAR
+                || copy.type == Token.AWAIT) {
             copy.putIntProp(LABEL_ID_PROP, -1);
         }
         Node prev = null;
