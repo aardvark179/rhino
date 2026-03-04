@@ -20,6 +20,7 @@ import org.mozilla.javascript.Node;
 import org.mozilla.javascript.NodeTransformer;
 import org.mozilla.javascript.ScriptOrFn;
 import org.mozilla.javascript.ScriptRuntime;
+import org.mozilla.javascript.TemplateLiteralCallSite;
 import org.mozilla.javascript.Token;
 import org.mozilla.javascript.ast.FunctionNode;
 import org.mozilla.javascript.ast.Jump;
