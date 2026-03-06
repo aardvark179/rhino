@@ -45,9 +45,13 @@ import org.mozilla.javascript.Context;
 import org.mozilla.javascript.Context.EvaluationMethod;
 import org.mozilla.javascript.EvaluatorException;
 import org.mozilla.javascript.Kit;
+import org.mozilla.javascript.LambdaFunction;
 import org.mozilla.javascript.RhinoException;
 import org.mozilla.javascript.Script;
+import org.mozilla.javascript.ScriptableObject;
+import org.mozilla.javascript.SerializableCallable;
 import org.mozilla.javascript.TopLevel;
+import org.mozilla.javascript.Undefined;
 import org.mozilla.javascript.VarScope;
 import org.mozilla.javascript.debug.DebugFrame;
 import org.mozilla.javascript.debug.DebuggableScript;
@@ -259,6 +263,29 @@ public class Test262SuiteTest {
 
         Test262 proto = Test262.init(cx, scope, Test262.RealmMode.SAFE);
         Test262.install(scope, proto, Test262.RealmMode.SAFE);
+
+        if (testCase.hasFlag("async")) {
+            LambdaFunction printFn =
+                    new LambdaFunction(
+                            scope,
+                            "print",
+                            1,
+                            (SerializableCallable)
+                                    (cx2, scope2, thisObj, args) -> {
+                                        if (args.length > 0) {
+                                            String msg = Context.toString(args[0]);
+                                            if ("Test262:AsyncTestComplete".equals(msg)) {
+                                                testCase.asyncSuccess = true;
+                                            } else if (msg.startsWith(
+                                                    "Test262:AsyncTestFailure:")) {
+                                                testCase.asyncFailed = true;
+                                            }
+                                        }
+                                        return Undefined.instance;
+                                    });
+            scope.defineProperty("print", printFn, ScriptableObject.DONTENUM);
+        }
+
         return scope;
     }
 
@@ -306,6 +333,15 @@ public class Test262SuiteTest {
 
                 failedEarly = false; // not after this line
                 caseScript.exec(cx, scope, scope.getGlobalThis());
+
+                if (testCase.hasFlag("async")) {
+                    cx.processMicrotasks();
+                    if (testCase.asyncFailed) {
+                        fail("Async test failed");
+                    } else if (!testCase.asyncSuccess) {
+                        fail("Async test did not complete");
+                    }
+                }
 
                 if (testCase.isNegative()) {
                     fail(
@@ -594,7 +630,7 @@ public class Test262SuiteTest {
                 }
             }
             // 2. it runs in an unsupported environment
-            if (testCase.hasFlag("module") || testCase.hasFlag("async")) {
+            if (testCase.hasFlag("module")) {
                 if (includeUnsupported) {
                     TestResultTracker tracker =
                             RESULT_TRACKERS.computeIfAbsent(
@@ -659,6 +695,9 @@ public class Test262SuiteTest {
         private final Set<String> flags;
         private final List<String> harnessFiles;
         private final Set<String> features;
+
+        volatile boolean asyncSuccess;
+        volatile boolean asyncFailed;
 
         Test262Case(
                 File file,
@@ -736,6 +775,10 @@ public class Test262SuiteTest {
 
                 if (metadata.containsKey("includes")) {
                     harnessFiles.addAll((List<String>) metadata.get("includes"));
+                }
+
+                if (flags.contains("async")) {
+                    harnessFiles.add("doneprintHandle.js");
                 }
             }
 
