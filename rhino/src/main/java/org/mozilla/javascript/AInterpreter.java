@@ -71,7 +71,8 @@ public abstract class AInterpreter<T extends ACallFrame<T, U>, U extends ACompil
 
     protected static void enterFrame(
             Context cx, ACallFrame<?, ?> frame, Object[] args, boolean continuationRestart) {
-        boolean usesActivation = frame.fnOrScript.getDescriptor().requiresActivationFrame();
+        var desc = frame.fnOrScript.getDescriptor();
+        boolean usesActivation = desc.requiresActivationFrame();
         boolean isDebugged = frame.debuggerFrame != null;
         if (usesActivation) {
             VarScope scope = frame.scope;
@@ -107,7 +108,11 @@ public abstract class AInterpreter<T extends ACallFrame<T, U>, U extends ACompil
             if (isDebugged) {
                 frame.debuggerFrame.onEnter(cx, scope, frame.thisObj, args);
             }
-            ScriptRuntime.enterActivationFunction(cx, scope);
+            if (!(desc.isStrict() && cx.getLanguageVersion() >= Context.VERSION_ES6)
+                    && !desc.isES6Generator()
+                    && !desc.isAsync()) {
+                ScriptRuntime.enterActivationFunction(cx, scope);
+            }
         } else if (isDebugged) {
             frame.debuggerFrame.onEnter(cx, new DebugScope(frame), frame.thisObj, args);
         }

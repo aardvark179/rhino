@@ -1179,11 +1179,17 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             CallFrame generatorFrame = captureFrameForGenerator(frame);
             generatorFrame.frozen = true;
             if (cx.getLanguageVersion() >= Context.VERSION_ES6) {
-                frame.result =
-                        new ES6Generator(
-                                frame.scope,
-                                (JSFunction) generatorFrame.fnOrScript,
-                                generatorFrame);
+                JSFunction fn = (JSFunction) generatorFrame.fnOrScript;
+                ES6Generator gen = new ES6Generator(frame.scope, fn, generatorFrame);
+                if (fn.isAsync() && !fn.isGeneratorFunction()) {
+                    // Async non-generator function: drive via Promise runner.
+                    // isGeneratorFunction() returns descriptor.isES6Generator(), which is
+                    // false for async non-generators (we only called setIsGenerator(), not
+                    // setIsES6Generator(), in IRFactory).
+                    frame.result = NativePromise.createAsyncFunctionPromise(cx, frame.scope, gen);
+                } else {
+                    frame.result = gen;
+                }
             } else {
                 frame.result =
                         new NativeGenerator(

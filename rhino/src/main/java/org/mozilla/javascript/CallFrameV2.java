@@ -84,7 +84,7 @@ public class CallFrameV2 extends ACallFrame<CallFrameV2, CompilerData<?>> implem
             // 'arguments' in a default-param scope binds to the arguments object rather
             // than to a hoisted inner `function arguments(){}`. Skip frame-init hoisting
             // for them.
-            if (desc.getFunctionCount() != 0 && !desc.isES6Generator()) {
+            if (desc.getFunctionCount() != 0 && !desc.isES6Generator() && !desc.isAsync()) {
                 if (desc.getFunctionType() != 0 && !desc.requiresActivationFrame()) Kit.codeBug();
                 for (int i = 0; i < desc.getFunctionCount(); i++) {
                     JSDescriptor<?> fdesc = desc.getFunction(i);
