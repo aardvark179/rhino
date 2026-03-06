@@ -1035,6 +1035,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 visitNullishCoalescing(child);
                 return;
             case Token.YIELD:
+            case Token.AWAIT:
                 visitYield(node, child);
                 return;
             case Token.YIELD_STAR:

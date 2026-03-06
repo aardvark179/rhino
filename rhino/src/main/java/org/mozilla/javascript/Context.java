@@ -3024,6 +3024,7 @@ public class Context implements Closeable {
     TopLevel topCallScope;
     boolean isContinuationsTopCall;
     NativeCall currentActivationCall;
+    final ArrayDeque<NativeCall> activationCalls = new ArrayDeque<>();
     private boolean isStrict;
     XMLLib cachedXMLLib;
     BaseFunction typeErrorThrower;

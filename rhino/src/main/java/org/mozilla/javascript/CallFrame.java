@@ -127,7 +127,7 @@ final class CallFrame extends ACallFrame<CallFrame, InterpreterData<?>> implemen
         // creation
         // Ref: Ecma 2026, 10.2.11, FunctionDeclarationInstantiation
 
-        if (desc.getFunctionCount() != 0 && !desc.isES6Generator()) {
+        if (desc.getFunctionCount() != 0 && !desc.isES6Generator() && !desc.isAsync()) {
             if (desc.getFunctionType() != 0 && !desc.requiresActivationFrame()) Kit.codeBug();
             for (int i = 0; i < desc.getFunctionCount(); i++) {
                 JSDescriptor<?> fdesc = desc.getFunction(i);
