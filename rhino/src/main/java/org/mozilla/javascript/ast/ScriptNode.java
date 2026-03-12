@@ -259,6 +259,10 @@ public class ScriptNode extends Scope {
         return null;
     }
 
+    public boolean hasDestructuring() {
+        return false;
+    }
+
     public boolean isShorthand() {
         return false;
     }
