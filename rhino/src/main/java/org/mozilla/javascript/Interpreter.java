@@ -742,6 +742,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Token.TRUE] = new DoTrue();
         instructionObjs[base + Icode.UNDEF] = new DoUndef();
         instructionObjs[base + Token.ENTERWITH] = new DoEnterWith();
+        instructionObjs[base + Token.ENTER_SCOPE] = new DoEnterScope();
         instructionObjs[base + Token.LEAVE_SCOPE] = new DoLeaveScope();
         instructionObjs[base + Token.CATCH_SCOPE] = new DoCatchScope();
         instructionObjs[base + Token.ENUM_INIT_KEYS] = new DoEnumInit();
@@ -3363,6 +3364,15 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                 lhs = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
             frame.scope = ScriptRuntime.enterWith(lhs, cx, frame.scope);
             frame.stackTop--;
+            return null;
+        }
+    }
+
+    private static class DoEnterScope extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            frame.scope = new LocalScope(frame.scope);
+            frame.stack[++frame.stackTop] = frame.scope;
             return null;
         }
     }
