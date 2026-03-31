@@ -291,7 +291,8 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                     // at script/function start.
                     // In addition, function expressions can not be present here
                     // at statement level, they must only be present as expressions.
-                    if (fnType == FunctionNode.FUNCTION_EXPRESSION_STATEMENT) {
+                    if (fnType == FunctionNode.FUNCTION_EXPRESSION_STATEMENT
+                            || fnType == FunctionNode.FUNCTION_BLOCK_SCOPED) {
                         addIndexOp(Icode.CLOSURE_STMT, fnIndex);
                     } else {
                         if (fnType != FunctionNode.FUNCTION_STATEMENT) {
