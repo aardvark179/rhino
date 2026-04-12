@@ -1047,7 +1047,9 @@ public class Parser {
                         }
 
                         if (matchToken(Token.ASSIGN, true)) {
-                            if (compilerEnv.getLanguageVersion() >= Context.VERSION_ES6) {
+                            if (wasRest) {
+                                reportError("msg.rest.default.value");
+                            } else if (compilerEnv.getLanguageVersion() >= Context.VERSION_ES6) {
                                 fnNode.putDefaultParams(paramName, assignExpr());
                             } else {
                                 reportError("msg.default.args");
@@ -1407,7 +1409,10 @@ public class Parser {
             }
             fnNode.setHasRestParameter(true);
             AstNode restParam = ((Spread) params).getExpression();
-            if (restParam instanceof Name) {
+            if (restParam instanceof Assignment) {
+                reportError("msg.rest.default.value");
+                fnNode.addParam(makeErrorNode());
+            } else if (restParam instanceof Name) {
                 fnNode.addParam(restParam);
                 String paramName = ((Name) restParam).getIdentifier();
                 defineSymbol(Token.LP, paramName);
