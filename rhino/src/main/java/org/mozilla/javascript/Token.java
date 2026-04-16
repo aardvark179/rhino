@@ -145,10 +145,12 @@ public class Token {
             ACCUMULATE_ITERATOR = ACCUMULATE_RESULT + 1,
             ACCUMULATE_KEYVALUES = ACCUMULATE_ITERATOR + 1,
             MAKE_OBJECT = ACCUMULATE_KEYVALUES + 1,
-            MAKE_ARRAAY = MAKE_OBJECT + 1;
+            MAKE_ARRAAY = MAKE_OBJECT + 1,
+
+            TO_OBJECT_COERCIBLE = MAKE_ARRAAY + 1; // ES6 RequireObjectCoercible
 
     // End of interpreter bytecodes
-    public static final int LAST_BYTECODE_TOKEN = MAKE_ARRAAY,
+    public static final int LAST_BYTECODE_TOKEN = TO_OBJECT_COERCIBLE,
             TRY = LAST_BYTECODE_TOKEN + 1,
             SEMI = TRY + 1, // semicolon
             LB = SEMI + 1, // left and right brackets
@@ -636,6 +638,8 @@ public class Token {
                 return "OBJECT_REST";
             case AWAIT:
                 return "AWAIT";
+            case TO_OBJECT_COERCIBLE:
+                return "TO_OBJECT_COERCIBLE";
             case GET:
                 return "GET";
             case SET:

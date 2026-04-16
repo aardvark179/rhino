@@ -729,6 +729,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Icode.CALLSPECIAL_ACCUMULATED] = new DoCallSpecialAccumulated();
         instructionObjs[base + Token.NEW] = new DoNew();
         instructionObjs[base + Token.TYPEOF] = new DoTypeOf();
+        instructionObjs[base + Token.TO_OBJECT_COERCIBLE] = new DoToObjectCoercible();
         instructionObjs[base + Icode.TYPEOFNAME] = new DoTypeOfName();
         instructionObjs[base + Token.STRING] = new DoString();
         instructionObjs[base + Icode.SHORTNUMBER] = new DoShortNumber();
@@ -3049,6 +3050,18 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             Object lhs = stack[frame.stackTop];
             if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[frame.stackTop]);
             stack[frame.stackTop] = ScriptRuntime.typeof(lhs);
+            return null;
+        }
+    }
+
+    private static class DoToObjectCoercible extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            Object[] stack = frame.stack;
+            double[] sDbl = frame.doubleStack;
+            Object lhs = stack[frame.stackTop];
+            if (lhs == DOUBLE_MARK) lhs = ScriptRuntime.wrapNumber(sDbl[frame.stackTop]);
+            stack[frame.stackTop] = ScriptRuntime.toObject(cx, frame.scope, lhs);
             return null;
         }
     }
