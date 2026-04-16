@@ -167,6 +167,7 @@ import org.mozilla.javascript.interpreterv2.instruction.This;
 import org.mozilla.javascript.interpreterv2.instruction.ThisFunction;
 import org.mozilla.javascript.interpreterv2.instruction.Throw;
 import org.mozilla.javascript.interpreterv2.instruction.ToNumeric;
+import org.mozilla.javascript.interpreterv2.instruction.ToObject;
 import org.mozilla.javascript.interpreterv2.instruction.ToPropertyKey;
 import org.mozilla.javascript.interpreterv2.instruction.Typeof;
 import org.mozilla.javascript.interpreterv2.instruction.TypeofName;
@@ -913,6 +914,9 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 return;
             case Token.TYPEOF:
                 visitUnaryOperation(child, obj -> new Typeof(obj));
+                return;
+            case Token.TO_OBJECT_COERCIBLE:
+                visitUnaryOperation(child, obj -> new ToObject(obj));
                 return;
             case Token.VOID:
                 visitVoid(child);
