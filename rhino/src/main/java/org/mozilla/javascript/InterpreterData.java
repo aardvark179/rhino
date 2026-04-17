@@ -25,8 +25,7 @@ final class InterpreterData<T extends ScriptOrFn<T>> extends ACompilerData<T, In
             String[] itsStringTable,
             double[] itsDoubleTable,
             BigInteger[] itsBigIntTable,
-            Object[] itsRegExpLiterals,
-            TemplateLiteralCallSite[] itsTemplateLiterals,
+            Object[] itsLiterals,
             byte[] itsICode,
             int[] exceptionTable,
             int maxVars,
@@ -41,8 +40,7 @@ final class InterpreterData<T extends ScriptOrFn<T>> extends ACompilerData<T, In
         this.itsStringTable = itsStringTable;
         this.itsDoubleTable = itsDoubleTable;
         this.itsBigIntTable = itsBigIntTable;
-        this.itsRegExpLiterals = itsRegExpLiterals;
-        this.itsTemplateLiterals = itsTemplateLiterals;
+        this.itsLiterals = itsLiterals;
         this.itsICode = itsICode;
         this.maxCalleeArgs = maxCalleeArgs;
         this.literalIds = literalIds;
@@ -53,8 +51,7 @@ final class InterpreterData<T extends ScriptOrFn<T>> extends ACompilerData<T, In
     final String[] itsStringTable;
     final double[] itsDoubleTable;
     final BigInteger[] itsBigIntTable;
-    final Object[] itsRegExpLiterals;
-    final TemplateLiteralCallSite[] itsTemplateLiterals;
+    final Object[] itsLiterals;
 
     final byte[] itsICode;
 
@@ -117,8 +114,7 @@ final class InterpreterData<T extends ScriptOrFn<T>> extends ACompilerData<T, In
         String[] itsStringTable;
         double[] itsDoubleTable;
         BigInteger[] itsBigIntTable;
-        Object[] itsRegExpLiterals;
-        TemplateLiteralCallSite[] itsTemplateLiterals;
+        Object[] itsLiterals;
 
         byte[] itsICode;
 
@@ -157,9 +153,8 @@ final class InterpreterData<T extends ScriptOrFn<T>> extends ACompilerData<T, In
                                 dedup.deduplicate(itsStringTable),
                                 itsDoubleTable,
                                 itsBigIntTable,
-                                itsRegExpLiterals,
-                                itsTemplateLiterals,
-                                dedup.deduplicate(itsICode),
+                                itsLiterals,
+                                itsICode,
                                 exceptionTable,
                                 maxVars,
                                 maxLocals,

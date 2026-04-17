@@ -43,7 +43,9 @@ import org.mozilla.javascript.Undefined;
 import org.mozilla.javascript.VarScope;
 import org.mozilla.javascript.ast.FunctionNode;
 import org.mozilla.javascript.ast.Name;
+import org.mozilla.javascript.ast.RegExpLiteral;
 import org.mozilla.javascript.ast.ScriptNode;
+import org.mozilla.javascript.ast.TemplateLiteral;
 import org.mozilla.javascript.config.RhinoConfig;
 import org.mozilla.javascript.debug.DebuggableScript;
 
@@ -451,8 +453,6 @@ public class Codegen implements Evaluator {
             code.resumeType = GENERATOR_METHOD_SIGNATURE;
         }
         builder.setCode(code);
-        builderEnv.hasRegExpLiterals |= (n.getRegexpCount() > 0);
-        builderEnv.hasTemplateLiterals |= (n.getTemplateLiteralCount() > 0);
         CodeGenUtils.setConstructor(builder, n);
 
         x.add(n);
@@ -580,8 +580,7 @@ public class Codegen implements Evaluator {
         }
         ClassFileWriter mainCfw = cfws[0];
 
-        prepareRegExpConstants(cfws, chunkEnvs);
-        prepareTemplateLiterals(cfws, chunkEnvs);
+        prepareConstants(cfws, chunkEnvs);
         mainCfw.addField(ID_FIELD_NAME, "I", ACC_PRIVATE);
         mainCfw.addField(
                 DESCRIPTORS_FIELD_NAME,
@@ -786,95 +785,52 @@ public class Codegen implements Evaluator {
      * regexp implementation reports anything wrong with an expression now, while there is still a
      * script being compiled to report it against.
      */
-    private void prepareRegExpConstants(ClassFileWriter[] cfws, MHJSCode.BuilderEnv[] chunkEnvs) {
-        boolean anyRegExpLiterals = false;
+    private void prepareConstants(ClassFileWriter[] cfws, MHJSCode.BuilderEnv[] chunkEnvs) {
+        boolean anyConstants = false;
         for (ScriptNode n : scriptOrFnNodes) {
-            if (n.getRegexpCount() > 0) {
-                anyRegExpLiterals = true;
+            if (n.getLiteralCount() > 0) {
+                anyConstants = true;
                 break;
             }
         }
-        if (!anyRegExpLiterals) {
+        if (!anyConstants) {
             return;
         }
         Context cx = Context.getCurrentContext();
-        RegExpProxy proxy = cx == null ? null : ScriptRuntime.getRegExpProxy(cx);
-        if (proxy == null) {
-            throw new IllegalStateException(
-                    "Compilation of regexps literals requires an enclosing context.");
+        RegExpProxy rep = cx == null ? null : ScriptRuntime.getRegExpProxy(cx);
+        if (rep == null) {
+            throw new IllegalStateException("Compilation requires an enclosing context.");
         }
 
         Object[][] constants = new Object[scriptOrFnNodes.length][];
         for (int i = 0; i != scriptOrFnNodes.length; ++i) {
             ScriptNode n = scriptOrFnNodes[i];
-            int regCount = n.getRegexpCount();
-            constants[i] = new Object[regCount];
-            for (int j = 0; j != regCount; ++j) {
-                Object constant =
-                        proxy.prepareRegExpConstant(cx, n.getRegexpString(j), n.getRegexpFlags(j));
-                constants[i][j] = constant;
+            int constantCount = n.getLiteralCount();
+            constants[i] = new Object[constantCount];
+            for (int j = 0; j != constantCount; ++j) {
+                var literal = n.getLiteral(j);
+                if (literal instanceof RegExpLiteral) {
+                    var re = (RegExpLiteral) literal;
+                    constants[i][j] = rep.prepareRegExpConstant(cx, re.getValue(), re.getFlags());
+                } else if (literal instanceof TemplateLiteral) {
+                    var tl = ((TemplateLiteral) literal).getLiteralObj();
+                    constants[i][j] = tl;
+                } else {
+                    constants[i][j] = literal;
+                }
             }
         }
 
         for (ClassFileWriter cfw : cfws) {
-            proxy.registerDynamicConstantDescribers(cfw.getDynamicDescriptorRegistry());
+            rep.registerDynamicConstantDescribers(cfw.getDynamicDescriptorRegistry());
         }
 
-        regExpConstants = constants;
-        // With the literals in the constant pool there is nothing left to initialize.
-        for (MHJSCode.BuilderEnv env : chunkEnvs) {
-            env.hasRegExpLiterals = false;
-        }
-    }
-
-    /**
-     * Compile the regexp literals ahead of time so that they can be written to the class file as
-     * dynamic constants, and register the describers that will write them.
-     *
-     * <p>Preparing them here is what lets the constants be resolved later without a context: the
-     * regexp implementation reports anything wrong with an expression now, while there is still a
-     * script being compiled to report it against.
-     */
-    private void prepareTemplateLiterals(ClassFileWriter[] cfws, MHJSCode.BuilderEnv[] chunkEnvs) {
-        boolean anyTemplateLiterals = false;
-        for (ScriptNode n : scriptOrFnNodes) {
-            if (n.getTemplateLiteralCount() > 0) {
-                anyTemplateLiterals = true;
-                break;
-            }
-        }
-        if (!anyTemplateLiterals) {
-            return;
-        }
-
-        Object[][] constants = new Object[scriptOrFnNodes.length][];
-        for (int i = 0; i != scriptOrFnNodes.length; ++i) {
-            ScriptNode n = scriptOrFnNodes[i];
-            int tlCount = n.getTemplateLiteralCount();
-            constants[i] = new Object[tlCount];
-            for (int j = 0; j != tlCount; ++j) {
-                Object constant = n.getTemplateLiteralObj(j);
-                constants[i][j] = constant;
-            }
-        }
-
-        templateLiteralConstants = constants;
-        // With the literals in the constant pool there is nothing left to initialize.
-        for (MHJSCode.BuilderEnv env : chunkEnvs) {
-            env.hasTemplateLiterals = false;
-        }
+        this.constants = constants;
     }
 
     /** The prepared constant for a regexp literal, or null if it is compiled at run time. */
-    Object getRegExpConstant(ScriptNode n, int regexpIndex) {
-        return regExpConstants == null ? null : regExpConstants[getIndex(n)][regexpIndex];
-    }
-
-    /** The prepared constant for a regexp literal, or null if it is compiled at run time. */
-    Object getTemplateLiteralConstant(ScriptNode n, int regexpIndex) {
-        return templateLiteralConstants == null
-                ? null
-                : templateLiteralConstants[getIndex(n)][regexpIndex];
+    Object getConstant(ScriptNode n, int index) {
+        return constants == null ? null : constants[getIndex(n)][index];
     }
 
     private void emitConstantDudeInitializers(ClassFileWriter cfw) {
@@ -1140,12 +1096,10 @@ public class Codegen implements Evaluator {
     String mainClassSignature;
 
     /**
-     * The prepared form of every regexp literal, indexed as {@link #scriptOrFnNodes} is and then by
-     * the index of the literal, or null when the literals are compiled at run time instead.
+     * The prepared form of every literal, indexed as {@link #scriptOrFnNodes} is and then by the
+     * index of the literal, or null when the literals are compiled at run time instead.
      */
-    private Object[][] regExpConstants;
-
-    private Object[][] templateLiteralConstants;
+    private Object[][] constants;
 
     private double[] itsConstantList;
     private int itsConstantListSize;

@@ -1231,7 +1231,7 @@ class BodyCodegen {
                     cfw.addALoad(contextLocal);
                     cfw.addALoad(variableObjectLocal);
                     int i = node.getExistingIntProp(Node.REGEXP_PROP);
-                    var constant = codegen.getRegExpConstant(scriptOrFn, i);
+                    Object constant = codegen.getConstant(scriptOrFn, i);
                     if (constant != null) {
                         cfw.addLoadDynamicConstant(constant);
                     } else {
@@ -1245,6 +1245,18 @@ class BodyCodegen {
                                     + "Lorg/mozilla/javascript/VarScope;"
                                     + "Ljava/lang/Object;"
                                     + ")Lorg/mozilla/javascript/Scriptable;");
+                }
+                break;
+
+            case Token.LOAD_LITERAL:
+                {
+                    int i = node.getExistingIntProp(Node.LITERAL_INDEX_PROP);
+                    Object constant = codegen.getConstant(scriptOrFn, i);
+                    if (constant != null) {
+                        cfw.addLoadDynamicConstant(constant);
+                    } else {
+                        throw new IllegalStateException("null constant.");
+                    }
                 }
                 break;
 
@@ -2131,7 +2143,7 @@ class BodyCodegen {
         // create the template literal call-site object for tagged template literals,
         // default template literals are already handled earlier in IRFactory
         int index = node.getExistingIntProp(Node.TEMPLATE_LITERAL_PROP);
-        cfw.addLoadDynamicConstant(codegen.getTemplateLiteralConstant(scriptOrFn, index));
+        cfw.addLoadDynamicConstant(codegen.getConstant(scriptOrFn, index));
         cfw.addALoad(contextLocal);
         cfw.addALoad(variableObjectLocal);
         cfw.addInvoke(
@@ -2141,6 +2153,16 @@ class BodyCodegen {
                 "(Lorg/mozilla/javascript/Context;"
                         + "Lorg/mozilla/javascript/VarScope;"
                         + ")Lorg/mozilla/javascript/Scriptable;");
+    }
+
+    private void pushDescriptor() {
+        cfw.add(
+                ByteCode.GETSTATIC,
+                codegen.mainClassName,
+                Codegen.DESCRIPTORS_FIELD_NAME,
+                Codegen.DESCRIPTORS_FIELD_SIGNATURE);
+        cfw.addPush(scriptOrFnIndex);
+        cfw.add(ByteCode.AALOAD);
     }
 
     private void generateIfJump(Node node, Node parent, int trueLabel, int falseLabel) {

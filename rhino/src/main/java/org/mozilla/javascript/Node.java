@@ -70,8 +70,9 @@ public class Node implements Iterable<Node> {
             SUPER_PROPERTY_ACCESS = 31,
             NUMBER_OF_SPREAD = 32,
             OBJECT_REST_PROP = 33, // marks a CALL node as object rest operation
-            CONST_IDS_PROP = 34, // boolean[] flagging which declarations or names are consts
-            LAST_PROP = CONST_IDS_PROP,
+            CONST_IDS_PROP = 34, // boolean[] flagging which OBJECT_IDS_PROP names are consts
+            LITERAL_INDEX_PROP = 35, // int index into the shared literals table
+            LAST_PROP = LITERAL_INDEX_PROP,
             FIRST_PROP = FUNCTION_PROP;
 
     // values of ISNUMBER_PROP to specify
@@ -462,6 +463,8 @@ public class Node implements Iterable<Node> {
                 return "object_rest_prop";
             case CONST_IDS_PROP:
                 return "const_ids";
+            case LITERAL_INDEX_PROP:
+                return "literal_index_prop";
 
             default:
                 Kit.codeBug();

@@ -19,14 +19,14 @@ import org.mozilla.javascript.JSScript;
 import org.mozilla.javascript.Kit;
 import org.mozilla.javascript.Node;
 import org.mozilla.javascript.NodeTransformer;
-import org.mozilla.javascript.RegExpProxy;
 import org.mozilla.javascript.ScriptOrFn;
 import org.mozilla.javascript.ScriptRuntime;
 import org.mozilla.javascript.Token;
 import org.mozilla.javascript.ast.FunctionNode;
 import org.mozilla.javascript.ast.Jump;
+import org.mozilla.javascript.ast.RegExpLiteral;
 import org.mozilla.javascript.ast.ScriptNode;
-import org.mozilla.javascript.ast.TemplateCharacters;
+import org.mozilla.javascript.ast.TemplateLiteral;
 import org.mozilla.javascript.interpreterv2.instruction.Add;
 import org.mozilla.javascript.interpreterv2.instruction.ArrayLit;
 import org.mozilla.javascript.interpreterv2.instruction.ArrayLitFinish;
@@ -96,6 +96,7 @@ import org.mozilla.javascript.interpreterv2.instruction.LeftShift;
 import org.mozilla.javascript.interpreterv2.instruction.LitPush;
 import org.mozilla.javascript.interpreterv2.instruction.LitSetAt;
 import org.mozilla.javascript.interpreterv2.instruction.LitSpread;
+import org.mozilla.javascript.interpreterv2.instruction.Literal;
 import org.mozilla.javascript.interpreterv2.instruction.LocalClear;
 import org.mozilla.javascript.interpreterv2.instruction.LocalLoad;
 import org.mozilla.javascript.interpreterv2.instruction.MethodExpression;
@@ -181,6 +182,7 @@ import org.mozilla.javascript.interpreterv2.operand.BooleanOperand;
 import org.mozilla.javascript.interpreterv2.operand.DoubleOperand;
 import org.mozilla.javascript.interpreterv2.operand.GetVarOperand;
 import org.mozilla.javascript.interpreterv2.operand.IntOperand;
+import org.mozilla.javascript.interpreterv2.operand.LiteralOperand;
 import org.mozilla.javascript.interpreterv2.operand.NewTargetOperand;
 import org.mozilla.javascript.interpreterv2.operand.NullOperand;
 import org.mozilla.javascript.interpreterv2.operand.Operand;
@@ -386,23 +388,18 @@ public class Compiler<T extends ScriptOrFn<T>> {
         generateInstructions(theFunction.getLastChild());
     }
 
-    private Object generateRegExpLiteral(int i) {
-        Context cx = Context.getCurrentContext();
-        RegExpProxy rep = ScriptRuntime.checkRegExpProxy(cx);
-        String string = scriptOrFn.getRegexpString(i);
-        String flags = scriptOrFn.getRegexpFlags(i);
-        return rep.compileRegExp(cx, string, flags);
-    }
-
-    private Object generateTemplateLiteral(int i) {
-        List<TemplateCharacters> strings = scriptOrFn.getTemplateLiteralStrings(i);
-        int j = 0;
-        String[] values = new String[strings.size() * 2];
-        for (TemplateCharacters s : strings) {
-            values[j++] = s.getValue();
-            values[j++] = s.getRawValue();
+    private Object generateLiteral(int i) {
+        var literal = scriptOrFn.getLiteral(i);
+        if (literal instanceof RegExpLiteral) {
+            var cx = Context.getCurrentContext();
+            var rep = ScriptRuntime.checkRegExpProxy(cx);
+            var re = (RegExpLiteral) literal;
+            return rep.compileRegExp(cx, re.getValue(), re.getFlags());
+        } else if (literal instanceof TemplateLiteral) {
+            return ((TemplateLiteral) literal).getLiteralObj();
+        } else {
+            return literal;
         }
-        return values;
     }
 
     private void generateStatement(Node node, int initialStackDepth) {
@@ -1012,6 +1009,9 @@ public class Compiler<T extends ScriptOrFn<T>> {
             case Token.REGEXP:
                 visitRegexp(node);
                 return;
+            case Token.LOAD_LITERAL:
+                visitLiteral(node);
+                return;
             case Token.ARRAYLIT:
                 visitArrayLit(node, child);
                 return;
@@ -1290,7 +1290,12 @@ public class Compiler<T extends ScriptOrFn<T>> {
 
     private void visitRegexp(Node node) {
         int index = node.getExistingIntProp(Node.REGEXP_PROP);
-        addInstruction(new Regexp(generateRegExpLiteral(index)));
+        addInstruction(new Regexp(generateLiteral(index)));
+    }
+
+    private void visitLiteral(Node node) {
+        int index = node.getExistingIntProp(Node.LITERAL_INDEX_PROP);
+        addInstruction(new Literal(generateLiteral(index)));
     }
 
     private void visitArrayLit(Node node, Node child) {
@@ -1425,7 +1430,8 @@ public class Compiler<T extends ScriptOrFn<T>> {
 
     private void visitTemplateLiteral(Node node) {
         int index = node.getExistingIntProp(Node.TEMPLATE_LITERAL_PROP);
-        addInstruction(new TemplateLiteralCallsite(generateTemplateLiteral(index)));
+        addInstruction(
+                new TemplateLiteralCallsite((TemplateLiteralCallSite) generateLiteral(index)));
     }
 
     private void visitNullishCoalescing(Node child) {
@@ -1772,6 +1778,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
             case Token.SUPER:
             case Token.NEW_TARGET:
             case Token.GETVAR:
+            case Token.LOAD_LITERAL:
                 return true;
             default:
                 return false;
@@ -1805,8 +1812,15 @@ public class Compiler<T extends ScriptOrFn<T>> {
             case Token.SUPER:
                 return SuperOperand.instance;
             case Token.GETVAR:
-                int index = scriptOrFn.getIndexForNameNode(node);
-                return GetVarOperand.createOperand(index);
+                {
+                    int index = scriptOrFn.getIndexForNameNode(node);
+                    return GetVarOperand.createOperand(index);
+                }
+            case Token.LOAD_LITERAL:
+                {
+                    int index = node.getExistingIntProp(Node.LITERAL_INDEX_PROP);
+                    return new LiteralOperand(generateLiteral(index));
+                }
             default:
                 badTree(node);
                 return null;
@@ -1854,6 +1868,11 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 return NewTargetOperand.instance;
             case Token.SUPER:
                 return SuperOperand.instance;
+            case Token.LOAD_LITERAL:
+                {
+                    int index = node.getExistingIntProp(Node.LITERAL_INDEX_PROP);
+                    return new LiteralOperand(generateLiteral(index));
+                }
             default:
                 {
                     visitExpression(node, contextFlags);
