@@ -17,10 +17,12 @@ import java.util.Map;
 import org.mozilla.javascript.InstrumentEmitter.Type;
 import org.mozilla.javascript.ast.FunctionNode;
 import org.mozilla.javascript.ast.Jump;
+import org.mozilla.javascript.ast.RegExpLiteral;
 import org.mozilla.javascript.ast.ScriptNode;
 import org.mozilla.javascript.ast.TemplateCharacters;
 import org.mozilla.javascript.sourcemap.Position;
 import org.mozilla.javascript.sourcemap.SourceMapper;
+import org.mozilla.javascript.ast.TemplateLiteral;
 
 /** Generates bytecode for the Interpreter. */
 class CodeGenerator<T extends ScriptOrFn<T>> {
@@ -164,9 +166,7 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
     private void generateICodeFromTree(Node tree) {
         generateNestedFunctions();
 
-        generateRegExpLiterals();
-
-        generateTemplateLiterals();
+        generateLiterals();
 
         visitStatement(tree, 0);
         fixLabelGotos();
@@ -246,37 +246,36 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
         }
     }
 
-    private void generateRegExpLiterals() {
-        int N = scriptOrFn.getRegexpCount();
+    private void generateLiterals() {
+        int N = scriptOrFn.getLiteralCount();
         if (N == 0) return;
 
-        Context cx = Context.getContext();
-        RegExpProxy rep = ScriptRuntime.checkRegExpProxy(cx);
+        Context cx = null;
+        RegExpProxy rep = null;
         Object[] array = new Object[N];
         for (int i = 0; i != N; i++) {
-            String string = scriptOrFn.getRegexpString(i);
-            String flags = scriptOrFn.getRegexpFlags(i);
-            array[i] = rep.compileRegExp(cx, string, flags);
-        }
-        itsData.itsRegExpLiterals = array;
-    }
-
-    private void generateTemplateLiterals() {
-        int N = scriptOrFn.getTemplateLiteralCount();
-        if (N == 0) return;
-
-        Object[] array = new Object[N];
-        for (int i = 0; i != N; i++) {
-            List<TemplateCharacters> strings = scriptOrFn.getTemplateLiteralStrings(i);
-            int j = 0;
-            String[] values = new String[strings.size() * 2];
-            for (TemplateCharacters s : strings) {
-                values[j++] = s.getValue();
-                values[j++] = s.getRawValue();
+            var literal = scriptOrFn.getLiteral(i);
+            if (literal instanceof RegExpLiteral) {
+                if (rep == null) {
+                    cx = Context.getContext();
+                    rep = ScriptRuntime.checkRegExpProxy(cx);
+                }
+                var re = (RegExpLiteral) literal;
+                array[i] = rep.compileRegExp(cx, re.getValue(), re.getFlags());
+            } else if (literal instanceof TemplateLiteral) {
+                var strings = ((TemplateLiteral) literal).getTemplateStrings();
+                String[] values = new String[strings.size() * 2];
+                int j = 0;
+                for (TemplateCharacters s : strings) {
+                    values[j++] = s.getValue();
+                    values[j++] = s.getRawValue();
+                }
+                array[i] = values;
+            } else {
+                array[i] = literal;
             }
-            array[i] = values;
         }
-        itsData.itsTemplateLiterals = array;
+        builder.literals = array;
     }
 
     private void updateLineNumber(Node node) {
@@ -1182,6 +1181,14 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                 {
                     int index = node.getExistingIntProp(Node.REGEXP_PROP);
                     addIndexOp(Token.REGEXP, index);
+                    stackChange(1);
+                }
+                break;
+
+            case Token.LOAD_LITERAL:
+                {
+                    int index = node.getExistingIntProp(Node.LITERAL_INDEX_PROP);
+                    addIndexOp(Token.LOAD_LITERAL, index);
                     stackChange(1);
                 }
                 break;

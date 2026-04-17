@@ -1258,6 +1258,19 @@ class BodyCodegen {
                 }
                 break;
 
+            case Token.LOAD_LITERAL:
+                {
+                    int i = node.getExistingIntProp(Node.LITERAL_INDEX_PROP);
+                    pushDescriptor();
+                    cfw.addPush(i);
+                    cfw.addInvoke(
+                            ByteCode.INVOKEVIRTUAL,
+                            "org/mozilla/javascript/JSDescriptor",
+                            "getLiteral",
+                            "(I)Ljava/lang/Object;");
+                }
+                break;
+
             case Token.COMMA:
                 {
                     Node next = child.getNext();
@@ -2143,11 +2156,7 @@ class BodyCodegen {
         int index = node.getExistingIntProp(Node.TEMPLATE_LITERAL_PROP);
         cfw.addALoad(contextLocal);
         cfw.addALoad(variableObjectLocal);
-        cfw.add(
-                ByteCode.GETSTATIC,
-                codegen.mainClassName,
-                codegen.getTemplateLiteralName(scriptOrFn),
-                "[Ljava/lang/Object;");
+        pushDescriptor();
         cfw.addPush(index);
         cfw.addInvoke(
                 ByteCode.INVOKESTATIC,
@@ -2155,8 +2164,18 @@ class BodyCodegen {
                 "getTemplateLiteralCallSite",
                 "(Lorg/mozilla/javascript/Context;"
                         + "Lorg/mozilla/javascript/VarScope;"
-                        + "[Ljava/lang/Object;I"
+                        + "Lorg/mozilla/javascript/JSDescriptor;I"
                         + ")Lorg/mozilla/javascript/Scriptable;");
+    }
+
+    private void pushDescriptor() {
+        cfw.add(
+                ByteCode.GETSTATIC,
+                codegen.mainClassName,
+                Codegen.DESCRIPTORS_FIELD_NAME,
+                Codegen.DESCRIPTORS_FIELD_SIGNATURE);
+        cfw.addPush(scriptOrFnIndex);
+        cfw.add(ByteCode.AALOAD);
     }
 
     private void generateIfJump(Node node, Node parent, int trueLabel, int falseLabel) {

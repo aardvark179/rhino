@@ -6059,8 +6059,14 @@ public class ScriptRuntime {
     }
 
     public static Scriptable getTemplateLiteralCallSite(
-            Context cx, VarScope scope, Object[] strings, int index) {
-        Object callsite = strings[index];
+            Context cx, VarScope scope, JSDescriptor<?> descriptor, int index) {
+        Object[] literals = descriptor.getLiterals();
+        return getTemplateLiteralCallSite(cx, scope, literals, index);
+    }
+
+    public static Scriptable getTemplateLiteralCallSite(
+            Context cx, VarScope scope, Object[] literals, int index) {
+        Object callsite = literals[index];
 
         if (callsite instanceof Scriptable) return (Scriptable) callsite;
 
@@ -6086,7 +6092,7 @@ public class ScriptRuntime {
         AbstractEcmaObjectOperations.setIntegrityLevel(
                 cx, siteObj, AbstractEcmaObjectOperations.INTEGRITY_LEVEL.FROZEN);
 
-        strings[index] = siteObj;
+        literals[index] = siteObj;
 
         return siteObj;
     }
