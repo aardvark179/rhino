@@ -776,6 +776,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Icode.METHOD_EXPR] = new DoMethodExpr();
         instructionObjs[base + Icode.CLOSURE_STMT] = new DoClosureStatement();
         instructionObjs[base + Token.REGEXP] = new DoRegExp();
+        instructionObjs[base + Token.LOAD_LITERAL] = new DoLoadLiteral();
         instructionObjs[base + Icode.TEMPLATE_LITERAL_CALLSITE] = new DoTemplateLiteralCallSite();
         instructionObjs[base + Icode.LITERAL_NEW_OBJECT] = new DoLiteralNewObject();
         instructionObjs[base + Icode.LITERAL_NEW_ARRAY] = new DoLiteralNewArray();
@@ -3554,24 +3555,37 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
     private static class DoRegExp extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            Object re = frame.compilerData.itsRegExpLiterals[state.indexReg];
+            Object re = frame.fnOrScript.getDescriptor().getLiteral(state.indexReg);
             frame.stack[++frame.stackTop] = ScriptRuntime.wrapRegExp(cx, frame.scope, re);
             return null;
         }
 
         @Override
         void dumpICode(int op, String tname, ICodeDumpContext ctx) {
-            ctx.out.println(tname + " " + ctx.compilerData.itsRegExpLiterals[ctx.indexReg]);
+            ctx.out.println(tname + " #" + ctx.indexReg);
+        }
+    }
+
+    private static class DoLoadLiteral extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            frame.stack[++frame.stackTop] =
+                    frame.fnOrScript.getDescriptor().getLiteral(state.indexReg);
+            return null;
+        }
+
+        @Override
+        void dumpICode(int op, String tname, ICodeDumpContext ctx) {
+            ctx.out.println(tname + " #" + ctx.indexReg);
         }
     }
 
     private static class DoTemplateLiteralCallSite extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            Object[] templateLiterals = frame.compilerData.itsTemplateLiterals;
             frame.stack[++frame.stackTop] =
                     ScriptRuntime.getTemplateLiteralCallSite(
-                            cx, frame.scope, templateLiterals, state.indexReg);
+                            cx, frame.scope, frame.fnOrScript.getDescriptor(), state.indexReg);
             return null;
         }
     }

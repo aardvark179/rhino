@@ -134,10 +134,11 @@ public class Token {
             REF_NAME = REF_NS_MEMBER + 1, // Reference for @y, @[y] etc.
             REF_NS_NAME = REF_NAME + 1, // Reference for ns::y, @ns::y@[y] etc.
             BIGINT = REF_NS_NAME + 1, // ES2020 BigInt
-            NEW_TARGET = BIGINT + 1; // new.target meta-property
+            NEW_TARGET = BIGINT + 1, // new.target meta-property
+            LOAD_LITERAL = NEW_TARGET + 1;
 
     // End of interpreter bytecodes
-    public static final int LAST_BYTECODE_TOKEN = NEW_TARGET,
+    public static final int LAST_BYTECODE_TOKEN = LOAD_LITERAL,
             TRY = LAST_BYTECODE_TOKEN + 1,
             SEMI = TRY + 1, // semicolon
             LB = SEMI + 1, // left and right brackets
@@ -388,6 +389,8 @@ public class Token {
                 return "SHNE";
             case REGEXP:
                 return "REGEXP";
+            case LOAD_LITERAL:
+                return "LOAD_LITERAL";
             case BINDNAME:
                 return "BINDNAME";
             case THROW:

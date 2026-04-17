@@ -25,8 +25,6 @@ final class InterpreterData<T extends ScriptOrFn<T>> extends ACompilerData<T, In
             String[] itsStringTable,
             double[] itsDoubleTable,
             BigInteger[] itsBigIntTable,
-            Object[] itsRegExpLiterals,
-            Object[] itsTemplateLiterals,
             byte[] itsICode,
             int[] exceptionTable,
             int maxVars,
@@ -41,8 +39,6 @@ final class InterpreterData<T extends ScriptOrFn<T>> extends ACompilerData<T, In
         this.itsStringTable = itsStringTable;
         this.itsDoubleTable = itsDoubleTable;
         this.itsBigIntTable = itsBigIntTable;
-        this.itsRegExpLiterals = itsRegExpLiterals;
-        this.itsTemplateLiterals = itsTemplateLiterals;
         this.itsICode = itsICode;
         this.maxCalleeArgs = maxCalleeArgs;
         this.literalIds = literalIds;
@@ -53,8 +49,6 @@ final class InterpreterData<T extends ScriptOrFn<T>> extends ACompilerData<T, In
     final String[] itsStringTable;
     final double[] itsDoubleTable;
     final BigInteger[] itsBigIntTable;
-    final Object[] itsRegExpLiterals;
-    final Object[] itsTemplateLiterals;
 
     final byte[] itsICode;
 
@@ -117,8 +111,6 @@ final class InterpreterData<T extends ScriptOrFn<T>> extends ACompilerData<T, In
         String[] itsStringTable;
         double[] itsDoubleTable;
         BigInteger[] itsBigIntTable;
-        Object[] itsRegExpLiterals;
-        Object[] itsTemplateLiterals;
 
         byte[] itsICode;
 
@@ -154,8 +146,6 @@ final class InterpreterData<T extends ScriptOrFn<T>> extends ACompilerData<T, In
                                 itsStringTable,
                                 itsDoubleTable,
                                 itsBigIntTable,
-                                itsRegExpLiterals,
-                                itsTemplateLiterals,
                                 itsICode,
                                 exceptionTable,
                                 maxVars,
