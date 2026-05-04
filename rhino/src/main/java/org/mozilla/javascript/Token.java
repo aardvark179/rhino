@@ -204,8 +204,7 @@ public class Token {
             LOOP = TARGET + 1,
             EXPR_VOID = LOOP + 1, // expression statement in functions
             EXPR_RESULT = EXPR_VOID + 1, // expression statement in scripts
-            JSR = EXPR_RESULT + 1,
-            SCRIPT = JSR + 1, // top-level node for entire script
+            SCRIPT = EXPR_RESULT + 1, // top-level node for entire script
             TYPEOFNAME = SCRIPT + 1, // for typeof(simple-name)
             USE_STACK = TYPEOFNAME + 1,
             SETPROP_OP = USE_STACK + 1, // x.y op= something
@@ -571,8 +570,6 @@ public class Token {
                 return "EXPR_VOID";
             case EXPR_RESULT:
                 return "EXPR_RESULT";
-            case JSR:
-                return "JSR";
             case SCRIPT:
                 return "SCRIPT";
             case TYPEOFNAME:

@@ -184,19 +184,22 @@ public class NodeTransformer {
                             if (elemtype == Token.TRY
                                     || elemtype == Token.WITH
                                     || elemtype == Token.SCOPE_BLOCK) {
-                                Node unwind;
-                                if (elemtype == Token.TRY) {
-                                    Jump jsrnode = new Jump(Token.JSR);
-                                    jsrnode.target = ((Jump) n).getFinally();
-                                    unwind = jsrnode;
-                                } else {
-                                    unwind = new Node(Token.LEAVE_SCOPE);
-                                }
                                 if (unwindBlock == null) {
                                     unwindBlock = new Node(Token.BLOCK);
-                                    unwind.setLineColumnNumber(node.getLineno(), node.getColumn());
                                 }
-                                unwindBlock.addChildToBack(unwind);
+                                if (elemtype == Token.TRY) {
+                                    Node returnTo = Node.newTarget();
+                                    Node unwind = makeFinallyJump(n, returnTo);
+                                    unwind.setLineColumnNumber(node.getLineno(), node.getColumn());
+                                    returnTo.setLineColumnNumber(
+                                            node.getLineno(), node.getColumn());
+                                    unwindBlock.addChildToBack(unwind);
+                                    unwindBlock.addChildToBack(returnTo);
+                                } else {
+                                    Node unwind = new Node(Token.LEAVE_SCOPE);
+                                    unwind.setLineColumnNumber(node.getLineno(), node.getColumn());
+                                    unwindBlock.addChildToBack(unwind);
+                                }
                             }
                         }
                         if (unwindBlock != null) {
@@ -246,10 +249,12 @@ public class NodeTransformer {
                                 Node leave = new Node(Token.LEAVE_SCOPE);
                                 previous = addBeforeCurrent(parent, previous, node, leave);
                             } else if (elemtype == Token.TRY) {
-                                Jump tryNode = (Jump) n;
-                                Jump jsrFinally = new Jump(Token.JSR);
-                                jsrFinally.target = tryNode.getFinally();
-                                previous = addBeforeCurrent(parent, previous, node, jsrFinally);
+                                Node returnTo = Node.newTarget();
+                                Node fjump = makeFinallyJump(n, returnTo);
+                                fjump.setLineColumnNumber(node.getLineno(), node.getColumn());
+                                returnTo.setLineColumnNumber(node.getLineno(), node.getColumn());
+                                previous = addBeforeCurrent(parent, previous, node, fjump);
+                                previous = addBeforeCurrent(parent, previous, node, returnTo);
                             }
                         }
 
@@ -441,6 +446,26 @@ public class NodeTransformer {
                     createScopeObjects,
                     inStrictMode);
         }
+    }
+
+    private static Node makeFinallyJump(Node tryNode, Node returnTo) {
+        var finallyTarget = ((Jump) tryNode).getFinally();
+        // We need to navigate from the finallyTarget to the the real
+        // finally block. The FINALLY node should be the next node,
+        // and then the block we want should be its child.
+        var finallyNode = finallyTarget.getNext();
+        var finallyBlock = finallyNode.getFirstChild();
+        var ourTarget = Node.newTarget();
+        var returnGoto = new Jump(Token.GOTO);
+        returnGoto.target = returnTo;
+
+        tryNode.addChildAfter(returnGoto, finallyNode);
+        tryNode.addChildAfter(finallyBlock.cloneTree(), finallyNode);
+        tryNode.addChildAfter(ourTarget, finallyNode);
+        Jump jumpNode = new Jump(Token.GOTO);
+        jumpNode.target = ourTarget;
+
+        return jumpNode;
     }
 
     protected void visitNew(Node node, ScriptNode tree) {}

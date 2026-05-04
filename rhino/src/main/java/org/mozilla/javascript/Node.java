@@ -1012,7 +1012,6 @@ public class Node implements Iterable<Node> {
             case Token.LABEL:
             case Token.TARGET:
             case Token.LOOP:
-            case Token.JSR:
             case Token.SETPROP_OP:
             case Token.SETELEM_OP:
             case Token.LOCAL_BLOCK:

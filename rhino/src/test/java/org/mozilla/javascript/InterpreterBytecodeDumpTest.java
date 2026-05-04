@@ -194,16 +194,19 @@ class InterpreterBytecodeDumpTest {
     @Test
     void catchScopeAndExceptionTableArePrinted() throws IOException {
         var output = getByteCodeFrom("try { x } catch(e) { e }");
-        assertTrue(output.contains("CATCH_SCOPE "));
-        assertTrue(output.contains("Exception handlers: "));
-        assertTrue(output.contains("type=catch"));
+        assertTrue(output.contains("CATCH_SCOPE "),
+            String.format("Expected <\n%s\n> to contain 'CATCH_SCOPE'", output));
+        assertTrue(output.contains("Exception handlers: "),
+            String.format("Expected <\n%s\n> to contain 'Exception handlers: '", output));
+        assertTrue(output.contains("type=catch"),
+            String.format("Expected <\n%s\n> to contain 'type=catch'", output));
     }
 
     @Test
     void finallyExceptionTableIsPrinted() throws IOException {
         var output = getByteCodeFrom("try { x } finally { y }");
-        assertTrue(output.contains("GOSUB "));
-        assertTrue(output.contains("type=finally"));
+        assertTrue(output.contains("type=finally"),
+            String.format("Expected <\n%s\n> to contain 'type=finally'", output));
     }
 
     @Test

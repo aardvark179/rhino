@@ -71,7 +71,6 @@ import org.mozilla.javascript.interpreterv2.instruction.GetProp;
 import org.mozilla.javascript.interpreterv2.instruction.GetPropSuper;
 import org.mozilla.javascript.interpreterv2.instruction.GetRef;
 import org.mozilla.javascript.interpreterv2.instruction.GetVar;
-import org.mozilla.javascript.interpreterv2.instruction.GoSubroutine;
 import org.mozilla.javascript.interpreterv2.instruction.Goto;
 import org.mozilla.javascript.interpreterv2.instruction.IfEq;
 import org.mozilla.javascript.interpreterv2.instruction.IfEqPop;
@@ -126,7 +125,7 @@ import org.mozilla.javascript.interpreterv2.instruction.Regexp;
 import org.mozilla.javascript.interpreterv2.instruction.Rethrow;
 import org.mozilla.javascript.interpreterv2.instruction.Return;
 import org.mozilla.javascript.interpreterv2.instruction.ReturnResult;
-import org.mozilla.javascript.interpreterv2.instruction.ReturnSubroutine;
+import org.mozilla.javascript.interpreterv2.instruction.EndFinally;
 import org.mozilla.javascript.interpreterv2.instruction.ReturnUndefined;
 import org.mozilla.javascript.interpreterv2.instruction.RightShift;
 import org.mozilla.javascript.interpreterv2.instruction.SaveScope;
@@ -145,7 +144,6 @@ import org.mozilla.javascript.interpreterv2.instruction.ShortNumber;
 import org.mozilla.javascript.interpreterv2.instruction.SimpleSwitch;
 import org.mozilla.javascript.interpreterv2.instruction.SpecialCall;
 import org.mozilla.javascript.interpreterv2.instruction.SpecialCallNew;
-import org.mozilla.javascript.interpreterv2.instruction.StartSubroutine;
 import org.mozilla.javascript.interpreterv2.instruction.StrictSetName;
 import org.mozilla.javascript.interpreterv2.instruction.StringConcat;
 import org.mozilla.javascript.interpreterv2.instruction.Subtract;
@@ -578,21 +576,14 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     addGoto(target, new Goto());
                     return;
                 }
-            case Token.JSR:
-                {
-                    Node target = ((Jump) node).target;
-                    addGoto(target, new GoSubroutine());
-                    return;
-                }
             case Token.FINALLY:
                 {
                     int finallyRegister = getLocalBlockRef(node);
-                    addInstruction(new StartSubroutine(finallyRegister, PopOperand.instance));
                     while (child != null) {
                         generateStatement(child, initialStackDepth);
                         child = child.getNext();
                     }
-                    addInstruction(new ReturnSubroutine(finallyRegister));
+                    addInstruction(new EndFinally(finallyRegister));
                     return;
                 }
             case Token.EXPR_VOID:
@@ -794,8 +785,14 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 {
                     var lastChild = node.getLastChild();
                     while (child != lastChild) {
-                        var obj = getOperand(child, 0);
-                        addInstruction(VoidInstruction.ofOperand(obj));
+                        if (child.getType() == Token.LOCAL_BLOCK) {
+                            // Embedded statement-level side-effect (e.g. try/finally for
+                            // iterator cleanup in destructuring). Produces no value, so no POP.
+                            generateStatement(child, stackDepth);
+                        } else {
+                            var obj = getOperand(child, 0);
+                            addInstruction(VoidInstruction.ofOperand(obj));
+                        }
                         child = child.getNext();
                     }
                     // Preserve tail context flag if any
