@@ -39,7 +39,12 @@ class BodyCodegen {
         this.literals = other.literals;
     }
 
-    BodyCodegen(ClassFileWriter cfw, Codegen codegen, CompilerEnvirons compilerEnv, ScriptNode scriptOrFn, int index) {
+    BodyCodegen(
+            ClassFileWriter cfw,
+            Codegen codegen,
+            CompilerEnvirons compilerEnv,
+            ScriptNode scriptOrFn,
+            int index) {
         this.cfw = cfw;
         this.codegen = codegen;
         this.compilerEnv = compilerEnv;
@@ -52,7 +57,6 @@ class BodyCodegen {
             scriptOrFnType = "Lorg/mozilla/javascript/JSScript;";
             scriptOrFnClass = "org.mozilla.javascript.JSScript";
         }
-
     }
 
     void generateBodyCode() {
@@ -115,6 +119,10 @@ class BodyCodegen {
     // This creates a user-facing function that returns a NativeGenerator
     // object.
     private void generateGenerator(int mainMaxLocals, int mainMaxStack) {
+        boolean isArrow = false;
+        if (scriptOrFn instanceof FunctionNode) {
+            isArrow = ((FunctionNode) scriptOrFn).getFunctionType() == FunctionNode.ARROW_FUNCTION;
+        }
         cfw.startMethod(
                 codegen.getBodyMethodName(scriptOrFn),
                 codegen.getBodyMethodSignature(scriptOrFn),
@@ -143,11 +151,13 @@ class BodyCodegen {
         cfw.addALoad(variableObjectLocal);
         cfw.addALoad(argsLocal);
         cfw.addPush(scriptOrFn.hasRestParameter());
-        cfw.addPush(
+        boolean needsActivation =
                 !(scriptOrFn instanceof FunctionNode)
-                        || ((FunctionNode) scriptOrFn).requiresArgumentObject());
+                        || ((FunctionNode) scriptOrFn).requiresArgumentObject();
+        cfw.addPush(needsActivation);
+        String methodName = isArrow ? "createArrowFunctionActivation" : "createFunctionActivation";
         addScriptRuntimeInvoke(
-                "createFunctionActivation",
+                methodName,
                 "(Lorg/mozilla/javascript/JSFunction;"
                         + "Lorg/mozilla/javascript/Context;"
                         + "Lorg/mozilla/javascript/VarScope;"
@@ -187,7 +197,6 @@ class BodyCodegen {
                         + ")Lorg/mozilla/javascript/Scriptable;");
 
         cfw.add(ByteCode.ARETURN);
-        generateFinalizers();
         cfw.stopMethod((short) (localsMax + 1));
     }
 
@@ -284,8 +293,9 @@ class BodyCodegen {
             cfw.addAStore(variableObjectLocal);
         }
 
-        // reserve 'args[]'
+        // reserve 'args[]' and saved home object
         argsLocal = firstFreeLocal++;
+        savedHomeObjectLocal = firstFreeLocal++;
         localsMax = firstFreeLocal;
 
         // Generate Generator specific prelude
@@ -320,6 +330,8 @@ class BodyCodegen {
                     OptRuntime.GeneratorState.activationFrame_NAME,
                     OptRuntime.GeneratorState.activationFrame_TYPE);
             cfw.addAStore(variableObjectLocal);
+            cfw.add(ByteCode.ACONST_NULL);
+            cfw.addAStore(savedHomeObjectLocal);
 
             if (epilogueLabel == -1) {
                 epilogueLabel = cfw.acquireLabel();
@@ -584,9 +596,6 @@ class BodyCodegen {
                     }
                 }
             }
-
-            // generate dispatch tables for finally
-            generateFinalizers();
         }
 
         if (epilogueLabel != -1) {
@@ -645,29 +654,6 @@ class BodyCodegen {
         }
     }
 
-    private void generateFinalizers() {
-        if (finallys != null) {
-            for (var e : finallys.entrySet()) {
-                if (e.getKey().getType() == Token.FINALLY) {
-                    FinallyReturnPoint ret = e.getValue();
-                    // the finally will jump here
-                    cfw.markLabel(ret.getTableLebel(cfw), 1);
-
-                    // start generating a dispatch table
-                    int startSwitch = cfw.addTableSwitch(0, ret.jsrPoints.size() - 1);
-                    int c = 0;
-                    cfw.markTableSwitchDefault(startSwitch);
-                    for (int i = 0; i < ret.jsrPoints.size(); i++) {
-                        // generate gotos back to the JSR location
-                        cfw.markTableSwitchCase(startSwitch, c);
-                        cfw.add(ByteCode.GOTO, ret.jsrPoints.get(i).intValue());
-                        c++;
-                    }
-                }
-            }
-        }
-    }
-
     private void generateGetGeneratorLocalsState() {
         cfw.addALoad(generatorStateLocal);
         addOptRuntimeInvoke("getGeneratorLocalsState", "(Ljava/lang/Object;)[Ljava/lang/Object;");
@@ -699,10 +685,8 @@ class BodyCodegen {
         switch (type) {
             case Token.LOOP:
             case Token.LABEL:
-            case Token.WITH:
             case Token.SCRIPT:
             case Token.BLOCK:
-            case Token.SCOPE_BLOCK:
             case Token.EMPTY:
                 // no-ops.
                 if (compilerEnv.isGenerateObserverCount()) {
@@ -714,6 +698,11 @@ class BodyCodegen {
                     generateStatement(child);
                     child = child.getNext();
                 }
+                break;
+
+            case Token.SCOPE_BLOCK:
+            case Token.WITH:
+                generateScopeBlock(node, child);
                 break;
 
             case Token.LOCAL_BLOCK:
@@ -932,7 +921,6 @@ class BodyCodegen {
                 }
                 break;
 
-            case Token.JSR:
             case Token.GOTO:
             case Token.IFEQ:
             case Token.IFNE:
@@ -941,48 +929,6 @@ class BodyCodegen {
                 break;
 
             case Token.FINALLY:
-                {
-                    // This is the non-exception case for a finally block. In
-                    // other words, since we inline finally blocks wherever
-                    // jsr was previously used, and jsr is only used when the
-                    // function is not a generator, we don't need to generate
-                    // this case if the function isn't a generator.
-                    if (!isGenerator) {
-                        break;
-                    }
-
-                    if (compilerEnv.isGenerateObserverCount()) saveCurrentCodeOffset();
-                    // there is exactly one value on the stack when enterring
-                    // finally blocks: the return address (or its int encoding)
-                    cfw.setStackTop((short) 1);
-
-                    // Save return address in a new local
-                    int finallyRegister = getNewWordLocal();
-
-                    int finallyStart = cfw.acquireLabel();
-                    int finallyEnd = cfw.acquireLabel();
-                    cfw.markLabel(finallyStart);
-
-                    generateIntegerWrap();
-                    cfw.addAStore(finallyRegister);
-
-                    while (child != null) {
-                        generateStatement(child);
-                        child = child.getNext();
-                    }
-
-                    cfw.addALoad(finallyRegister);
-                    cfw.add(ByteCode.CHECKCAST, "java/lang/Integer");
-                    generateIntegerUnwrap();
-                    FinallyReturnPoint ret = finallys.get(node);
-                    cfw.add(ByteCode.GOTO, ret.getTableLebel(cfw));
-
-                    // After this GOTO we expect stack to be empty again!
-                    cfw.setStackTop((short) 0);
-
-                    releaseWordLocal((short) finallyRegister);
-                    cfw.markLabel(finallyEnd);
-                }
                 break;
 
             case Token.DEBUGGER:
@@ -1265,8 +1211,15 @@ class BodyCodegen {
                 {
                     Node next = child.getNext();
                     while (next != null) {
-                        generateExpression(child, node);
-                        cfw.add(ByteCode.POP);
+                        if (child.getType() == Token.LOCAL_BLOCK) {
+                            // Embedded statement-level side-effect (e.g. try/finally for
+                            // iterator cleanup in destructuring). Evaluate as a statement;
+                            // it produces no value and thus no POP is needed.
+                            generateStatement(child);
+                        } else {
+                            generateExpression(child, node);
+                            cfw.add(ByteCode.POP);
+                        }
                         child = next;
                         next = next.getNext();
                     }
@@ -2115,6 +2068,46 @@ class BodyCodegen {
         }
     }
 
+    private void generateScopeBlock(Node node, Node child) {
+        if (compilerEnv.isGenerateObserverCount()) {
+            addInstructionCount(1);
+        }
+
+        // If the block has no body there is nothing that can throw, so skip
+        // installing an exception handler entirely.
+        if (child == null) {
+            return;
+        }
+
+        short entryStack = (short) cfw.getStackTop();
+        int startLabel = cfw.acquireLabel();
+        int endLabel = cfw.acquireLabel();
+        int handlerLabel = cfw.acquireLabel();
+        int afterLabel = cfw.acquireLabel();
+
+        cfw.markLabel(startLabel);
+        while (child != null) {
+            generateStatement(child);
+            child = child.getNext();
+        }
+        cfw.markLabel(endLabel);
+        cfw.add(ByteCode.GOTO, afterLabel);
+
+        // On any exception inside the block body, pop back to the enclosing
+        // scope by invoking leaveScope() and rethrow. This restores
+        // variableObjectLocal without needing to stash it in a temporary.
+        cfw.markHandler(handlerLabel);
+        cfw.addALoad(variableObjectLocal);
+        addScriptRuntimeInvoke(
+                "leaveScope",
+                "(Lorg/mozilla/javascript/VarScope;" + ")Lorg/mozilla/javascript/VarScope;");
+        cfw.addAStore(variableObjectLocal);
+        cfw.add(ByteCode.ATHROW);
+
+        cfw.addExceptionHandler(startLabel, endLabel, handlerLabel, null);
+        cfw.markLabel(afterLabel, entryStack);
+    }
+
     private void visitEnterScope(Node node, Node child) {
         Object[] properties = (Object[]) node.getProp(Node.OBJECT_IDS_PROP);
 
@@ -2219,28 +2212,8 @@ class BodyCodegen {
             else generateIfJump(child, node, fallThruLabel, targetLabel);
             cfw.markLabel(fallThruLabel);
         } else {
-            if (type == Token.JSR) {
-                if (isGenerator) {
-                    addGotoWithReturn(target);
-                } else {
-                    // This assumes that JSR is only ever used for finally
-                    inlineFinally(target);
-                }
-            } else {
-                addGoto(target, ByteCode.GOTO);
-            }
+            addGoto(target, ByteCode.GOTO);
         }
-    }
-
-    private void addGotoWithReturn(Node target) {
-        FinallyReturnPoint ret = finallys.get(target);
-        cfw.addLoadConstant(ret.jsrPoints.size());
-        addGoto(target, ByteCode.GOTO);
-        // Don't leave something on the stack here!
-        cfw.add(ByteCode.POP);
-        int retLabel = cfw.acquireLabel();
-        cfw.markLabel(retLabel);
-        ret.jsrPoints.add(Integer.valueOf(retLabel));
     }
 
     private void generateArrayLiteralFactory(Node node, int count) {
@@ -2695,7 +2668,9 @@ class BodyCodegen {
                 "newObject",
                 "(Lorg/mozilla/javascript/VarScope;)Lorg/mozilla/javascript/Scriptable;");
         cfw.add(ByteCode.DUP);
-        savedHomeObjectLocal = getNewWordLocal();
+        if (savedHomeObjectLocal == -1) {
+            savedHomeObjectLocal = getNewWordLocal();
+        }
         cfw.addAStore(savedHomeObjectLocal);
         cfw.add(ByteCode.DUP);
 
@@ -3268,9 +3243,12 @@ class BodyCodegen {
         // XXX OPT Maybe instead do syntactic transforms to associate
         // each 'with' with a try/finally block that does the exitwith.
 
-        short savedVariableObject = getNewWordLocal();
-        cfw.addALoad(variableObjectLocal);
-        cfw.addAStore(savedVariableObject);
+        // A try/catch may appear inside an expression (for example the
+        // iterator-close try/catch synthesised for array destructuring)
+        // where the outer expression has already left values on the stack.
+        // Capture the entry depth so we can keep the stack tracker in sync
+        // with the real stack state on every path out of the try.
+        short entryStack = (short) cfw.getStackTop();
 
         /*
          * Generate the code for the tree; most of the work is done in IRFactory
@@ -3278,7 +3256,7 @@ class BodyCodegen {
          * javascript catch and finally clauses.  */
 
         int startLabel = cfw.acquireLabel();
-        cfw.markLabel(startLabel, 0);
+        cfw.markLabel(startLabel);
 
         Node catchTarget = node.target;
         Node finallyTarget = node.getFinally();
@@ -3299,19 +3277,10 @@ class BodyCodegen {
         }
         exceptionManager.setHandlers(handlerLabels, startLabel);
 
-        // create a table for the equivalent of JSR returns
-        if (isGenerator && finallyTarget != null) {
-            FinallyReturnPoint ret = new FinallyReturnPoint();
-            if (finallys == null) {
-                finallys = new HashMap<>();
-            }
-            // add the finally target to hashtable
-            finallys.put(finallyTarget, ret);
-            // add the finally node as well to the hash table
-            finallys.put(finallyTarget.getNext(), ret);
-        }
-
-        while (child != null) {
+        // We want to go up to the point where we hit the finally. We
+        // definitely don't want the inlined nodes generated here
+        // inside the catch block.
+        while (child != null && child.getType() != Token.FINALLY) {
             if (child == catchTarget) {
                 int catchLabel = getTargetLabel(catchTarget);
                 exceptionManager.removeHandler(JAVASCRIPT_EXCEPTION, catchLabel);
@@ -3341,7 +3310,6 @@ class BodyCodegen {
 
             generateCatchBlock(
                     JAVASCRIPT_EXCEPTION,
-                    savedVariableObject,
                     catchLabel,
                     exceptionLocal,
                     handlerLabels[JAVASCRIPT_EXCEPTION]);
@@ -3351,7 +3319,6 @@ class BodyCodegen {
              */
             generateCatchBlock(
                     EVALUATOR_EXCEPTION,
-                    savedVariableObject,
                     catchLabel,
                     exceptionLocal,
                     handlerLabels[EVALUATOR_EXCEPTION]);
@@ -3362,7 +3329,6 @@ class BodyCodegen {
             */
             generateCatchBlock(
                     ECMAERROR_EXCEPTION,
-                    savedVariableObject,
                     catchLabel,
                     exceptionLocal,
                     handlerLabels[ECMAERROR_EXCEPTION]);
@@ -3371,7 +3337,6 @@ class BodyCodegen {
             if (cx != null && cx.hasFeature(Context.FEATURE_ENHANCED_JAVA_ACCESS)) {
                 generateCatchBlock(
                         THROWABLE_EXCEPTION,
-                        savedVariableObject,
                         catchLabel,
                         exceptionLocal,
                         handlerLabels[THROWABLE_EXCEPTION]);
@@ -3384,21 +3349,12 @@ class BodyCodegen {
             int finallyHandler = cfw.acquireLabel();
             int finallyEnd = cfw.acquireLabel();
             cfw.markHandler(finallyHandler);
-            if (!isGenerator) {
-                cfw.markLabel(handlerLabels[FINALLY_EXCEPTION]);
-            }
+            cfw.markLabel(handlerLabels[FINALLY_EXCEPTION]);
             cfw.addAStore(exceptionLocal);
-
-            // reset the variable object local
-            cfw.addALoad(savedVariableObject);
-            cfw.addAStore(variableObjectLocal);
 
             // get the label to JSR to
             int finallyLabel = finallyTarget.labelId();
-            if (isGenerator) addGotoWithReturn(finallyTarget);
-            else {
-                inlineFinally(finallyTarget, handlerLabels[FINALLY_EXCEPTION], finallyEnd);
-            }
+            inlineFinally(finallyTarget, handlerLabels[FINALLY_EXCEPTION], finallyEnd);
 
             // rethrow
             cfw.addALoad(exceptionLocal);
@@ -3412,8 +3368,20 @@ class BodyCodegen {
                         startLabel, finallyLabel, finallyHandler, null); // catch any
             }
         }
-        releaseWordLocal(savedVariableObject);
-        cfw.markLabel(realEnd);
+
+        // If we have any left over copies of the finally blcok we should put them here.
+        if (child != null) {
+            child = child.getNext();
+            while (child != null) {
+                generateStatement(child);
+                child = child.getNext();
+            }
+        }
+        // realEnd is only reached from the normal-path GOTO above; the
+        // catch/finally handlers rethrow or jump elsewhere. Restore the
+        // tracker to the entry depth so code after the try/catch sees the
+        // same stack the caller had when we were invoked.
+        cfw.markLabel(realEnd, entryStack);
 
         if (!isGenerator) {
             exceptionManager.popExceptionInfo();
@@ -3432,7 +3400,6 @@ class BodyCodegen {
 
     private void generateCatchBlock(
             int exceptionType,
-            short savedVariableObject,
             int catchLabel,
             int exceptionLocal,
             int handler) {
@@ -3443,10 +3410,6 @@ class BodyCodegen {
 
         // MS JVM gets cranky if the exception object is left on the stack
         cfw.addAStore(exceptionLocal);
-
-        // reset the variable object local
-        cfw.addALoad(savedVariableObject);
-        cfw.addAStore(variableObjectLocal);
 
         cfw.add(ByteCode.GOTO, catchLabel);
     }
@@ -3699,14 +3662,6 @@ class BodyCodegen {
             child = child.getNext();
         }
         exceptionManager.markInlineFinallyEnd(fBlock, finallyEnd);
-    }
-
-    private void inlineFinally(Node finallyTarget) {
-        int finallyStart = cfw.acquireLabel();
-        int finallyEnd = cfw.acquireLabel();
-        cfw.markLabel(finallyStart);
-        inlineFinally(finallyTarget, finallyStart, finallyEnd);
-        cfw.markLabel(finallyEnd);
     }
 
     /**
@@ -4991,13 +4946,13 @@ class BodyCodegen {
     static final int GENERATOR_START = 0;
     static final int GENERATOR_YIELD_START = 1;
 
-    final private ClassFileWriter cfw;
-    final private Codegen codegen;
-    final private CompilerEnvirons compilerEnv;
-    final private ScriptNode scriptOrFn;
-    final private String scriptOrFnType;
-    final private String scriptOrFnClass;
-    final private int scriptOrFnIndex;
+    private final ClassFileWriter cfw;
+    private final Codegen codegen;
+    private final CompilerEnvirons compilerEnv;
+    private final ScriptNode scriptOrFn;
+    private final String scriptOrFnType;
+    private final String scriptOrFnClass;
+    private final int scriptOrFnIndex;
     private int savedCodeOffset;
 
     private OptFunctionNode fnCurrent;
@@ -5038,22 +4993,7 @@ class BodyCodegen {
     private int maxLocals = 0;
     private int maxStack = 0;
 
-    private Map<Node, FinallyReturnPoint> finallys;
     private ArrayList<Node> literals;
-
-    static class FinallyReturnPoint {
-        public List<Integer> jsrPoints = new ArrayList<>();
-        private int tableLabelInt = 0;
-
-        public int getTableLebel(ClassFileWriter cfw) {
-            if (tableLabelInt != 0) {
-                return tableLabelInt;
-            } else {
-                tableLabelInt = cfw.acquireLabel();
-                return tableLabelInt;
-            }
-        }
-    }
 
     private int unnestedYieldCount = 0;
     private IdentityHashMap<Node, String> unnestedYields = new IdentityHashMap<>();

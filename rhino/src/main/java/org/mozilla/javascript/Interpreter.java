@@ -231,7 +231,6 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                 // source line
                 return 1 + 2;
 
-            case Icode.GOSUB:
             case Token.GOTO:
             case Token.IFEQ:
             case Token.IFNE:
@@ -661,9 +660,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Icode.IF_NULL_UNDEF] = new DoIfNullUndef();
         instructionObjs[base + Icode.IF_NOT_NULL_UNDEF] = new DoIfNotNullUndef();
         instructionObjs[base + Token.GOTO] = new DoGoto();
-        instructionObjs[base + Icode.GOSUB] = new DoGosub();
-        instructionObjs[base + Icode.STARTSUB] = new DoStartSub();
-        instructionObjs[base + Icode.RETSUB] = new DoRetsub();
+        instructionObjs[base + Icode.ENDFINALLY] = new DoEndFinally();
         instructionObjs[base + Icode.POP] = new DoPop();
         instructionObjs[base + Icode.POP_RESULT] = new DoPopResult();
         instructionObjs[base + Icode.DUP] = new DoDup();
@@ -830,8 +827,6 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
 
             final boolean instructionCounting = cx.instructionThreshold != 0;
 
-            String stringReg = null;
-            BigInteger bigIntReg = null;
             int indexReg = -1;
 
             // When restarting continuation throwable is not null and to jump
@@ -1625,64 +1620,13 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         }
     }
 
-    private static class DoGosub extends InstructionClass {
+    private static class DoEndFinally extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            ++frame.stackTop;
-            frame.stack[frame.stackTop] = DOUBLE_MARK;
-            frame.doubleStack[frame.stackTop] = frame.pc + 2;
-            return BREAK_JUMPLESSRUN;
-        }
-
-        @Override
-        void dumpICode(int op, String tname, ICodeDumpContext ctx) {
-            dumpJumpTarget(tname, ctx);
-        }
-    }
-
-    private static class DoStartSub extends InstructionClass {
-        @Override
-        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            final Object[] stack = frame.stack;
-            final double[] sDbl = frame.doubleStack;
-            final InterpreterData compilerData = frame.compilerData;
-            if (frame.stackTop == frame.emptyStackTop + 1) {
-                // Call from Icode.GOSUB: store return PC address in the local
-                state.indexReg += compilerData.maxVars;
-                stack[state.indexReg] = stack[frame.stackTop];
-                sDbl[state.indexReg] = sDbl[frame.stackTop];
-                --frame.stackTop;
-            } else {
-                // Call from exception handler: exception object is already
-                // stored
-                // in the local
-                if (frame.stackTop != frame.emptyStackTop) Kit.codeBug();
-            }
-            return null;
-        }
-    }
-
-    private static class DoRetsub extends InstructionClass {
-        @Override
-        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            // state.indexReg: local to store return address
-            if (state.instructionCounting) {
-                addInstructionCount(cx, frame, 0);
-            }
             state.indexReg += frame.compilerData.maxVars;
             Object value = frame.stack[state.indexReg];
-            if (value != DOUBLE_MARK) {
-                // Invocation from exception handler, restore object to
-                // rethrow
-                state.throwable = value;
-                return BREAK_WITHOUT_EXTENSION;
-            }
-            // Normal return from GOSUB
-            frame.pc = (int) frame.doubleStack[state.indexReg];
-            if (state.instructionCounting) {
-                frame.pcPrevBranch = frame.pc;
-            }
-            return null;
+            state.throwable = value;
+            return BREAK_WITHOUT_EXTENSION;
         }
     }
 

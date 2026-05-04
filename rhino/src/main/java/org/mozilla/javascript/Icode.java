@@ -66,12 +66,10 @@ abstract class Icode {
             RETUNDEF = CALLSPECIAL_OPTIONAL - 1,
 
             // Exception handling implementation
-            GOSUB = RETUNDEF - 1,
-            STARTSUB = GOSUB - 1,
-            RETSUB = STARTSUB - 1,
+            ENDFINALLY = RETUNDEF - 1,
 
             // To indicating a line number change in icodes.
-            LINE = RETSUB - 1,
+            LINE = ENDFINALLY - 1,
 
             // To store shorts and ints inline
             SHORTNUMBER = LINE - 1,
@@ -241,11 +239,7 @@ abstract class Icode {
                 return "CALLSPECIAL_OPTIONAL";
             case RETUNDEF:
                 return "RETUNDEF";
-            case GOSUB:
-                return "GOSUB";
-            case STARTSUB:
-                return "STARTSUB";
-            case RETSUB:
+            case ENDFINALLY:
                 return "RETSUB";
             case LINE:
                 return "LINE";

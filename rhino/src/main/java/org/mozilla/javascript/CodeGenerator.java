@@ -52,6 +52,20 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
 
     private int exceptionTableTop;
 
+    // Maps a finally TARGET node to information about its enclosing FINALLY,
+    // so that JSRs taken on a normal (non-exceptional) path can be replaced
+    // with an inlined copy of the finally body instead of a GOSUB/RETSUB pair.
+    // Populated while processing the corresponding TRY node.
+    private final HashMap<Node, FinallyContext> finallyByTarget = new HashMap<>();
+
+    private static final class FinallyContext {
+        // Pairs of [startPC, endPC) of inlined finally bodies. These are excluded
+        // from the catch/finally protected ranges so an exception thrown by an
+        // inlined finally body is not re-caught by the same try (which would
+        // re-run the finally body if an exception was thrown..
+        final ArrayList<int[]> inlineRanges = new ArrayList<>();
+    }
+
     // ECF_ or Expression Context Flags constants: for now only TAIL
     private static final int ECF_TAIL = 1 << 0;
 
@@ -418,25 +432,19 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                 }
                 break;
 
-            case Token.JSR:
-                {
-                    Node target = ((Jump) node).target;
-                    addGoto(target, Icode.GOSUB);
-                }
-                break;
-
             case Token.FINALLY:
                 {
-                    // Account for incomming GOTOSUB address
-                    stackChange(1);
+                    // The FINALLY block is entered only via the
+                    // exception handler. Reset labels in the body
+                    // subtree because any preceding inlined copy
+                    // already used them.
                     int finallyRegister = getLocalBlockRef(node);
-                    addIndexOp(Icode.STARTSUB, finallyRegister);
-                    stackChange(-1);
+                    resetTargetLabels(node);
                     while (child != null) {
                         visitStatement(child, initialStackDepth);
                         child = child.getNext();
                     }
-                    addIndexOp(Icode.RETSUB, finallyRegister);
+                    addIndexOp(Icode.ENDFINALLY, finallyRegister);
                 }
                 break;
 
@@ -456,6 +464,20 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
 
                     addIndexOp(Icode.SCOPE_SAVE, scopeLocal);
 
+                    Node finallyTargetNode = tryNode.getFinally();
+                    FinallyContext fc = null;
+                    if (finallyTargetNode != null) {
+                        for (Node c = node.getFirstChild(); c != null; c = c.getNext()) {
+                            if (c.getType() == Token.FINALLY) {
+                                fc = new FinallyContext();
+                                break;
+                            }
+                        }
+                        if (fc != null) {
+                            finallyByTarget.put(finallyTargetNode, fc);
+                        }
+                    }
+
                     int tryStart = iCodeTop;
                     boolean savedFlag = itsInTryFlag;
                     itsInTryFlag = true;
@@ -465,7 +487,21 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                     }
                     itsInTryFlag = savedFlag;
 
+                    if (fc != null) {
+                        finallyByTarget.remove(finallyTargetNode);
+                    }
+
                     Node catchTarget = tryNode.target;
+                    Node finallyTarget = tryNode.getFinally();
+                    // Splitting both catch and finally ranges by inline-body PCs would
+                    // produce two entries with identical (start, end), which trips the
+                    // interpreter's "no shared end" invariant in getExceptionHandler.
+                    // Only split when there is no catch (the destructuring iterator-close
+                    // case), where avoiding self re-entry into the same finally is the
+                    // motivation. With a catch present, fall back to the prior single
+                    // protected ranges.
+                    List<int[]> excludeRanges =
+                            (fc != null && catchTarget == null) ? fc.inlineRanges : null;
                     if (catchTarget != null) {
                         int catchStartPC = labelTable[getTargetLabel(catchTarget)];
                         addExceptionHandler(
@@ -476,16 +512,16 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                                 exceptionObjectLocal,
                                 scopeLocal);
                     }
-                    Node finallyTarget = tryNode.getFinally();
                     if (finallyTarget != null) {
                         int finallyStartPC = labelTable[getTargetLabel(finallyTarget)];
-                        addExceptionHandler(
+                        addExceptionHandlersExcluding(
                                 tryStart,
                                 finallyStartPC,
                                 finallyStartPC,
                                 true,
                                 exceptionObjectLocal,
-                                scopeLocal);
+                                scopeLocal,
+                                excludeRanges);
                     }
 
                     addIndexOp(Icode.LOCAL_CLEAR, scopeLocal);
@@ -1747,6 +1783,21 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
         labelTable[label] = iCodeTop;
     }
 
+    /**
+     * Recursively clear labelId on every TARGET node in the subtree, so the subtree can be walked
+     * again to emit a fresh copy of its bytecode (e.g. for inlining a finally body at multiple
+     * non-exceptional callers). YIELD/AWAIT label IDs are left alone because the function's
+     * resumption table refers to them.
+     */
+    private void resetTargetLabels(Node node) {
+        if (node.getType() == Token.TARGET) {
+            node.labelId(-1);
+        }
+        for (Node child = node.getFirstChild(); child != null; child = child.getNext()) {
+            resetTargetLabels(child);
+        }
+    }
+
     private void addGoto(Node target, int gotoOp) {
         int label = getTargetLabel(target);
         if (!(label < labelTableTop)) Kit.codeBug();
@@ -1987,6 +2038,61 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
         } else {
             addIcode(Icode.REG_IND4);
             addInt(index);
+        }
+    }
+
+    /**
+     * Register one or more exception handler entries covering [icodeStart, icodeEnd) but skipping
+     * any PC ranges in {@code excludeRanges}. The exclude ranges correspond to inlined finally
+     * bodies on this try's normal-completion paths; an exception thrown inside such a body must not
+     * be re-caught by the same try (which would re-enter the finally and double-run it), matching
+     * the prior JSR/RETSUB behavior where the body executed at the FINALLY block's PC outside the
+     * protected range.
+     */
+    private void addExceptionHandlersExcluding(
+            int icodeStart,
+            int icodeEnd,
+            int handlerStart,
+            boolean isFinally,
+            int exceptionObjectLocal,
+            int scopeLocal,
+            List<int[]> excludeRanges) {
+        if (excludeRanges == null || excludeRanges.isEmpty()) {
+            addExceptionHandler(
+                    icodeStart,
+                    icodeEnd,
+                    handlerStart,
+                    isFinally,
+                    exceptionObjectLocal,
+                    scopeLocal);
+            return;
+        }
+        int cursor = icodeStart;
+        for (int[] r : excludeRanges) {
+            int rStart = r[0];
+            int rEnd = r[1];
+            if (rEnd <= cursor || rStart >= icodeEnd) {
+                continue;
+            }
+            int segStart = cursor;
+            int segEnd = Math.min(rStart, icodeEnd);
+            if (segEnd > segStart) {
+                addExceptionHandler(
+                        segStart,
+                        segEnd,
+                        handlerStart,
+                        isFinally,
+                        exceptionObjectLocal,
+                        scopeLocal);
+            }
+            cursor = Math.max(cursor, rEnd);
+            if (cursor >= icodeEnd) {
+                break;
+            }
+        }
+        if (cursor < icodeEnd) {
+            addExceptionHandler(
+                    cursor, icodeEnd, handlerStart, isFinally, exceptionObjectLocal, scopeLocal);
         }
     }
 
