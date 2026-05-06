@@ -152,6 +152,11 @@ public abstract class ScriptTestsBase {
     }
 
     @Test
+    public void rhinoTestInterpretedV2() {
+        assertEquals("success", executeRhinoScript(EvaluationMethod.InterpreterV2));
+    }
+
+    @Test
     public void rhinoTestCompiled() {
         assertEquals("success", executeRhinoScript(EvaluationMethod.Compiler));
     }

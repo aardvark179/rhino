@@ -839,7 +839,13 @@ public class Test262SuiteTest {
                 true,
                 false,
                 cx -> {
-                    cx.setEvaluationMethod(EvaluationMethod.Interpreter);
+                    cx.setEvaluationMethod(EvaluationMethod.Interpreted);
+                }),
+        INTERPRETEDV2(
+                "interpretedV2",
+                true,
+                cx -> {
+                    cx.setEvaluationMethod(EvaluationMethod.InterpretedV2);
                 }),
         COMPILED(
                 "compiled",
