@@ -30,4 +30,16 @@ public abstract class ACallFrame {
 
     /** Returns the debuggable script data associated with this frame. */
     public abstract DebuggableScript getData();
+
+    public int getParentPC() {
+        return -1;
+    }
+
+    public ACallFrame getPreviousInterpreterFrame() {
+        return null;
+    }
+
+    public ScriptOrFn<?> getFnOrScript() {
+        return null;
+    }
 }
