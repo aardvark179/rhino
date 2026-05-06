@@ -296,11 +296,11 @@ public class Test262SuiteTest {
         }
     }
 
-    private TopLevel buildScope(Context cx, Test262Case testCase, boolean interpretedMode) {
+    private TopLevel buildScope(Context cx, Test262Case testCase, TestMode testMode) {
         TopLevel scope = cx.initSafeStandardObjects(new TopLevel());
 
         for (String harnessFile : testCase.harnessFiles) {
-            String harnessKey = harnessFile + '-' + interpretedMode;
+            String harnessKey = harnessFile + '-' + testMode.name();
             Script harnessScript =
                     HARNESS_SCRIPT_CACHE.computeIfAbsent(
                             harnessKey,
@@ -346,14 +346,14 @@ public class Test262SuiteTest {
             Test262Case testCase,
             boolean markedAsFailing) {
         try (Context cx = Context.enter()) {
-            cx.setInterpretedMode(testMode == TestMode.INTERPRETED);
+            cx.setEvaluationMethod(testModeToEvaluationMethod(testMode));
             // Ensure maximum compatibility, including future strict mode and "const" checks
             cx.setLanguageVersion(Context.VERSION_ECMASCRIPT);
             cx.setGeneratingDebug(true);
 
             boolean failedEarly = false;
             try {
-                TopLevel scope = buildScope(cx, testCase, testMode == TestMode.INTERPRETED);
+                TopLevel scope = buildScope(cx, testCase, testMode);
                 String str = testCase.source;
                 int line = 1;
                 if (useStrict) {
@@ -670,7 +670,10 @@ public class Test262SuiteTest {
                 continue;
             }
 
-            for (TestMode testMode : new TestMode[] {TestMode.INTERPRETED, TestMode.COMPILED}) {
+            for (TestMode testMode :
+                    new TestMode[] {
+                        TestMode.INTERPRETED, TestMode.INTERPRETEDV2, TestMode.COMPILED
+                    }) {
                 if (!testCase.hasFlag(FLAG_ONLY_STRICT) || testCase.hasFlag(FLAG_RAW)) {
                     result.add(
                             new Object[] {
@@ -806,8 +809,22 @@ public class Test262SuiteTest {
 
     private enum TestMode {
         INTERPRETED,
+        INTERPRETEDV2,
         COMPILED,
         SKIPPED,
+    }
+
+    private Context.EvaluationMethod testModeToEvaluationMethod(TestMode mode) {
+        switch (mode) {
+            case COMPILED:
+                return Context.EvaluationMethod.Compiler;
+            case INTERPRETED:
+                return Context.EvaluationMethod.Interpreter;
+            case INTERPRETEDV2:
+                return Context.EvaluationMethod.InterpreterV2;
+            default:
+                throw new IllegalStateException();
+        }
     }
 
     private static class TestResultTracker {
