@@ -4,6 +4,7 @@ import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.JSFunction;
+import org.mozilla.javascript.Undefined;
 import org.mozilla.javascript.ast.FunctionNode;
 import org.mozilla.javascript.interpreterv2.InstructionFormatter;
 
@@ -38,8 +39,9 @@ public class ClosureExpression extends Instruction {
         boolean isArrow = fdesc.getFunctionType() == FunctionNode.ARROW_FUNCTION;
         Object lexicalThis = isArrow ? frame.thisObj : null;
         var homeObject = isArrow ? frame.fnOrScript.getHomeObject() : null;
+        var newTarget = isArrow ? frame.newTarget : Undefined.instance;
 
-        JSFunction fn = new JSFunction(cx, frame.scope, fdesc, lexicalThis, homeObject);
+        JSFunction fn = new JSFunction(cx, frame.scope, fdesc, lexicalThis, newTarget, homeObject);
         frame.push(fn);
     }
 
