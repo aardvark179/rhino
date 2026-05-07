@@ -4,6 +4,7 @@ import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.JSFunction;
 import org.mozilla.javascript.Scriptable;
+import org.mozilla.javascript.Undefined;
 import org.mozilla.javascript.ast.FunctionNode;
 import org.mozilla.javascript.interpreterv2.InstructionFormatter;
 import org.mozilla.javascript.interpreterv2.operand.Operand;
@@ -26,8 +27,9 @@ public class MethodExpression extends Instruction {
         boolean isArrow = fdesc.getFunctionType() == FunctionNode.ARROW_FUNCTION;
         Object lexicalThis = isArrow ? frame.thisObj : null;
         Scriptable homeObject = (Scriptable) homeObjectOperand.retrieve(cx, frame);
+        var newTarget = isArrow ? frame.newTarget : Undefined.instance;
 
-        JSFunction fn = new JSFunction(cx, frame.scope, fdesc, lexicalThis, homeObject);
+        JSFunction fn = new JSFunction(cx, frame.scope, fdesc, lexicalThis, newTarget, homeObject);
         frame.push(fn);
     }
 
