@@ -5,7 +5,6 @@ import static org.mozilla.javascript.UniqueTag.DOUBLE_MARK;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptRuntime;
-import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.VarScope;
 
 public class EnterDotQuery implements Instruction {
