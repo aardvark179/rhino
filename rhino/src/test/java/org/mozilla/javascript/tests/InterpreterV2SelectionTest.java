@@ -1,14 +1,15 @@
 package org.mozilla.javascript.tests;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.Context.EvaluationMethod;
 import org.mozilla.javascript.InterpreterV2;
 import org.mozilla.javascript.Scriptable;
+import org.mozilla.javascript.VarScope;
 
 /** Test that InterpreterV2 can be selected and initialized. */
 public class InterpreterV2SelectionTest {
@@ -44,7 +45,7 @@ public class InterpreterV2SelectionTest {
         try (Context cx = Context.enter()) {
             cx.setOptimizationLevel(-2);
 
-            Scriptable scope = cx.initStandardObjects();
+            VarScope scope = cx.initStandardObjects();
 
             // Try to compile a simple script
             String script = "1 + 1";
