@@ -265,9 +265,11 @@ public class Compiler<T extends ScriptOrFn<T>> {
         if (returnFunction) {
             CodeGenUtils.fillInForTopLevelFunction(
                     descBuilder, (FunctionNode) scriptOrFn, rawSource, compilerEnv);
+            generateFunctionCode();
         } else {
             CodeGenUtils.fillInForScript(descBuilder, scriptOrFn, rawSource, compilerEnv);
             CodeGenUtils.setConstructor(descBuilder, scriptOrFn);
+            generateInstructions(tree);
         }
         return descBuilder.build(x -> {});
     }
