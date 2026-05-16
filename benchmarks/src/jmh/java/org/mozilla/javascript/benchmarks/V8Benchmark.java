@@ -8,6 +8,7 @@ import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptableObject;
 import org.mozilla.javascript.TopLevel;
 import org.mozilla.javascript.VarScope;
+import org.mozilla.javascript.Context.EvaluationMethod;
 import org.openjdk.jmh.annotations.*;
 
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
@@ -39,9 +40,9 @@ public class V8Benchmark {
             }
         }
 
-        void initialize(boolean interpreted) {
+        void initialize(EvaluationMethod evalMethod) {
             cx = Context.enter();
-            cx.setInterpretedMode(interpreted);
+            cx.setEvaluationMethod(evalMethod);;
             cx.setLanguageVersion(Context.VERSION_ES6);
             scope = cx.initStandardObjects();
             evaluateSource(cx, scope, "testsrc/benchmarks/framework.js");
@@ -66,12 +67,12 @@ public class V8Benchmark {
     public static class SplayState extends AbstractState {
         Callable splay;
 
-        @Param({"false", "true"})
-        public boolean interpreted;
+        @Param({"Interpreter", "InterpreterV2", "Compiler"})
+        public EvaluationMethod evalMethod;
 
         @Setup(Level.Trial)
         public void setUp() {
-            initialize(interpreted);
+            initialize(evalMethod);
             evaluateSource(cx, scope, "testsrc/benchmarks/v8-benchmarks-v6/splay.js");
             runSetup();
             splay = getRunFunc("Splay");
@@ -94,12 +95,12 @@ public class V8Benchmark {
         Callable encrypt;
         Callable decrypt;
 
-        @Param({"false", "true"})
-        public boolean interpreted;
+        @Param({"Interpreter", "InterpreterV2", "Compiler"})
+        public EvaluationMethod evalMethod;
 
         @Setup(Level.Trial)
         public void setUp() {
-            initialize(interpreted);
+            initialize(evalMethod);
             evaluateSource(cx, scope, "testsrc/benchmarks/v8-benchmarks-v6/crypto.js");
             runSetup();
             encrypt = getRunFunc("Encrypt");
@@ -129,12 +130,12 @@ public class V8Benchmark {
     public static class DeltaBlueState extends AbstractState {
         Callable db;
 
-        @Param({"false", "true"})
-        public boolean interpreted;
+        @Param({"Interpreter", "InterpreterV2", "Compiler"})
+        public EvaluationMethod evalMethod;
 
         @Setup(Level.Trial)
         public void setUp() {
-            initialize(interpreted);
+            initialize(evalMethod);
             evaluateSource(cx, scope, "testsrc/benchmarks/v8-benchmarks-v6/deltablue.js");
             runSetup();
             db = getRunFunc("DeltaBlue");
@@ -156,12 +157,12 @@ public class V8Benchmark {
     public static class RayTraceState extends AbstractState {
         Callable rt;
 
-        @Param({"false", "true"})
-        public boolean interpreted;
+        @Param({"Interpreter", "InterpreterV2", "Compiler"})
+        public EvaluationMethod evalMethod;
 
         @Setup(Level.Trial)
         public void setUp() {
-            initialize(interpreted);
+            initialize(evalMethod);
             evaluateSource(cx, scope, "testsrc/benchmarks/v8-benchmarks-v6/raytrace.js");
             runSetup();
             rt = getRunFunc("RayTrace");
@@ -183,12 +184,12 @@ public class V8Benchmark {
     public static class RegExpState extends AbstractState {
         Callable re;
 
-        @Param({"false", "true"})
-        public boolean interpreted;
+        @Param({"Interpreter", "InterpreterV2", "Compiler"})
+        public EvaluationMethod evalMethod;
 
         @Setup(Level.Trial)
         public void setUp() {
-            initialize(interpreted);
+            initialize(evalMethod);
             evaluateSource(cx, scope, "testsrc/benchmarks/v8-benchmarks-v6/regexp.js");
             runSetup();
             re = getRunFunc("RegExpBench");
@@ -210,12 +211,12 @@ public class V8Benchmark {
     public static class RichardsState extends AbstractState {
         Callable r;
 
-        @Param({"false", "true"})
-        public boolean interpreted;
+        @Param({"Interpreter", "InterpreterV2", "Compiler"})
+        public EvaluationMethod evalMethod;
 
         @Setup(Level.Trial)
         public void setUp() {
-            initialize(interpreted);
+            initialize(evalMethod);
             evaluateSource(cx, scope, "testsrc/benchmarks/v8-benchmarks-v6/richards.js");
             runSetup();
             r = getRunFunc("Richards");
@@ -238,12 +239,12 @@ public class V8Benchmark {
         Callable earley;
         Callable boyer;
 
-        @Param({"false", "true"})
-        public boolean interpreted;
+        @Param({"Interpreter", "InterpreterV2", "Compiler"})
+        public EvaluationMethod evalMethod;
 
         @Setup(Level.Trial)
         public void setUp() {
-            initialize(interpreted);
+            initialize(evalMethod);
             evaluateSource(cx, scope, "testsrc/benchmarks/v8-benchmarks-v6/earley-boyer.js");
             runSetup();
             earley = getRunFunc("Earley");
