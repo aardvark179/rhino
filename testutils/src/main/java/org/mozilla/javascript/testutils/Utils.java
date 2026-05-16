@@ -15,6 +15,7 @@ import org.mozilla.javascript.EcmaError;
 import org.mozilla.javascript.EvaluatorException;
 import org.mozilla.javascript.JavaScriptException;
 import org.mozilla.javascript.TopLevel;
+import org.mozilla.javascript.Context.EvaluationMethod;
 
 /**
  * Misc utilities to make test code easier.
@@ -88,8 +89,9 @@ public class Utils {
      */
     public static <T> void runWithAllModes(
             final ContextFactory contextFactory, final ContextAction<T> action) {
-        runWithMode(contextFactory, action, true);
-        runWithMode(contextFactory, action, false);
+        runWithMode(contextFactory, action, EvaluationMethod.Interpreter);
+        runWithMode(contextFactory, action, EvaluationMethod.InterpreterV2);
+        runWithMode(contextFactory, action, EvaluationMethod.Compiler);
     }
 
     /**
@@ -120,6 +122,18 @@ public class Utils {
             action.run(cx);
         }
     }
+
+    public static void runWithMode(
+            final ContextFactory contextFactory,
+            final ContextAction<?> action,
+            final Context.EvaluationMethod mode) {
+
+        try (final Context cx = contextFactory.enterContext()) {
+            cx.setEvaluationMethod(mode);
+            action.run(cx);
+        }
+    }
+
 
     /**
      * If the TEST_OPTLEVEL system property is set, then return an array containing only that one
