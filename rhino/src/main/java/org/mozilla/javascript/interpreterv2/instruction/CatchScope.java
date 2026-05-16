@@ -32,15 +32,14 @@ public class CatchScope implements Instruction {
         Throwable caughtException = (Throwable) exception.retrieve(cx, frame);
         Scriptable lastCatchScope;
         if (afterFirstScope) {
-            lastCatchScope = (Scriptable) frame.stack[frame.localShift + scopeIndex];
+            lastCatchScope = (Scriptable) frame.stack[frame.localShift + localIndex];
         } else {
             lastCatchScope = null;
         }
         var newCatchScope = ScriptRuntime.newCatchScope(
             caughtException, lastCatchScope, name, cx, frame.scope);
-        frame.saveExceptionScope(
-                localIndex,
-                new WithScope(frame.scope, newCatchScope));
+
+        frame.stack[frame.localShift + localIndex] = newCatchScope;
     }
 
     @Override
