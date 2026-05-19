@@ -3371,6 +3371,20 @@ public class Parser {
                 if (peekToken() == Token.YIELD) {
                     reportError("msg.yield.parenthesized");
                 }
+                if (peekToken() == Token.DOTDOTDOT
+                        && compilerEnv.getLanguageVersion() >= Context.VERSION_ES6) {
+                    consumeToken();
+                    int spreadPos = ts.tokenBeg;
+                    int spreadLineno = lineNumber();
+                    int spreadColumn = columnNumber();
+                    AstNode exprNode = assignExpr();
+                    Spread spread = new Spread(spreadPos, ts.tokenEnd - spreadPos);
+                    spread.setLineColumnNumber(spreadLineno, spreadColumn);
+                    spread.setExpression(exprNode);
+                    result.add(spread);
+                    // Spread is only permitted as the final argument.
+                    break;
+                }
                 AstNode en = assignExpr();
                 if (peekToken() == Token.FOR) {
                     try {
