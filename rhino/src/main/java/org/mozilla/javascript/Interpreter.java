@@ -325,6 +325,11 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             case Icode.CLOSURE_STMT:
                 // hoisted indicator byte
                 return 1 + 1;
+            case Icode.CALLSPECIAL_ACCUMULATED:
+                // call type
+                // is new
+                // line number
+                return 1 + 1 + 1 + 2;
         }
         if (!Icode.validBytecode(bytecode)) throw Kit.codeBug();
         return 1;
@@ -722,6 +727,11 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Icode.CALL_ON_SUPER] = new DoCallByteCode();
         instructionObjs[base + Icode.TAIL_CALL] = new DoCallByteCode();
         instructionObjs[base + Token.REF_CALL] = new DoCallByteCode();
+        instructionObjs[base + Icode.CALL_ACCUMULATED] = new DoCallAccumulated();
+        instructionObjs[base + Icode.CALL_ON_SUPER_ACCUMULATED] = new DoCallAccumulated();
+        instructionObjs[base + Icode.REF_CALL_ACCUMULATED] = new DoCallAccumulated();
+        instructionObjs[base + Icode.NEW_ACCUMULATED] = new DoNewAccumulated();
+        instructionObjs[base + Icode.CALLSPECIAL_ACCUMULATED] = new DoCallSpecialAccumulated();
         instructionObjs[base + Token.NEW] = new DoNew();
         instructionObjs[base + Token.TYPEOF] = new DoTypeOf();
         instructionObjs[base + Icode.TYPEOFNAME] = new DoTypeOfName();
@@ -2647,7 +2657,18 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             int callType = ctx.compilerData.itsICode[ctx.pc] & 0xFF;
             boolean isNew = (ctx.compilerData.itsICode[ctx.pc + 1] != 0);
             int line = ctx.getIndex(ctx.pc + 2);
-            ctx.out.println(tname + " " + callType + " " + isNew + " " + ctx.indexReg + " " + line);
+            ctx.out.println(
+                    tname
+                            + " "
+                            + callType
+                            + " "
+                            + isNew
+                            + " "
+                            + ctx.indexReg
+                            + " "
+                            + line
+                            + " "
+                            + line);
             ctx.pc += 4;
         }
     }
@@ -2987,6 +3008,116 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         @Override
         void dumpICode(int op, String tname, ICodeDumpContext ctx) {
             ctx.out.println(tname + " " + ctx.indexReg);
+        }
+    }
+
+    /**
+     * Call whose arguments were gathered into a {@link ResultAccumulator} (used for spread
+     * arguments in any position). The accumulator sits on top of the stack above the lookup result;
+     * unlike {@link DoCallByteCode} the arguments are already flattened, so we invoke the callable
+     * directly instead of keeping interpreted callees in this loop.
+     */
+    private static class DoCallAccumulated extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            if (state.instructionCounting) {
+                cx.instructionCount += INVOCATION_COST;
+            }
+            // stack: ... lookupResult accumulator -> ... result
+            Object[] args = ((ResultAccumulator) frame.stack[frame.stackTop]).getCallArgs();
+            frame.stackTop--;
+            ScriptRuntime.LookupResult result =
+                    (ScriptRuntime.LookupResult) frame.stack[frame.stackTop];
+            Callable fun = result.getCallable();
+            Object funThisObj =
+                    (op == Icode.CALL_ON_SUPER_ACCUMULATED) ? frame.thisObj : result.getThis();
+            if (op == Icode.REF_CALL_ACCUMULATED) {
+                frame.stack[frame.stackTop] = ScriptRuntime.callRef(fun, funThisObj, args, cx);
+            } else {
+                frame.stack[frame.stackTop] = fun.call(cx, frame.scope, funThisObj, args);
+            }
+            return null;
+        }
+    }
+
+    /** {@code new} whose arguments were gathered into a {@link ResultAccumulator}. */
+    private static class DoNewAccumulated extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            if (state.instructionCounting) {
+                cx.instructionCount += INVOCATION_COST;
+            }
+            // stack: ... function accumulator -> ... newResult
+            Object[] args = ((ResultAccumulator) frame.stack[frame.stackTop]).getCallArgs();
+            frame.stackTop--;
+            Object lhs = frame.stack[frame.stackTop];
+            if (lhs == DOUBLE_MARK) {
+                lhs = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
+            }
+            if (lhs instanceof JSFunction) {
+                var f = (JSFunction) lhs;
+                if (cx.getLanguageVersion() >= Context.VERSION_ES6 && f.getHomeObject() != null) {
+                    // Only methods have home objects associated with them
+                    throw ScriptRuntime.typeErrorById("msg.not.ctor", f.getFunctionName());
+                }
+            }
+            if (!(lhs instanceof Constructable)) {
+                throw ScriptRuntime.notFunctionError(lhs);
+            }
+            frame.stack[frame.stackTop] = ((Constructable) lhs).construct(cx, frame.scope, args);
+            return null;
+        }
+    }
+
+    /** Special call ({@code eval} etc.) whose arguments were gathered into a accumulator. */
+    private static class DoCallSpecialAccumulated extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            byte[] iCode = frame.compilerData.itsICode;
+            if (state.instructionCounting) {
+                cx.instructionCount += INVOCATION_COST;
+            }
+            int callType = iCode[frame.pc] & 0xFF;
+            boolean isNew = (iCode[frame.pc + 1] != 0);
+            int sourceLine = getIndex(iCode, frame.pc + 2);
+            frame.pc += 4;
+
+            Object[] args = ((ResultAccumulator) frame.stack[frame.stackTop]).getCallArgs();
+            frame.stackTop--;
+            if (isNew) {
+                Object function = frame.stack[frame.stackTop];
+                if (function == DOUBLE_MARK) {
+                    function = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
+                }
+                frame.stack[frame.stackTop] =
+                        ScriptRuntime.newSpecial(cx, function, args, frame.scope, callType);
+            } else {
+                ScriptRuntime.LookupResult result =
+                        (ScriptRuntime.LookupResult) frame.stack[frame.stackTop];
+                Callable function = result.getCallable();
+                frame.stack[frame.stackTop] =
+                        ScriptRuntime.callSpecial(
+                                cx,
+                                function,
+                                result.getThis(),
+                                args,
+                                frame.scope,
+                                frame.thisObj,
+                                callType,
+                                frame.fnOrScript.getDescriptor().getSourceName(),
+                                sourceLine,
+                                false);
+            }
+            return null;
+        }
+
+        @Override
+        void dumpICode(int op, String tname, ICodeDumpContext ctx) {
+            int callType = ctx.compilerData.itsICode[ctx.pc] & 0xFF;
+            boolean isNew = (ctx.compilerData.itsICode[ctx.pc + 1] != 0);
+            int line = ctx.getIndex(ctx.pc + 2);
+            ctx.out.println(tname + " " + callType + " " + isNew + " " + line);
+            ctx.pc += 4;
         }
     }
 
@@ -4550,7 +4681,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         }
     }
 
-    private static Object[] getArgsArray(Object[] stack, double[] sDbl, int shift, int count) {
+    static Object[] getArgsArray(Object[] stack, double[] sDbl, int shift, int count) {
         return getArgsArray(stack, sDbl, new Object[0], 0, shift, count);
     }
 
@@ -4559,6 +4690,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         if (count == 0) {
             return ScriptRuntime.emptyArgs;
         }
+
         Object[] args = new Object[count];
         for (int i = 0; i < bCount; i++) {
             args[i] = bound[i];

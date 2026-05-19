@@ -774,43 +774,68 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                             resolveForwardGoto(completeOptionalCallJump.putArgsAndDoCallLabel);
                         }
                     }
-                    int argCount = 0;
-                    while ((child = child.getNext()) != null) {
-                        visitExpression(child, 0);
-                        ++argCount;
-                    }
-                    int callType = node.getIntProp(Node.SPECIALCALL_PROP, Node.NON_SPECIALCALL);
-                    if (type != Token.REF_CALL && callType != Node.NON_SPECIALCALL) {
-                        // embed line number and source filename
-                        addIndexOp(Icode.CALLSPECIAL, argCount);
-                        addUint8(callType);
-                        addUint8(type == Token.NEW ? 1 : 0);
-                        addUint16(lineNumber & 0xFFFF);
-                    } else if (node.getIntProp(Node.SUPER_PROPERTY_ACCESS, 0) == 1) {
-                        addIndexOp(Icode.CALL_ON_SUPER, argCount);
-                    } else {
-                        // Only use the tail call optimization if we're not in a try
-                        // or we're not generating debug info (since the
-                        // optimization will confuse the debugger)
-                        if (type == Token.CALL
-                                && (contextFlags & ECF_TAIL) != 0
-                                && !compilerEnv.isGenerateDebugInfo()
-                                && !itsInTryFlag) {
-                            type = Icode.TAIL_CALL;
+                    Node firstArg = child.getNext();
+                    if (firstArg != null && firstArg.getType() == Token.RESULT_ACCUMULATOR) {
+                        // Spread arguments in any position: the arguments are gathered into a
+                        // ResultAccumulator on the stack, then consumed by an accumulated-call
+                        // instruction.
+                        visitAccumulatedCallArgs(node, firstArg);
+                        int callType = node.getIntProp(Node.SPECIALCALL_PROP, Node.NON_SPECIALCALL);
+                        if (type != Token.REF_CALL && callType != Node.NON_SPECIALCALL) {
+                            addIcode(Icode.CALLSPECIAL_ACCUMULATED);
+                            addUint8(callType);
+                            addUint8(type == Token.NEW ? 1 : 0);
+                            addUint16(lineNumber & 0xFFFF);
+                        } else if (node.getIntProp(Node.SUPER_PROPERTY_ACCESS, 0) == 1) {
+                            addIcode(Icode.CALL_ON_SUPER_ACCUMULATED);
+                        } else if (type == Token.NEW) {
+                            addIcode(Icode.NEW_ACCUMULATED);
+                        } else if (type == Token.REF_CALL) {
+                            addIcode(Icode.REF_CALL_ACCUMULATED);
+                        } else {
+                            addIcode(Icode.CALL_ACCUMULATED);
                         }
-                        addIndexOp(type, argCount);
-                    }
-                    // adjust stack
-                    if (type == Token.NEW) {
-                        // new: f, args -> result
-                        stackChange(-argCount);
+                        // stack: callee(+accumulator) -> result
+                        stackChange(-(type == Token.NEW ? 1 : 2));
                     } else {
-                        // call: f, thisObj, args -> result
-                        // ref_call: f, thisObj, args -> ref
-                        stackChange(-1 - argCount);
-                    }
-                    if (argCount > itsData.maxCalleeArgs) {
-                        itsData.maxCalleeArgs = argCount;
+                        int argCount = 0;
+                        while ((child = child.getNext()) != null) {
+                            visitExpression(child, 0);
+                            ++argCount;
+                        }
+                        int callType = node.getIntProp(Node.SPECIALCALL_PROP, Node.NON_SPECIALCALL);
+                        if (type != Token.REF_CALL && callType != Node.NON_SPECIALCALL) {
+                            // embed line number and source filename
+                            addIndexOp(Icode.CALLSPECIAL, argCount);
+                            addUint8(callType);
+                            addUint8(type == Token.NEW ? 1 : 0);
+                            addUint16(lineNumber & 0xFFFF);
+                        } else if (node.getIntProp(Node.SUPER_PROPERTY_ACCESS, 0) == 1) {
+                            addIndexOp(Icode.CALL_ON_SUPER, argCount);
+                        } else {
+                            // Only use the tail call optimization if we're not in a try
+                            // or we're not generating debug info (since the
+                            // optimization will confuse the debugger)
+                            if (type == Token.CALL
+                                    && (contextFlags & ECF_TAIL) != 0
+                                    && !compilerEnv.isGenerateDebugInfo()
+                                    && !itsInTryFlag) {
+                                type = Icode.TAIL_CALL;
+                            }
+                            addIndexOp(type, argCount);
+                        }
+                        // adjust stack
+                        if (type == Token.NEW) {
+                            // new: f, args -> result
+                            stackChange(-argCount);
+                        } else {
+                            // call: f, thisObj, args -> result
+                            // ref_call: f, thisObj, args -> ref
+                            stackChange(-1 - argCount);
+                        }
+                        if (argCount > itsData.maxCalleeArgs) {
+                            itsData.maxCalleeArgs = argCount;
+                        }
                     }
 
                     if (completeOptionalCallJump != null) {
@@ -1662,6 +1687,30 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
             stackChange(-1);
         } else {
             throw badTree(node);
+        }
+    }
+
+    private void visitAccumulatedCallArgs(Node node, Node firstArg) {
+        for (Node child = firstArg; child != null; child = child.getNext()) {
+            switch (child.getType()) {
+                case Token.RESULT_ACCUMULATOR:
+                    addIndexOp(
+                            Token.RESULT_ACCUMULATOR, child.getIntProp(Node.RESULTS_SIZE_PROP, 0));
+                    stackChange(1);
+                    break;
+                case Token.ACCUMULATE_RESULT:
+                    visitExpression(child.getFirstChild(), 0);
+                    addToken(Token.ACCUMULATE_RESULT);
+                    stackChange(-1);
+                    break;
+                case Token.ACCUMULATE_ITERATOR:
+                    visitExpression(child.getFirstChild(), 0);
+                    addToken(Token.ACCUMULATE_ITERATOR);
+                    stackChange(-1);
+                    break;
+                default:
+                    throw badTree(node);
+            }
         }
     }
 

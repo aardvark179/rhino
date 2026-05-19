@@ -37,6 +37,7 @@ import org.mozilla.javascript.interpreterv2.instruction.BitNot;
 import org.mozilla.javascript.interpreterv2.instruction.BitOr;
 import org.mozilla.javascript.interpreterv2.instruction.BitXor;
 import org.mozilla.javascript.interpreterv2.instruction.Call;
+import org.mozilla.javascript.interpreterv2.instruction.CallAccumulated;
 import org.mozilla.javascript.interpreterv2.instruction.CatchScope;
 import org.mozilla.javascript.interpreterv2.instruction.ClosureExpression;
 import org.mozilla.javascript.interpreterv2.instruction.ClosureStatement;
@@ -105,6 +106,7 @@ import org.mozilla.javascript.interpreterv2.instruction.NameAndThisOptional;
 import org.mozilla.javascript.interpreterv2.instruction.NameIncDec;
 import org.mozilla.javascript.interpreterv2.instruction.Neg;
 import org.mozilla.javascript.interpreterv2.instruction.New;
+import org.mozilla.javascript.interpreterv2.instruction.NewAccumulated;
 import org.mozilla.javascript.interpreterv2.instruction.NewTarget;
 import org.mozilla.javascript.interpreterv2.instruction.Nop;
 import org.mozilla.javascript.interpreterv2.instruction.Not;
@@ -150,7 +152,9 @@ import org.mozilla.javascript.interpreterv2.instruction.ShallowNotEqual;
 import org.mozilla.javascript.interpreterv2.instruction.ShortNumber;
 import org.mozilla.javascript.interpreterv2.instruction.SimpleSwitch;
 import org.mozilla.javascript.interpreterv2.instruction.SpecialCall;
+import org.mozilla.javascript.interpreterv2.instruction.SpecialCallAccumulated;
 import org.mozilla.javascript.interpreterv2.instruction.SpecialCallNew;
+import org.mozilla.javascript.interpreterv2.instruction.SpecialCallNewAccumulated;
 import org.mozilla.javascript.interpreterv2.instruction.StartSubroutine;
 import org.mozilla.javascript.interpreterv2.instruction.StrictSetName;
 import org.mozilla.javascript.interpreterv2.instruction.StringConcat;
@@ -1532,6 +1536,73 @@ public class Compiler<T extends ScriptOrFn<T>> {
             }
             lookupResultOrFunction = PopOperand.instance;
         }
+
+        Node firstArg = child.getNext();
+        if (firstArg != null && firstArg.getType() == Token.RESULT_ACCUMULATOR) {
+            // Spread arguments in any position: gather the arguments into a
+            // ResultAccumulator on the stack, then invoke an accumulated-call
+            // instruction.
+            for (Node c = firstArg; c != null; c = c.getNext()) {
+                switch (c.getType()) {
+                    case Token.RESULT_ACCUMULATOR:
+                        addInstruction(
+                                new ResultAccumulatorInstruction(
+                                        c.getIntProp(Node.RESULTS_SIZE_PROP, 0)));
+                        break;
+                    case Token.ACCUMULATE_RESULT:
+                        visitExpression(c.getFirstChild(), 0);
+                        addInstruction(AccumulateResult.instance);
+                        break;
+                    case Token.ACCUMULATE_ITERATOR:
+                        visitExpression(c.getFirstChild(), 0);
+                        addInstruction(AccumulateIterator.instance);
+                        break;
+                    default:
+                        badTree(c);
+                }
+            }
+            Operand accumulator = PopOperand.instance;
+            int specialType = node.getIntProp(Node.SPECIALCALL_PROP, Node.NON_SPECIALCALL);
+            updateLineNumber(node);
+            if (op != Token.REF_CALL && specialType != Node.NON_SPECIALCALL) {
+                if (op == Token.NEW) {
+                    addInstruction(
+                            new SpecialCallNewAccumulated(
+                                    lookupResultOrFunction, accumulator, specialType));
+                } else {
+                    addInstruction(
+                            new SpecialCallAccumulated(
+                                    lookupResultOrFunction,
+                                    accumulator,
+                                    (short) (lineNumber & 0xFF),
+                                    specialType));
+                }
+            } else if (node.getIntProp(Node.SUPER_PROPERTY_ACCESS, 0) == 1) {
+                addInstruction(
+                        new CallAccumulated(
+                                lookupResultOrFunction, accumulator, Call.Type.CallOnSuper));
+            } else if (op == Token.NEW) {
+                addInstruction(new NewAccumulated(lookupResultOrFunction, accumulator));
+            } else {
+                Call.Type callTypeForAccum = Call.Type.Call;
+                if (op == Token.CALL
+                        && (contextFlags & ECF_TAIL) != 0
+                        && !compilerEnv.isGenerateDebugInfo()
+                        && !inTryFlag) {
+                    callTypeForAccum = Call.Type.TailCall;
+                } else if (op == Token.REF_CALL) {
+                    callTypeForAccum = Call.Type.RefCall;
+                }
+                addInstruction(
+                        new CallAccumulated(lookupResultOrFunction, accumulator, callTypeForAccum));
+            }
+
+            if (completeOptionalCallJump != null) {
+                resolveForwardGoto(completeOptionalCallJump.afterLabel);
+            }
+            return;
+        }
+
         List<Operand> args = new ArrayList<>();
         while ((child = child.getNext()) != null) {
             args.add(getOperand(child, 0, false, lines));

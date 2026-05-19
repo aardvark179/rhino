@@ -192,7 +192,7 @@ class InterpreterBytecodeDumpTest {
                         " [5] REG_STR_C1 \"1\"",
                         " [6] STRING",
                         " [7] REG_IND_C1",
-                        " [8] CALLSPECIAL 1 false 1 1",
+                        " [8] CALLSPECIAL 1 false 1 1 1",
                         " [13] POP_RESULT",
                         " [14] RETURN_RESULT",
                         ""),

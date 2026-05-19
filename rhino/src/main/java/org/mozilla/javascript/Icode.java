@@ -176,8 +176,16 @@ abstract class Icode {
             DUP_X1 = NUMERIC_INC_DEC - 1,
             DUP_X2 = DUP_X1 - 1,
 
+            // Calls whose arguments have been gathered into a ResultAccumulator on the stack,
+            // used when a call/new has a spread argument in any position.
+            CALL_ACCUMULATED = DUP_X2 - 1,
+            CALL_ON_SUPER_ACCUMULATED = CALL_ACCUMULATED - 1,
+            REF_CALL_ACCUMULATED = CALL_ON_SUPER_ACCUMULATED - 1,
+            NEW_ACCUMULATED = REF_CALL_ACCUMULATED - 1,
+            CALLSPECIAL_ACCUMULATED = NEW_ACCUMULATED - 1,
+
             // Last icode
-            MIN_ICODE = DUP_X2;
+            MIN_ICODE = CALLSPECIAL_ACCUMULATED;
 
     static String bytecodeName(int bytecode) {
         if (!validBytecode(bytecode)) {
@@ -375,6 +383,16 @@ abstract class Icode {
                 return "NUMERIC_INC_DEC";
             case HOMEOBJ:
                 return "HOMEOBJ";
+            case CALL_ACCUMULATED:
+                return "CALL_ACCUMULATED";
+            case CALL_ON_SUPER_ACCUMULATED:
+                return "CALL_ON_SUPER_ACCUMULATED";
+            case REF_CALL_ACCUMULATED:
+                return "REF_CALL_ACCUMULATED";
+            case NEW_ACCUMULATED:
+                return "NEW_ACCUMULATED";
+            case CALLSPECIAL_ACCUMULATED:
+                return "CALLSPECIAL_ACCUMULATED";
         }
 
         // icode without name
