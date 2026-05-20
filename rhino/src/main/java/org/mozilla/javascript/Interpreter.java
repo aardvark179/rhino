@@ -10,6 +10,7 @@ import static org.mozilla.javascript.UniqueTag.DOUBLE_MARK;
 
 import java.io.PrintStream;
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Objects;
@@ -73,6 +74,18 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         public DebuggableScript getDebuggableScript() {
             return descriptor;
         }
+    }
+
+    static ArrayList<Object> spreadArray(Context cx, VarScope scope, Object source) {
+        Scriptable src = ScriptRuntime.toObject(cx, scope, source);
+        final Object iterator = ScriptRuntime.callIterator(src, cx, scope);
+        ArrayList<Object> spreadValues = new ArrayList<>();
+        try (IteratorLikeIterable it = new IteratorLikeIterable(cx, scope, iterator)) {
+            for (Object temp : it) {
+                spreadValues.add(temp);
+            }
+        }
+        return spreadValues;
     }
 
     @Override
@@ -246,7 +259,8 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                 // call type
                 // is new
                 // line number
-                return 1 + 1 + 1 + 2;
+                // spread
+                return 1 + 1 + 1 + 2 + 1;
 
             case Token.CATCH_SCOPE:
                 // scope flag
@@ -323,6 +337,11 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                 return 1 + 1;
             case Icode.CLOSURE_STMT:
                 // hoisted indicator byte
+                return 1 + 1;
+            case Token.CALL:
+            case Token.NEW:
+            case Icode.CALL_ON_SUPER:
+                // spread
                 return 1 + 1;
         }
         if (!Icode.validBytecode(bytecode)) throw Kit.codeBug();
@@ -448,7 +467,8 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                         ifun,
                         compilerData,
                         null,
-                        newTarget);
+                        newTarget,
+                        false);
         frame.isContinuationsTopFrame = cx.isContinuationsTopCall;
         cx.isContinuationsTopCall = false;
 
@@ -2517,6 +2537,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             int callType = iCode[frame.pc] & 0xFF;
             boolean isNew = (iCode[frame.pc + 1] != 0);
             int sourceLine = getIndex(iCode, frame.pc + 2);
+            boolean lastIsSpread = iCode[frame.pc + 4] != 0;
 
             // indexReg: number of arguments
             if (isNew) {
@@ -2526,7 +2547,17 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                 Object function = stack[frame.stackTop];
                 if (function == DOUBLE_MARK)
                     function = ScriptRuntime.wrapNumber(sDbl[frame.stackTop]);
-                Object[] outArgs = getArgsArray(stack, sDbl, frame.stackTop + 1, state.indexReg);
+                Object[] outArgs =
+                        getArgsArray(
+                                cx,
+                                frame.scope,
+                                stack,
+                                sDbl,
+                                new Object[0],
+                                0,
+                                frame.stackTop + 1,
+                                state.indexReg,
+                                lastIsSpread);
                 stack[frame.stackTop] =
                         ScriptRuntime.newSpecial(cx, function, outArgs, frame.scope, callType);
             } else {
@@ -2537,7 +2568,17 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                 // is ... Callable Scriptable
                 ScriptRuntime.LookupResult result =
                         (ScriptRuntime.LookupResult) stack[frame.stackTop];
-                Object[] outArgs = getArgsArray(stack, sDbl, frame.stackTop + 1, state.indexReg);
+                Object[] outArgs =
+                        getArgsArray(
+                                cx,
+                                frame.scope,
+                                stack,
+                                sDbl,
+                                new Object[0],
+                                0,
+                                frame.stackTop + 1,
+                                state.indexReg,
+                                lastIsSpread);
                 Callable function = result.getCallable();
                 stack[frame.stackTop] =
                         ScriptRuntime.callSpecial(
@@ -2552,7 +2593,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                                 sourceLine,
                                 isOptionalChainingCall);
             }
-            frame.pc += 4;
+            frame.pc += 5;
             return null;
         }
 
@@ -2561,8 +2602,20 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             int callType = ctx.compilerData.itsICode[ctx.pc] & 0xFF;
             boolean isNew = (ctx.compilerData.itsICode[ctx.pc + 1] != 0);
             int line = ctx.getIndex(ctx.pc + 2);
-            ctx.out.println(tname + " " + callType + " " + isNew + " " + ctx.indexReg + " " + line);
-            ctx.pc += 4;
+            int spread = ctx.getIndex(ctx.pc + 4);
+            ctx.out.println(
+                    tname
+                            + " "
+                            + callType
+                            + " "
+                            + isNew
+                            + " "
+                            + ctx.indexReg
+                            + " "
+                            + line
+                            + " "
+                            + spread);
+            ctx.pc += 5;
         }
     }
 
@@ -2574,6 +2627,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             double[] sDbl = frame.doubleStack;
             Object[] boundArgs = null;
             int blen = 0;
+            boolean lastIsSpread = frame.compilerData.itsICode[frame.pc++] != 0;
 
             if (state.instructionCounting) {
                 cx.instructionCount += INVOCATION_COST;
@@ -2699,12 +2753,15 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                     // invocation.
                     Object[] elements =
                             getArgsArray(
+                                    cx,
+                                    frame.scope,
                                     stack,
                                     sDbl,
                                     boundArgs,
                                     blen,
                                     frame.stackTop + 1,
-                                    state.indexReg);
+                                    state.indexReg,
+                                    lastIsSpread);
                     fun = nsmfun.noSuchMethodMethod;
                     boundArgs = new Object[2];
                     blen = 2;
@@ -2768,7 +2825,8 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                                     ifun,
                                     compilerData,
                                     callParentFrame,
-                                    ifun.getLexicalNewTarget());
+                                    ifun.getLexicalNewTarget(),
+                                    lastIsSpread);
                     if (op != Icode.TAIL_CALL) {
                         frame.savedCallOp = op;
                     }
@@ -2810,12 +2868,15 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                             callerScope,
                             funThisObj,
                             getArgsArray(
+                                    cx,
+                                    frame.scope,
                                     stack,
                                     sDbl,
                                     boundArgs,
                                     blen,
                                     frame.stackTop + 1,
-                                    state.indexReg));
+                                    state.indexReg,
+                                    lastIsSpread));
 
             return null;
         }
@@ -2823,12 +2884,15 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         @Override
         void dumpICode(int op, String tname, ICodeDumpContext ctx) {
             ctx.out.println(tname + " " + ctx.indexReg);
+            ctx.pc++;
         }
     }
 
     private static class DoNew extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            boolean lastIsSpread = frame.compilerData.itsICode[frame.pc++] != 0;
+
             if (state.instructionCounting) {
                 cx.instructionCount += INVOCATION_COST;
             }
@@ -2868,7 +2932,8 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                                     f,
                                     compilerData,
                                     frame,
-                                    lhs);
+                                    lhs,
+                                    lastIsSpread);
 
                     frame.stack[frame.stackTop] = newInstance;
                     frame.savedCallOp = op;
@@ -2893,7 +2958,15 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
 
             Object[] outArgs =
                     getArgsArray(
-                            frame.stack, frame.doubleStack, frame.stackTop + 1, state.indexReg);
+                            cx,
+                            frame.scope,
+                            frame.stack,
+                            frame.doubleStack,
+                            new Object[0],
+                            0,
+                            frame.stackTop + 1,
+                            state.indexReg,
+                            lastIsSpread);
             frame.stack[frame.stackTop] = ctor.construct(cx, frame.scope, outArgs);
             return null;
         }
@@ -2901,6 +2974,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         @Override
         void dumpICode(int op, String tname, ICodeDumpContext ctx) {
             ctx.out.println(tname + " " + ctx.indexReg);
+            ctx.pc++;
         }
     }
 
@@ -4349,7 +4423,8 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             ScriptOrFn<?> fnOrScript,
             InterpreterData<?> code,
             CallFrame parentFrame,
-            Object newTarget) {
+            Object newTarget,
+            boolean lastIsSpread) {
         CallFrame frame =
                 new CallFrame(
                         cx,
@@ -4362,7 +4437,15 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                                 ? cx.lastInterpreterFrame
                                 : parentFrame.previousInterpreterFrame);
         frame.initializeArgs(
-                cx, callerScope, args, argsDbl, boundArgs, argShift, argCount, homeObj);
+                cx,
+                callerScope,
+                args,
+                argsDbl,
+                boundArgs,
+                argShift,
+                argCount,
+                homeObj,
+                lastIsSpread);
         enterFrame(cx, frame, args, false);
         return frame;
     }
@@ -4481,15 +4564,52 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         }
     }
 
-    private static Object[] getArgsArray(Object[] stack, double[] sDbl, int shift, int count) {
-        return getArgsArray(stack, sDbl, new Object[0], 0, shift, count);
+    static Object[] getArgsArray(
+            Object[] stack, double[] sDbl, int shift, int count, boolean lastIsSpread) {
+        return getArgsArray(null, null, stack, sDbl, new Object[0], 0, shift, count, lastIsSpread);
+    }
+
+    static Object[] getArgsArray(Object[] stack, double[] sDbl, int shift, int count) {
+        return getArgsArray(null, null, stack, sDbl, new Object[0], 0, shift, count, false);
     }
 
     static Object[] getArgsArray(
             Object[] stack, double[] sDbl, Object[] bound, int bCount, int shift, int count) {
+        return getArgsArray(null, null, stack, sDbl, bound, bCount, shift, count, false);
+    }
+
+    static Object[] getArgsArray(
+            Context cx,
+            VarScope scope,
+            Object[] stack,
+            double[] sDbl,
+            Object[] bound,
+            int bCount,
+            int shift,
+            int count,
+            boolean lastIsSpread) {
         if (count == 0) {
             return ScriptRuntime.emptyArgs;
         }
+
+        if (lastIsSpread) {
+            var spreadValues = spreadArray(cx, scope, stack[shift + count - bCount - 1]);
+            int normalArgs = count - bCount - 1;
+            int spreadCount = spreadValues.size();
+            int totalArgs = spreadCount + normalArgs;
+            Object[] newArgs = new Object[totalArgs];
+            double[] newDbls = new double[totalArgs];
+            System.arraycopy(stack, shift, newArgs, 0, normalArgs);
+            System.arraycopy(sDbl, shift, newDbls, 0, normalArgs);
+            for (int i = 0; i < spreadCount; i++) {
+                newArgs[normalArgs + i] = spreadValues.get(i);
+            }
+            stack = newArgs;
+            sDbl = newDbls;
+            count = totalArgs + bCount;
+            shift = 0;
+        }
+
         Object[] args = new Object[count];
         for (int i = 0; i < bCount; i++) {
             args[i] = bound[i];

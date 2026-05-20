@@ -757,8 +757,18 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                         }
                     }
                     int argCount = 0;
+                    boolean lastIsSpread = false;
                     while ((child = child.getNext()) != null) {
-                        visitExpression(child, 0);
+                        if (child.getType() == Token.DOTDOTDOT) {
+                            if (child.getNext() != null) {
+                                throw badTree(node);
+                            } else {
+                                lastIsSpread = true;
+                                visitExpression(child.getFirstChild(), 0);
+                            }
+                        } else {
+                            visitExpression(child, 0);
+                        }
                         ++argCount;
                     }
                     int callType = node.getIntProp(Node.SPECIALCALL_PROP, Node.NON_SPECIALCALL);
@@ -782,6 +792,7 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                         }
                         addIndexOp(type, argCount);
                     }
+                    addUint8(lastIsSpread ? 1 : 0);
                     // adjust stack
                     if (type == Token.NEW) {
                         // new: f, args -> result

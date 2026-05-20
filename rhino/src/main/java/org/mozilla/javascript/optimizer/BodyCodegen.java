@@ -1049,7 +1049,7 @@ class BodyCodegen {
                         OptFunctionNode target;
                         target = (OptFunctionNode) node.getProp(Node.DIRECTCALL_PROP);
 
-                        if (target != null) {
+                        if (target != null && !lastIsSpread(child)) {
                             visitOptimizedCall(node, target, type, child);
                         } else if (type == Token.CALL) {
                             visitStandardCall(node, child);
@@ -2843,6 +2843,16 @@ class BodyCodegen {
         }
     }
 
+    private static boolean lastIsSpread(Node firstArgChild) {
+        if (firstArgChild == null) return false;
+
+        var child = firstArgChild;
+        while (child.getNext() != null) {
+            child = child.getNext();
+        }
+        return child.getType() == Token.DOTDOTDOT;
+    }
+
     private static int countArguments(Node firstArgChild) {
         int argCount = 0;
         for (Node arg = firstArgChild; arg != null; arg = arg.getNext()) {
@@ -3014,6 +3024,13 @@ class BodyCodegen {
 
     private void generateCallArgArray(Node node, Node argChild, boolean directCall) {
         int argCount = countArguments(argChild);
+        boolean lastIsSpread = lastIsSpread(argChild);
+
+        if (lastIsSpread) {
+            cfw.addALoad(contextLocal);
+            cfw.addALoad(variableObjectLocal);
+        }
+
         // load array object to set arguments
         if (argCount == 1 && itsOneArgArray >= 0) {
             cfw.addALoad(itsOneArgArray);
@@ -3022,16 +3039,23 @@ class BodyCodegen {
         }
         // Copy arguments into it
         for (int i = 0; i != argCount; ++i) {
+            boolean spreading = argChild.getNext() == null && lastIsSpread;
             // If we are compiling a generator an argument could be the result
             // of a yield. In that case we will have an immediate on the stack
             // which we need to avoid
             if (!isGenerator) {
-                cfw.add(ByteCode.DUP);
+                if (!spreading) {
+                    cfw.add(ByteCode.DUP);
+                }
                 cfw.addPush(i);
             }
 
             if (!directCall) {
-                generateExpression(argChild, node);
+                if (spreading) {
+                    generateExpression(argChild.getFirstChild(), argChild);
+                } else {
+                    generateExpression(argChild, node);
+                }
             } else {
                 // If this has also been a directCall sequence, the Number
                 // flag will have remained set for any parameter so that
@@ -3057,13 +3081,26 @@ class BodyCodegen {
                 short tempLocal = getNewWordLocal();
                 cfw.addAStore(tempLocal);
                 cfw.add(ByteCode.CHECKCAST, "[Ljava/lang/Object;");
-                cfw.add(ByteCode.DUP);
+                if (!spreading) {
+                    cfw.add(ByteCode.DUP);
+                }
                 cfw.addPush(i);
                 cfw.addALoad(tempLocal);
                 releaseWordLocal(tempLocal);
             }
 
-            cfw.add(ByteCode.AASTORE);
+            if (lastIsSpread && argChild.getNext() == null) {
+                addOptRuntimeInvoke(
+                        "spreadArgs",
+                        "(Lorg/mozilla/javascript/Context;"
+                                + "Lorg/mozilla/javascript/VarScope;"
+                                + "[Ljava/lang/Object;"
+                                + "I"
+                                + "Ljava/lang/Object;"
+                                + ")[Ljava/lang/Object;");
+            } else {
+                cfw.add(ByteCode.AASTORE);
+            }
 
             argChild = argChild.getNext();
         }
