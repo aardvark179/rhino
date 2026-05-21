@@ -68,7 +68,7 @@ public class Utils {
                     TopLevel scope = cx.initStandardObjects();
                     return cx.evaluateString(scope, script, "myScript.js", 1, null);
                 },
-                interpreted);
+            interpreted ? EvaluationMethod.Interpreter : EvaluationMethod.Compiler);
     }
 
     /**
@@ -77,8 +77,7 @@ public class Utils {
      * @param action the action to execute
      */
     public static <T> void runWithAllModes(final ContextAction<T> action) {
-        runWithMode(action, true);
-        runWithMode(action, false);
+        runWithAllModes(new ContextFactory(), action);
     }
 
     /**
@@ -89,20 +88,15 @@ public class Utils {
      */
     public static <T> void runWithAllModes(
             final ContextFactory contextFactory, final ContextAction<T> action) {
-        runWithMode(contextFactory, action, EvaluationMethod.Interpreter);
-        runWithMode(contextFactory, action, EvaluationMethod.InterpreterV2);
-        runWithMode(contextFactory, action, EvaluationMethod.Compiler);
+        for (var e : EvaluationMethod.values()) {
+            runWithMode(contextFactory, action, e);
+        }
     }
 
-    /**
-     * Runs the provided action at the given interpretation mode
-     *
-     * @param action the action to execute
-     * @param interpretedMode true if interpreted mode should be used
-     */
-    public static <T> void runWithMode(
-            final ContextAction<T> action, final boolean interpretedMode) {
-        runWithMode(new ContextFactory(), action, interpretedMode);
+    public static void runWithMode(
+            final ContextAction<?> action,
+            final Context.EvaluationMethod mode) {
+        runWithMode(new ContextFactory(), action, mode);
     }
 
     /**
@@ -110,19 +104,8 @@ public class Utils {
      *
      * @param contextFactory the context factory to use
      * @param action the action to execute
-     * @param interpretedMode true if interpreted mode should be used
+     * @param mode evaluation mode to use
      */
-    public static <T> void runWithMode(
-            final ContextFactory contextFactory,
-            final ContextAction<T> action,
-            final boolean interpretedMode) {
-
-        try (final Context cx = contextFactory.enterContext()) {
-            cx.setInterpretedMode(interpretedMode);
-            action.run(cx);
-        }
-    }
-
     public static void runWithMode(
             final ContextFactory contextFactory,
             final ContextAction<?> action,

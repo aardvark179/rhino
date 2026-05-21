@@ -14,6 +14,7 @@ import org.mozilla.javascript.ContextFactory;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 import org.mozilla.javascript.TopLevel;
+import org.mozilla.javascript.Context.EvaluationMethod;
 
 public class CatchTest {
     public static class Foo extends ScriptableObject {
@@ -51,7 +52,7 @@ public class CatchTest {
 
         return factory.call(
                 context -> {
-                    context.setInterpretedMode(true);
+                    context.setEvaluationMethod(EvaluationMethod.Interpreter);
                     if (shutter != null) {
                         context.setClassShutter(shutter);
                     }

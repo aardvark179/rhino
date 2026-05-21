@@ -17,6 +17,7 @@ import org.mozilla.javascript.Script;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 import org.mozilla.javascript.TopLevel;
+import org.mozilla.javascript.Context.EvaluationMethod;
 
 /**
  * @author André Bargull
@@ -29,7 +30,7 @@ public class Bug685403Test {
     @BeforeEach
     public void setUp() {
         cx = Context.enter();
-        cx.setInterpretedMode(true);
+        cx.setEvaluationMethod(EvaluationMethod.Interpreter);
         scope = cx.initStandardObjects();
     }
 

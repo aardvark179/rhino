@@ -12,6 +12,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.TopLevel;
 import org.mozilla.javascript.VarScope;
+import org.mozilla.javascript.Context.EvaluationMethod;
 
 /**
  * Test cases for a legacy ToNumber conversion applied to a String type.
@@ -119,7 +120,7 @@ public class ToNumberLegacyConversionsTest {
     @BeforeEach
     public void setup() {
         cx = Context.enter();
-        cx.setInterpretedMode(interpreted);
+        cx.setEvaluationMethod(EvaluationMethod.Interpreter);
         cx.setLanguageVersion(Context.VERSION_1_8);
         scope = cx.initSafeStandardObjects();
     }

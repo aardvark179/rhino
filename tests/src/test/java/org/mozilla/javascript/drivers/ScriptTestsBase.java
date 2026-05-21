@@ -25,6 +25,7 @@ import org.mozilla.javascript.ScriptableObject;
 import org.mozilla.javascript.TopLevel;
 import org.mozilla.javascript.Undefined;
 import org.mozilla.javascript.VarScope;
+import org.mozilla.javascript.Context.EvaluationMethod;
 import org.mozilla.javascript.testutils.TestSource;
 import org.mozilla.javascript.tools.shell.Global;
 
@@ -35,7 +36,7 @@ import org.mozilla.javascript.tools.shell.Global;
  */
 public abstract class ScriptTestsBase {
 
-    private Object executeRhinoScript(boolean interpretedMode) {
+    private Object executeRhinoScript(EvaluationMethod evalMethod) {
         RhinoTest anno = this.getClass().getAnnotation(RhinoTest.class);
         assertNotNull(anno);
 
@@ -66,7 +67,7 @@ public abstract class ScriptTestsBase {
                 suiteName = "inline.js";
             }
 
-            cx.setInterpretedMode(interpretedMode);
+            cx.setEvaluationMethod(evalMethod);
             cx.setLanguageVersion(jsVersion);
 
             Global global = new Global(cx);
@@ -147,11 +148,11 @@ public abstract class ScriptTestsBase {
 
     @Test
     public void rhinoTestInterpreted() {
-        assertEquals("success", executeRhinoScript(true));
+        assertEquals("success", executeRhinoScript(EvaluationMethod.Interpreter));
     }
 
     @Test
     public void rhinoTestCompiled() {
-        assertEquals("success", executeRhinoScript(false));
+        assertEquals("success", executeRhinoScript(EvaluationMethod.Compiler));
     }
 }

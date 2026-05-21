@@ -17,6 +17,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.mozilla.javascript.Context.EvaluationMethod;
 import org.mozilla.javascript.debug.DebugFrame;
 import org.mozilla.javascript.debug.DebuggableScript;
 import org.mozilla.javascript.debug.Debugger;
@@ -82,7 +83,7 @@ class SourceMapperTest {
                             "expected unmapped LINE : 1 to be absent from:\n" + dump);
                     return null;
                 },
-                true);
+                EvaluationMethod.Interpreter);
     }
 
     @Test
@@ -103,7 +104,7 @@ class SourceMapperTest {
                             "expected no raw target line 2 in dump:\n" + dump);
                     return null;
                 },
-                true);
+                EvaluationMethod.Interpreter);
     }
 
     @Test
@@ -116,7 +117,7 @@ class SourceMapperTest {
                             "no-mapper dump should report the raw line 1");
                     return null;
                 },
-                true);
+                EvaluationMethod.Interpreter);
     }
 
     // ---- mode-agnostic tests ----
@@ -251,7 +252,7 @@ class SourceMapperTest {
                     assertEquals(original, debugger.sources.iterator().next());
                     return null;
                 },
-                true);
+                EvaluationMethod.Interpreter);
     }
 
     @Test
@@ -279,7 +280,7 @@ class SourceMapperTest {
                             "should fall back to the transpiled source");
                     return null;
                 },
-                true);
+                EvaluationMethod.Interpreter);
     }
 
     // ---- spec/builder unit tests ----
@@ -307,7 +308,7 @@ class SourceMapperTest {
                     assertEquals(mapper, spec.getSourceMapper());
                     return null;
                 },
-                true);
+                EvaluationMethod.Interpreter);
     }
 
     // ---- realistic source-map integration test ----

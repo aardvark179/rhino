@@ -38,6 +38,7 @@ import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 import org.mozilla.javascript.SecurityController;
 import org.mozilla.javascript.VarScope;
+import org.mozilla.javascript.Context.EvaluationMethod;
 import org.mozilla.javascript.commonjs.module.ModuleScope;
 import org.mozilla.javascript.commonjs.module.Require;
 import org.mozilla.javascript.config.RhinoConfig;
@@ -307,13 +308,11 @@ public class Main {
                     usageError = args[i];
                     break goodUsage;
                 }
-                if (opt < 0) {
-                    shellContextFactory.setInterpretedMode(true);
-                }
+                shellContextFactory.setEvaluationMethod(EvaluationMethod.forLevel(opt));
                 continue;
             }
             if (arg.equals("-int") || arg.equals("-interpreted")) {
-                shellContextFactory.setInterpretedMode(true);
+                shellContextFactory.setEvaluationMethod(EvaluationMethod.Interpreter);
                 continue;
             }
             if (arg.equals("-encoding")) {

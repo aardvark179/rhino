@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Disabled;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.EvaluatorException;
 import org.mozilla.javascript.VarScope;
+import org.mozilla.javascript.Context.EvaluationMethod;
 
 /**
  * Expect parsing errors when encountering default values inside destructuring assignments, instead
@@ -34,7 +35,7 @@ public class Issue385Test {
         cx.setLanguageVersion(Context.VERSION_1_8);
         // errors are reported in the parsing stage,
         // optimization level doesn't matter
-        cx.setInterpretedMode(true);
+        cx.setEvaluationMethod(EvaluationMethod.Interpreter);
     }
 
     @AfterEach

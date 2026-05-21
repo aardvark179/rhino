@@ -12,6 +12,7 @@ import org.mozilla.javascript.JavaScriptException;
 import org.mozilla.javascript.RhinoException;
 import org.mozilla.javascript.StackStyle;
 import org.mozilla.javascript.TopLevel;
+import org.mozilla.javascript.Context.EvaluationMethod;
 import org.mozilla.javascript.testutils.Utils;
 
 /**
@@ -131,6 +132,6 @@ public class StackTraceTest {
                     }
                     throw new RuntimeException("Exception expected!");
                 },
-                true);
+                EvaluationMethod.Interpreter);
     }
 }

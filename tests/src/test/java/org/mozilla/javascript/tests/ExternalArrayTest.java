@@ -12,6 +12,7 @@ import org.mozilla.javascript.ExternalArrayData;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 import org.mozilla.javascript.VarScope;
+import org.mozilla.javascript.Context.EvaluationMethod;
 import org.mozilla.javascript.testutils.TestSource;
 import org.mozilla.javascript.tools.shell.Global;
 import org.mozilla.javascript.typedarrays.NativeFloat64Array;
@@ -126,7 +127,8 @@ public class ExternalArrayTest {
 
     private void runScript(String script, boolean interpretedMode) {
         try {
-            cx.setInterpretedMode(interpretedMode);
+            cx.setEvaluationMethod(
+                interpretedMode ? EvaluationMethod.Interpreter : EvaluationMethod.Compiler);
             try (FileReader rdr = new FileReader(TestSource.resolve(script))) {
                 cx.evaluateReader(root, rdr, script, 1, null);
             }
