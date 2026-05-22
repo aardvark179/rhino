@@ -42,6 +42,7 @@ import org.junit.jupiter.api.parallel.ExecutionMode;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mozilla.javascript.Context;
+import org.mozilla.javascript.Context.EvaluationMethod;
 import org.mozilla.javascript.EvaluatorException;
 import org.mozilla.javascript.Kit;
 import org.mozilla.javascript.RhinoException;
@@ -54,7 +55,6 @@ import org.mozilla.javascript.SymbolKey;
 import org.mozilla.javascript.TopLevel;
 import org.mozilla.javascript.Undefined;
 import org.mozilla.javascript.VarScope;
-import org.mozilla.javascript.Context.EvaluationMethod;
 import org.mozilla.javascript.debug.DebugFrame;
 import org.mozilla.javascript.debug.DebuggableScript;
 import org.mozilla.javascript.debug.Debugger;
@@ -879,9 +879,7 @@ public class Test262SuiteTest {
         }
 
         public boolean shouldRun() {
-            return shouldRun &&
-                   ((isDebug && debugEnabled) ||
-                    (!isDebug && normalEnabled));
+            return shouldRun && ((isDebug && debugEnabled) || (!isDebug && normalEnabled));
         }
 
         public String trackerName(boolean strict) {
