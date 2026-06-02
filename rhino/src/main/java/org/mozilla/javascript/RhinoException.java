@@ -260,9 +260,9 @@ public abstract class RhinoException extends RuntimeException {
         List<ScriptStackElement> list = new ArrayList<>();
         ScriptStackElement[][] interpreterStack = null;
         if (interpreterStackInfo != null) {
-            Evaluator interpreter = Context.createInterpreter();
-            if (interpreter instanceof Interpreter)
-                interpreterStack = ((Interpreter) interpreter).getScriptStackElements(this);
+            Evaluator eval = Context.createInterpreter();
+            if (eval instanceof AInterpreter<?,?> interpreter)
+                interpreterStack = interpreter.getScriptStackElements(this);
         }
 
         int interpreterStackIndex = 0;
@@ -293,8 +293,10 @@ public abstract class RhinoException extends RuntimeException {
                     count++;
                 }
 
-            } else if ("org.mozilla.javascript.Interpreter".equals(e.getClassName())
-                    && "interpretLoop".equals(e.getMethodName())
+            } else if ((("org.mozilla.javascript.Interpreter".equals(e.getClassName())
+                         && "interpretLoop".equals(e.getMethodName()))
+                        || ("org.mozilla.javascript.InterpreterV2".equals(e.getClassName())
+                            && "interpretInner".equals(e.getMethodName())))
                     && interpreterStack != null
                     && interpreterStack.length > interpreterStackIndex) {
 
@@ -383,6 +385,6 @@ public abstract class RhinoException extends RuntimeException {
     private String lineSource;
     private int columnNumber;
 
-    Object interpreterStackInfo;
+    ACallFrame<?,?> interpreterStackInfo;
     int interpreterLineData;
 }
