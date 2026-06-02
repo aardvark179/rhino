@@ -190,13 +190,16 @@ public abstract class AInterpreter<T extends ACallFrame<T, U>, U extends ACompil
         }
 
         @Override
-        public void delete(String name) {}
+        public void delete(String name) {
+        }
 
         @Override
-        public void delete(int index) {}
+        public void delete(int index) {
+        }
 
         @Override
-        public void delete(Symbol key) {}
+        public void delete(Symbol key) {
+        }
 
         @Override
         public Object get(String name, VarScope scope) {
@@ -267,8 +270,7 @@ public abstract class AInterpreter<T extends ACallFrame<T, U>, U extends ACompil
         public boolean isConst(String name) {
             int offset = getOffsets().getOrDefault(name, -1);
             if (offset >= 0) {
-                return (frame.stackAttributes[offset] & (PERMANENT | READONLY))
-                        == (PERMANENT | READONLY);
+                return (frame.stackAttributes[offset] & (PERMANENT | READONLY)) == (PERMANENT | READONLY);
             } else {
                 return false;
             }
@@ -281,6 +283,7 @@ public abstract class AInterpreter<T extends ACallFrame<T, U>, U extends ACompil
         }
     }
 
+    @Override
     public void captureStackInfo(RhinoException ex) {
         Context cx = Context.getCurrentContext();
         if (cx == null || cx.lastInterpreterFrame == null) {
@@ -292,16 +295,17 @@ public abstract class AInterpreter<T extends ACallFrame<T, U>, U extends ACompil
         }
     }
 
+    @Override
     public String getPatchedStack(RhinoException ex, String nativeStackTrace) {
         String tag = "org.mozilla.javascript.Interpreter.interpretLoop";
         StringBuilder sb = new StringBuilder(nativeStackTrace.length() + 1000);
         String lineSeparator = SecurityUtilities.getSystemProperty("line.separator");
 
-        ACallFrame<?,?> calleeFrame = null;
-        ACallFrame<?,?> frame = ex.interpreterStackInfo;
+        ACallFrame<?, ?> calleeFrame = null;
+        ACallFrame<?, ?> frame = ex.interpreterStackInfo;
         int offset = 0;
         while (frame != null) {
-            ACallFrame<?,?> callerFrame = frame;
+            ACallFrame<?, ?> callerFrame = frame;
             int pos = nativeStackTrace.indexOf(tag, offset);
             if (pos < 0) {
                 break;
@@ -347,6 +351,7 @@ public abstract class AInterpreter<T extends ACallFrame<T, U>, U extends ACompil
         return sb.toString();
     }
 
+    @Override
     public List<String> getScriptStack(RhinoException ex) {
         ScriptStackElement[][] stack = getScriptStackElements(ex);
         List<String> list = new ArrayList<>(stack.length);
@@ -369,10 +374,10 @@ public abstract class AInterpreter<T extends ACallFrame<T, U>, U extends ACompil
 
         List<ScriptStackElement[]> list = new ArrayList<>();
 
-        ACallFrame<?,?> calleeFrame = null;
-        ACallFrame<?,?> frame = ex.interpreterStackInfo;
+        ACallFrame<?, ?> calleeFrame = null;
+        ACallFrame<?, ?> frame = ex.interpreterStackInfo;
         while (frame != null) {
-            ACallFrame<?,?> callerFrame = frame;
+            ACallFrame<?, ?> callerFrame = frame;
             List<ScriptStackElement> group = new ArrayList<>();
             while (callerFrame != null) {
                 var idata = callerFrame.compilerData;
@@ -397,6 +402,7 @@ public abstract class AInterpreter<T extends ACallFrame<T, U>, U extends ACompil
         return list.toArray(new ScriptStackElement[list.size()][]);
     }
 
+    @Override
     public final String getSourcePositionFromStack(Context cx, int[] linep) {
         ACallFrame<?,?> frame = cx.lastInterpreterFrame;
         var data = frame.compilerData;
