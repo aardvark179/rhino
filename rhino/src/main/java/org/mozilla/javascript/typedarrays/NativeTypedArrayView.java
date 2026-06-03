@@ -126,6 +126,7 @@ public abstract class NativeTypedArrayView<T> extends NativeArrayBufferView
                         .build();
     }
 
+    @SuppressWarnings("DoNotCallSuggester")
     static Object typeError(
             Context cx, JSFunction f, Object nt, VarScope s, Object thisObj, Object[] args) {
         throw ScriptRuntime.typeError("Not callable as function");
