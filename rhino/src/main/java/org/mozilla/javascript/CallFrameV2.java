@@ -383,11 +383,6 @@ public class CallFrameV2 extends ACallFrame<CallFrameV2, CompilerData<?>> implem
     }
 
     @Override
-    public ACallFrame<?, ?> getPreviousInterpreterFrame() {
-        return previousInterpreterFrame;
-    }
-
-    @Override
     public CallFrameV2 cloneFrozen() {
         return new CallFrameV2(this, false);
     }
