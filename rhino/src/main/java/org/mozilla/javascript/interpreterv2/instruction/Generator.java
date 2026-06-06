@@ -6,6 +6,7 @@ import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ES6Generator;
 import org.mozilla.javascript.JSFunction;
 import org.mozilla.javascript.NativeGenerator;
+import org.mozilla.javascript.NativePromise;
 import org.mozilla.javascript.interpreterv2.InstructionFormatter;
 
 public class Generator extends Instruction {
@@ -29,11 +30,17 @@ public class Generator extends Instruction {
             CallFrameV2 generatorFrame = captureFrameForGenerator(frame);
             generatorFrame.frozen = true;
             if (cx.getLanguageVersion() >= Context.VERSION_ES6) {
-                frame.result =
-                        new ES6Generator(
-                                frame.scope,
-                                (JSFunction) generatorFrame.fnOrScript,
-                                generatorFrame);
+                JSFunction fn = (JSFunction) generatorFrame.fnOrScript;
+                ES6Generator gen = new ES6Generator(frame.scope, fn, generatorFrame);
+                if (fn.isAsync() && !fn.isGeneratorFunction()) {
+                    // Async non-generator function: drive via Promise runner.
+                    // isGeneratorFunction() returns descriptor.isES6Generator(), which is
+                    // false for async non-generators (we only called setIsGenerator(), not
+                    // setIsES6Generator(), in IRFactory).
+                    frame.result = NativePromise.createAsyncFunctionPromise(cx, frame.scope, gen);
+                } else {
+                    frame.result = gen;
+                }
             } else {
                 frame.result =
                         new NativeGenerator(

@@ -108,9 +108,7 @@ public abstract class AInterpreter<T extends ACallFrame<T, U>, U extends ACompil
             if (isDebugged) {
                 frame.debuggerFrame.onEnter(cx, scope, frame.thisObj, args);
             }
-            if (!(desc.isStrict() && cx.getLanguageVersion() >= Context.VERSION_ES6)
-                    && !desc.isES6Generator()
-                    && !desc.isAsync()) {
+            if (!desc.isES6Generator() && !desc.isAsync()) {
                 ScriptRuntime.enterActivationFunction(cx, scope);
             }
         } else if (isDebugged) {
@@ -120,8 +118,11 @@ public abstract class AInterpreter<T extends ACallFrame<T, U>, U extends ACompil
 
     static <T extends ACallFrame<T, U>, U extends ACompilerData<?, U>> void exitFrame(
             Context cx, T frame, Object throwable) {
-        if (frame.fnOrScript.getDescriptor().requiresActivationFrame()) {
-            ScriptRuntime.exitActivationFunction(cx);
+        var desc = frame.fnOrScript.getDescriptor();
+        if (desc.requiresActivationFrame()) {
+            if (!desc.isES6Generator() && !desc.isAsync()) {
+                ScriptRuntime.exitActivationFunction(cx);
+            }
         }
 
         if (frame.fnOrScript.getDescriptor().getFunctionType() != 0) {
