@@ -1585,6 +1585,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     return;
                 }
             case Token.YIELD:
+            case Token.AWAIT:
                 {
                     Operand valueOperand;
                     if (child != null) {
