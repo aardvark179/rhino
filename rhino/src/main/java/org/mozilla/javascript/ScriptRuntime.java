@@ -5085,6 +5085,7 @@ public class ScriptRuntime {
     }
 
     public static void enterActivationFunction(Context cx, VarScope scope) {
+        System.err.printf("Enter frame.\n");
         if (cx.topCallScope == null) throw new IllegalStateException();
         NativeCall call = (NativeCall) scope;
         call.parentActivationCall = cx.currentActivationCall;
@@ -5093,6 +5094,7 @@ public class ScriptRuntime {
 
     public static void exitActivationFunction(Context cx) {
         NativeCall call = cx.currentActivationCall;
+        System.err.printf("Exit frame.\n");
         cx.currentActivationCall = call.parentActivationCall;
         call.parentActivationCall = null;
     }
