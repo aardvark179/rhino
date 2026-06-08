@@ -108,9 +108,7 @@ public abstract class AInterpreter<T extends ACallFrame<T, U>, U extends ACompil
             if (isDebugged) {
                 frame.debuggerFrame.onEnter(cx, scope, frame.thisObj, args);
             }
-            if (!desc.isES6Generator() && !desc.isAsync()) {
-                ScriptRuntime.enterActivationFunction(cx, scope);
-            }
+            ScriptRuntime.enterActivationFunction(cx, scope);
         } else if (isDebugged) {
             frame.debuggerFrame.onEnter(cx, new DebugScope(frame), frame.thisObj, args);
         }
@@ -120,9 +118,7 @@ public abstract class AInterpreter<T extends ACallFrame<T, U>, U extends ACompil
             Context cx, T frame, Object throwable) {
         var desc = frame.fnOrScript.getDescriptor();
         if (desc.requiresActivationFrame()) {
-            if (!desc.isES6Generator() && !desc.isAsync()) {
-                ScriptRuntime.exitActivationFunction(cx);
-            }
+            ScriptRuntime.exitActivationFunction(cx);
         }
 
         if (frame.fnOrScript.getDescriptor().getFunctionType() != 0) {
