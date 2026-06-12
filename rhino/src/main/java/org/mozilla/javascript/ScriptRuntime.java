@@ -5144,14 +5144,12 @@ public class ScriptRuntime {
     public static void enterActivationFunction(Context cx, VarScope scope) {
         if (cx.topCallScope == null) throw new IllegalStateException();
         NativeCall call = (NativeCall) scope;
-        call.parentActivationCall = cx.currentActivationCall;
+        if (cx.currentActivationCall != null) cx.activationCalls.push(cx.currentActivationCall);
         cx.currentActivationCall = call;
     }
 
     public static void exitActivationFunction(Context cx) {
-        NativeCall call = cx.currentActivationCall;
-        cx.currentActivationCall = call.parentActivationCall;
-        call.parentActivationCall = null;
+        cx.currentActivationCall = cx.activationCalls.poll();
     }
 
     public static boolean enterFunctionStrictness(Context cx, boolean functionIsStrict) {
