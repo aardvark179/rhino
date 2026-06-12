@@ -1954,7 +1954,7 @@ public class Parser {
                 init = new EmptyExpression(ts.tokenBeg, 1);
                 // We haven't consumed the token, so we need the CURRENT lexer position
                 init.setLineColumnNumber(ts.getLineno(), ts.getTokenColumn());
-            } else if (tt == Token.VAR || tt == Token.LET) {
+            } else if (tt == Token.VAR || tt == Token.LET || tt == Token.CONST) {
                 consumeToken();
                 init = variables(tt, ts.tokenBeg, false);
             } else {
