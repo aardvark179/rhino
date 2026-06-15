@@ -1890,9 +1890,18 @@ public class Parser {
             if (isForIn || isForOf) {
                 ForInLoop fis = new ForInLoop(forPos);
                 if (init instanceof VariableDeclaration) {
+                    VariableDeclaration varDecl = (VariableDeclaration) init;
                     // check that there was only one variable given
-                    if (((VariableDeclaration) init).getVariables().size() > 1) {
+                    if (varDecl.getVariables().size() > 1) {
                         reportError("msg.mult.index");
+                    }
+                    // The loop variable declaration may not have an initializer. The
+                    // legacy "for (var x = 1 in obj)" form is still tolerated.
+                    for (VariableInitializer vi : varDecl.getVariables()) {
+                        if (vi.getInitializer() != null
+                                && (isForOf || varDecl.getType() != Token.VAR)) {
+                            reportError("msg.for.in.of.init");
+                        }
                     }
                 }
                 if (isForOf && isForEach) {
