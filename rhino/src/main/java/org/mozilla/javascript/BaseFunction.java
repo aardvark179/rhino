@@ -518,12 +518,16 @@ public class BaseFunction extends ScriptableObject implements Function {
 
     /** Should be overridden. */
     @Override
-    public Object call(Context cx, VarScope scope, Object thisObj, Object[] args) {
+    public final Object call(Context cx, VarScope scope, Object thisObj, Object[] args) {
+        return call(cx, Undefined.instance, scope, thisObj, args);
+    }
+
+    public Object call(Context cx, Object nt, VarScope s, Object thisObj, Object[] args) {
         return Undefined.instance;
     }
 
     @Override
-    public Scriptable construct(Context cx, VarScope scope, Object[] args) {
+    public Scriptable construct(Context cx, Object nt, VarScope scope, Object[] args) {
         if (cx.getLanguageVersion() >= Context.VERSION_ES6 && this.getHomeObject() != null) {
             // Only methods have home objects associated with them
             throw ScriptRuntime.typeErrorById("msg.not.ctor", getFunctionName());
@@ -531,7 +535,7 @@ public class BaseFunction extends ScriptableObject implements Function {
 
         Scriptable result = createObject(cx, scope);
         if (result == null) {
-            Object val = call(cx, scope, null, args);
+            Object val = call(cx, nt, scope, null, args);
             if (!(val instanceof Scriptable)) {
                 // It is program error not to return Scriptable from
                 // the call method if createObject returns null.
@@ -553,17 +557,12 @@ public class BaseFunction extends ScriptableObject implements Function {
                 result.setParentScope(parent);
             }
         } else {
-            Object val = call(cx, scope, result, args);
+            Object val = call(cx, nt, scope, result, args);
             if (val instanceof Scriptable) {
                 result = (Scriptable) val;
             }
         }
         return result;
-    }
-
-    @Override
-    public Scriptable construct(Context cx, Object nt, VarScope s, Object thisObj, Object[] args) {
-        return construct(cx, s, args);
     }
 
     /**

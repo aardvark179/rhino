@@ -128,7 +128,7 @@ final class NativeReflect extends ScriptableObject {
 
         Constructable target = (Constructable) args[0];
         if (args.length < 2) {
-            return target.construct(cx, target, s, null, ScriptRuntime.emptyArgs);
+            return target.construct(cx, target, s, ScriptRuntime.emptyArgs);
         }
 
         Object[] callArgs = ScriptRuntime.getApplyArguments(cx, args[1]);
@@ -142,7 +142,7 @@ final class NativeReflect extends ScriptableObject {
             throw ScriptRuntime.typeErrorById("msg.not.ctor", ScriptRuntime.typeof(args[2]));
         }
 
-        return target.construct(cx, newTarget, s, null, callArgs);
+        return target.construct(cx, newTarget, s, callArgs);
     }
 
     /**

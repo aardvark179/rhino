@@ -138,12 +138,12 @@ public class JSFunction extends BaseFunction implements ScriptOrFn<JSFunction> {
     }
 
     @Override
-    public Object call(Context cx, VarScope scope, Object thisObj, Object[] args) {
+    public Object call(Context cx, Object nt, VarScope scope, Object thisObj, Object[] args) {
         if (!ScriptRuntime.hasTopCall(cx)) {
             return ScriptRuntime.doTopCall(this, cx, scope, thisObj, args, isStrict());
         }
         var realThis = getThisObj(thisObj);
-        return descriptor.getCode().execute(cx, this, Undefined.instance, scope, realThis, args);
+        return descriptor.getCode().execute(cx, this, nt, scope, realThis, args);
     }
 
     public final Object getThisObj(Object thisObj) {
@@ -161,7 +161,7 @@ public class JSFunction extends BaseFunction implements ScriptOrFn<JSFunction> {
     }
 
     @Override
-    public Scriptable construct(Context cx, Object nt, VarScope s, Object thisObj, Object[] args) {
+    public Scriptable construct(Context cx, Object nt, VarScope s, Object[] args) {
         if (!ScriptRuntime.hasTopCall(cx)) {
             return (Scriptable)
                     ScriptRuntime.doTopCall(
@@ -178,7 +178,7 @@ public class JSFunction extends BaseFunction implements ScriptOrFn<JSFunction> {
         if (nt == null || Undefined.isUndefined(nt)) {
             nt = this;
         }
-        thisObj = homeObject == null ? this.createObject(cx, s, nt) : null;
+        var thisObj = homeObject == null ? this.createObject(cx, s, nt) : null;
         // Pass `this` in as new.target for now. This can change when
         // the public `construct` signature changes.
         var res = descriptor.getConstructor().execute(cx, this, nt, s, thisObj, args);
@@ -186,11 +186,6 @@ public class JSFunction extends BaseFunction implements ScriptOrFn<JSFunction> {
             thisObj = (Scriptable) res;
         }
         return (Scriptable) thisObj;
-    }
-
-    @Override
-    public Scriptable construct(Context cx, VarScope scope, Object[] args) {
-        return construct(cx, this, scope, null, args);
     }
 
     public boolean isScript() {

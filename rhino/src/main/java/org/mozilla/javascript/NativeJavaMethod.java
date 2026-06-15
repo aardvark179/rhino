@@ -135,7 +135,7 @@ public class NativeJavaMethod extends BaseFunction {
     }
 
     @Override
-    public Object call(Context cx, VarScope scope, Object thisObj, Object[] args) {
+    public Object call(Context cx, Object nt, VarScope scope, Object thisObj, Object[] args) {
         // Find a method that matches the types given.
         if (methods.length == 0) {
             throw new RuntimeException("No methods defined for call");

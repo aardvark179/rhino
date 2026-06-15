@@ -83,7 +83,7 @@ public class IdFunctionObject extends BaseFunction {
     }
 
     @Override
-    public Object call(Context cx, VarScope scope, Object thisObj, Object[] args) {
+    public Object call(Context cx, Object nt, VarScope scope, Object thisObj, Object[] args) {
         // We need to do some sneakiness here for constructors...
         return idcall.execIdCall(this, cx, scope, getThisObj(thisObj), args);
     }

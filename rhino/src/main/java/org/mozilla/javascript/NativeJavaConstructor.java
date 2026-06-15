@@ -32,7 +32,7 @@ public class NativeJavaConstructor extends BaseFunction {
     }
 
     @Override
-    public Object call(Context cx, VarScope scope, Object thisObj, Object[] args) {
+    public Object call(Context cx, Object nt, VarScope scope, Object thisObj, Object[] args) {
         return NativeJavaClass.constructSpecific(cx, scope, args, ctor);
     }
 

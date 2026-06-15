@@ -45,7 +45,7 @@ public class NativeJavaTopPackage extends NativeJavaPackage implements Function,
     }
 
     @Override
-    public Scriptable construct(Context cx, VarScope scope, Object[] args) {
+    public Scriptable construct(Context cx, Object nt, VarScope scope, Object[] args) {
         ClassLoader loader = null;
         if (args.length != 0) {
             Object arg = args[0];
