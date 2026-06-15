@@ -174,7 +174,8 @@ public class LambdaFunctionTest {
                         "NewOnly",
                         0,
                         LambdaConstructor.CONSTRUCTOR_NEW,
-                        (Context ctx, Object nt, VarScope scope, Object[] args) -> ctx.newObject(scope));
+                        (Context ctx, Object nt, VarScope scope, Object[] args) ->
+                                ctx.newObject(scope));
         ScriptableObject.defineProperty(root, "NewOnly", constructor, 0);
         eval(
                 "let o = new NewOnly();\n"
@@ -190,7 +191,8 @@ public class LambdaFunctionTest {
                         "NewOnly",
                         0,
                         LambdaConstructor.CONSTRUCTOR_FUNCTION,
-                        (Context ctx, Object nt, VarScope scope, Object[] args) -> ctx.newObject(scope));
+                        (Context ctx, Object nt, VarScope scope, Object[] args) ->
+                                ctx.newObject(scope));
         ScriptableObject.defineProperty(root, "NewOnly", constructor, 0);
         eval(
                 "let o = NewOnly();\n"
