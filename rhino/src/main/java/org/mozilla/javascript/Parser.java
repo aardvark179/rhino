@@ -557,6 +557,11 @@ public class Parser {
                 && ((FunctionNode) currentScriptOrFn).isAsync();
     }
 
+    private boolean insideGenerator() {
+        return currentScriptOrFn instanceof FunctionNode
+                && ((FunctionNode) currentScriptOrFn).isES6Generator();
+    }
+
     /**
      * Report an error if {@code id} may not be used as a binding identifier in the current context.
      * This consolidates the strict-mode checks that were previously duplicated at each binding
@@ -576,6 +581,7 @@ public class Parser {
                 reportError("msg.bad.id.strict", id);
             }
         }
+        checkContextuallyReservedWord(id);
     }
 
     /**
@@ -588,6 +594,25 @@ public class Parser {
                 && compilerEnv.getLanguageVersion() >= Context.VERSION_ES6
                 && isStrictModeReservedWord(id)) {
             reportError("msg.bad.id.strict", id);
+        }
+        checkContextuallyReservedWord(id);
+    }
+
+    /**
+     * Report an error if {@code id} is a word that is reserved by the surrounding context: {@code
+     * await} when used as an identifier inside an async function, or {@code yield} inside a
+     * generator. These are reserved regardless of strict mode. {@code yield} is normally a distinct
+     * token rather than a name, so it is the tokenizer that rejects most of its uses; this check
+     * covers the remaining cases where the word reaches the parser as an ordinary name.
+     */
+    private void checkContextuallyReservedWord(String id) {
+        if (compilerEnv.getLanguageVersion() < Context.VERSION_ES6) {
+            return;
+        }
+        if ("await".equals(id) && insideAsyncFunction()) {
+            reportError("msg.await.as.identifier");
+        } else if ("yield".equals(id) && insideGenerator()) {
+            reportError("msg.yield.as.identifier");
         }
     }
 
