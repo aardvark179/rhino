@@ -1464,6 +1464,47 @@ public class ParserTest {
         }
     }
 
+    @Test
+    public void awaitRejectedAsIdentifierInAsyncFunction() {
+        environment.setLanguageVersion(Context.VERSION_ES6);
+        String message = "\"await\" may not be used as an identifier name in an async function.";
+        // Binding identifiers.
+        expectParseErrors("async function f() { var await = 1; }", new String[] {message});
+        expectParseErrors("async function f(await) {}", new String[] {message});
+        // Shorthand property introduces a reference to the named variable.
+        expectParseErrors("async function f() { ({await}); }", new String[] {message});
+    }
+
+    @Test
+    public void awaitAllowedAsIdentifierOutsideAsyncFunction() {
+        environment.setLanguageVersion(Context.VERSION_ES6);
+        parse("var await = 1;");
+        parse("function f() { var await = 1; }");
+        parse("function f(await) {}");
+    }
+
+    @Test
+    public void awaitAllowedAsPropertyKeyAndMemberInAsyncFunction() {
+        environment.setLanguageVersion(Context.VERSION_ES6);
+        parse("async function f() { var o = {await: 1}; o.await; }");
+        parse("async function f() { var o = {await() { return 1; }}; }");
+    }
+
+    @Test
+    public void yieldRejectedAsIdentifierInGenerator() {
+        // yield is a distinct token inside a generator, so it cannot be used as an identifier.
+        environment.setLanguageVersion(Context.VERSION_ES6);
+        expectParseErrors(
+                "function* g() { var yield = 1; }", new String[] {"missing variable name"});
+    }
+
+    @Test
+    public void yieldAllowedAsPropertyKeyAndMemberInGenerator() {
+        environment.setLanguageVersion(Context.VERSION_ES6);
+        parse("function* g() { var o = {yield: 1}; o.yield; }");
+        parse("function* g() { var o = {yield() { return 1; }}; }");
+    }
+
     // Check that error recovery is working by returning a parsing exception, but only
     // when thrown by runtimeError. This is testing a regression in which the error recovery in
     // certain cases would trigger an infinite loop. We do this by counting the number
