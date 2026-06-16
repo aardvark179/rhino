@@ -557,6 +557,62 @@ public class Parser {
                 && ((FunctionNode) currentScriptOrFn).isAsync();
     }
 
+    /**
+     * Report an error if {@code id} may not be used as a binding identifier in the current context.
+     * This consolidates the strict-mode checks that were previously duplicated at each binding
+     * site.
+     */
+    private void checkValidBindingIdentifier(String id) {
+        if (inUseStrictDirective) {
+            // Behavior for all language versions: "eval" and "arguments" are not valid binding
+            // identifiers in strict mode.
+            if ("eval".equals(id) || "arguments".equals(id)) {
+                reportError("msg.bad.id.strict", id);
+            }
+            // ES6 and later additionally reserve a set of words in strict mode. Older language
+            // versions must not see any change in behavior, so this is gated on the version.
+            if (compilerEnv.getLanguageVersion() >= Context.VERSION_ES6
+                    && isStrictModeReservedWord(id)) {
+                reportError("msg.bad.id.strict", id);
+            }
+        }
+    }
+
+    /**
+     * Report an error if {@code id} may not be used as an identifier reference (or label) in the
+     * current context. Unlike a binding identifier, {@code eval} and {@code arguments} are valid
+     * references in strict mode, so only the reserved words are rejected here.
+     */
+    private void checkValidIdentifierReference(String id) {
+        if (inUseStrictDirective
+                && compilerEnv.getLanguageVersion() >= Context.VERSION_ES6
+                && isStrictModeReservedWord(id)) {
+            reportError("msg.bad.id.strict", id);
+        }
+    }
+
+    /**
+     * Words that are reserved and may not be used as identifiers in strict-mode ES6+ code. Used as
+     * an extension point for context-sensitive reservations such as {@code yield} in generators and
+     * {@code await} in async functions.
+     */
+    private static boolean isStrictModeReservedWord(String id) {
+        switch (id) {
+            case "implements":
+            case "interface":
+            case "let":
+            case "package":
+            case "private":
+            case "protected":
+            case "public":
+            case "static":
+            case "yield":
+                return true;
+            default:
+                return false;
+        }
+    }
+
     boolean insideFunctionParams() {
         return nestingOfFunctionParams != 0;
     }
@@ -958,10 +1014,8 @@ public class Parser {
                         fnNode.addParam(paramNameNode);
                         String paramName = ts.getString();
                         defineSymbol(Token.LP, paramName);
+                        checkValidBindingIdentifier(paramName);
                         if (this.inUseStrictDirective) {
-                            if ("eval".equals(paramName) || "arguments".equals(paramName)) {
-                                reportError("msg.bad.id.strict", paramName);
-                            }
                             if (paramNames.contains(paramName))
                                 addError("msg.dup.param.strict", paramName);
                             paramNames.add(paramName);
@@ -1028,12 +1082,7 @@ public class Parser {
         do {
             if (matchToken(Token.NAME, true) || matchToken(Token.UNDEFINED, true)) {
                 name = createNameNode(true, Token.NAME);
-                if (inUseStrictDirective) {
-                    String id = name.getIdentifier();
-                    if ("eval".equals(id) || "arguments".equals(id)) {
-                        reportError("msg.bad.id.strict", id);
-                    }
-                }
+                checkValidBindingIdentifier(name.getIdentifier());
                 if (!matchToken(Token.LP, true)) {
                     if (compilerEnv.isAllowMemberExprAsFunctionName()) {
                         AstNode memberExprHead = name;
@@ -1297,11 +1346,7 @@ public class Parser {
             }
             paramNames.add(paramName);
 
-            if (this.inUseStrictDirective) {
-                if ("eval".equals(paramName) || "arguments".equals(paramName)) {
-                    reportError("msg.bad.id.strict", paramName);
-                }
-            }
+            checkValidBindingIdentifier(paramName);
         } else if (params instanceof Assignment) {
             if (compilerEnv.getLanguageVersion() >= Context.VERSION_ES6) {
                 AstNode rhs = ((Assignment) params).getRight();
@@ -1348,11 +1393,7 @@ public class Parser {
                 }
                 paramNames.add(paramName);
 
-                if (this.inUseStrictDirective) {
-                    if ("eval".equals(paramName) || "arguments".equals(paramName)) {
-                        reportError("msg.bad.id.strict", paramName);
-                    }
-                }
+                checkValidBindingIdentifier(paramName);
             } else {
                 reportError("msg.no.parm", restParam.getPosition(), restParam.getLength());
                 fnNode.addParam(makeErrorNode());
@@ -2146,12 +2187,7 @@ public class Parser {
                                 if ("undefined".equals(varNameString)) {
                                     hasUndefinedBeenRedefined = true;
                                 }
-                                if (inUseStrictDirective) {
-                                    if ("eval".equals(varNameString)
-                                            || "arguments".equals(varNameString)) {
-                                        reportError("msg.bad.id.strict", varNameString);
-                                    }
-                                }
+                                checkValidBindingIdentifier(varNameString);
                             }
 
                             // Non-standard extension: we support "catch (e if cond)
@@ -2685,12 +2721,7 @@ public class Parser {
                 }
                 name = createNameNode();
                 name.setLineColumnNumber(lineNumber(), columnNumber());
-                if (inUseStrictDirective) {
-                    String id = ts.getString();
-                    if ("eval".equals(id) || "arguments".equals(ts.getString())) {
-                        reportError("msg.bad.id.strict", id);
-                    }
-                }
+                checkValidBindingIdentifier(ts.getString());
                 defineSymbol(declType, ts.getString(), inForInit);
             }
 
@@ -4151,6 +4182,7 @@ public class Parser {
             label.setLineColumnNumber(lineNumber(), columnNumber());
             return label;
         }
+        checkValidIdentifierReference(nameString);
         // Not a label.  Unfortunately peeking the next token to check for
         // a colon has biffed ts.tokenBeg, ts.tokenEnd.  We store the name's
         // bounds in instance vars and createNameNode uses them.
@@ -4700,6 +4732,9 @@ public class Parser {
                     && compilerEnv.getLanguageVersion() < Context.VERSION_ES6) {
                 reportError("msg.bad.object.init");
             }
+            // The shorthand `{ x }` introduces a reference to `x` (or, in a destructuring
+            // pattern, a binding) named by the property. Reserved words are not valid here.
+            checkValidIdentifierReference(property.getString());
             AstNode nn = new Name(property.getPosition(), property.getString());
             ObjectProperty pn = new ObjectProperty();
             pn.setKeyAndValue(property, nn);

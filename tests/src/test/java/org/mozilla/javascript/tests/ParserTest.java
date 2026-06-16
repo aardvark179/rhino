@@ -1391,6 +1391,79 @@ public class ParserTest {
                 new String[] {"identifier is a reserved word: interface"});
     }
 
+    /** Words that are reserved and may not be used as identifiers in strict-mode ES6+ code. */
+    private static final String[] STRICT_RESERVED_WORDS = {
+        "implements", "interface", "package", "private", "protected", "public", "static"
+    };
+
+    @Test
+    public void strictModeReservedWordsRejectedAsBindings() {
+        environment.setLanguageVersion(Context.VERSION_ES6);
+        for (String word : STRICT_RESERVED_WORDS) {
+            String message =
+                    "\"" + word + "\" is not a valid identifier for this use in strict mode.";
+            expectParseErrors("'use strict'; var " + word + " = 1;", new String[] {message});
+            expectParseErrors("'use strict'; function " + word + "() {}", new String[] {message});
+            expectParseErrors("'use strict'; function f(" + word + ") {}", new String[] {message});
+            expectParseErrors(
+                    "'use strict'; try {} catch (" + word + ") {}", new String[] {message});
+        }
+    }
+
+    @Test
+    public void strictModeReservedWordsAllowedInNonStrictEs6() {
+        environment.setLanguageVersion(Context.VERSION_ES6);
+        for (String word : STRICT_RESERVED_WORDS) {
+            parse("var " + word + " = 1;");
+            parse("function " + word + "() {}");
+            parse("function f(" + word + ") {}");
+        }
+    }
+
+    @Test
+    public void strictModeReservedWordsAllowedAsPropertyNames() {
+        environment.setLanguageVersion(Context.VERSION_ES6);
+        for (String word : STRICT_RESERVED_WORDS) {
+            // Still valid as property names and member accesses, even in strict mode.
+            parse("'use strict'; var o = {" + word + ": 1}; o." + word + ";");
+        }
+    }
+
+    @Test
+    public void strictModeReservedWordsUnchangedBeforeEs6() {
+        // Older language versions must not see any change in behavior: these words are not
+        // rejected as binding identifiers in strict mode prior to ES6.
+        environment.setLanguageVersion(Context.VERSION_DEFAULT);
+        for (String word : STRICT_RESERVED_WORDS) {
+            parse("'use strict'; var " + word + " = 1;");
+        }
+    }
+
+    @Test
+    public void strictModeReservedWordsRejectedAsReferences() {
+        environment.setLanguageVersion(Context.VERSION_ES6);
+        for (String word : STRICT_RESERVED_WORDS) {
+            String message =
+                    "\"" + word + "\" is not a valid identifier for this use in strict mode.";
+            // Shorthand property introduces a reference to the named variable.
+            expectParseErrors("'use strict'; ({" + word + "});", new String[] {message});
+            // Reserved word used as a property value (an identifier reference).
+            expectParseErrors("'use strict'; ({a: " + word + "});", new String[] {message});
+            // Reserved word used as a plain identifier reference.
+            expectParseErrors("'use strict'; (" + word + ");", new String[] {message});
+        }
+    }
+
+    @Test
+    public void strictModeReservedWordsAllowedAsPropertyKeysAndMembers() {
+        environment.setLanguageVersion(Context.VERSION_ES6);
+        for (String word : STRICT_RESERVED_WORDS) {
+            // Reserved words remain valid as property keys, methods and member accesses.
+            parse("'use strict'; var o = {" + word + ": 1}; o." + word + ";");
+            parse("'use strict'; var o = {" + word + "() { return 1; }};");
+        }
+    }
+
     // Check that error recovery is working by returning a parsing exception, but only
     // when thrown by runtimeError. This is testing a regression in which the error recovery in
     // certain cases would trigger an infinite loop. We do this by counting the number

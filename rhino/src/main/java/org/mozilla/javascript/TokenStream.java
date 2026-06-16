@@ -399,14 +399,6 @@ class TokenStream implements Parser.CurrentPositionReporter {
                 Id_await = Token.NAME,
                 Id_enum = Token.RESERVED,
 
-                // 11.6.2.2 NOTE Strict Future Reserved Words
-                Id_implements = Token.RESERVED,
-                Id_interface = Token.RESERVED,
-                Id_package = Token.RESERVED,
-                Id_private = Token.RESERVED,
-                Id_protected = Token.RESERVED,
-                Id_public = Token.RESERVED,
-
                 // 11.8 Literals
                 Id_false = Token.FALSE,
                 Id_null = Token.NULL,
@@ -415,8 +407,14 @@ class TokenStream implements Parser.CurrentPositionReporter {
 
                 // Non ReservedWord, but Non IdentifierName in strict mode code.
                 // 12.1.1 Static Semantics: Early Errors
-                Id_let = Token.LET, // TODO : Valid IdentifierName in non-strict mode.
-                Id_static = Token.RESERVED;
+                Id_let = Token.LET; // TODO : Valid IdentifierName in non-strict mode.
+
+        // The strict-mode future reserved words (implements, interface, package, private,
+        // protected, public, static) are NOT lexed as keywords. They are ordinary identifier
+        // names; the parser rejects them as binding identifiers when in strict mode (see
+        // Parser.checkValidBindingIdentifier). Lexing them as keywords here would be unreliable
+        // because strict mode may only become known after the identifier has been scanned (e.g. a
+        // function name or parameter that precedes a "use strict" directive in the body).
 
         int id = 0;
         switch (name) {
@@ -525,36 +523,6 @@ class TokenStream implements Parser.CurrentPositionReporter {
             case "enum":
                 id = Id_enum;
                 break;
-            case "implements":
-                if (isStrict) {
-                    id = Id_implements;
-                }
-                break;
-            case "interface":
-                if (isStrict) {
-                    id = Id_interface;
-                }
-                break;
-            case "package":
-                if (isStrict) {
-                    id = Id_package;
-                }
-                break;
-            case "private":
-                if (isStrict) {
-                    id = Id_private;
-                }
-                break;
-            case "protected":
-                if (isStrict) {
-                    id = Id_protected;
-                }
-                break;
-            case "public":
-                if (isStrict) {
-                    id = Id_public;
-                }
-                break;
             case "false":
                 id = Id_false;
                 break;
@@ -569,11 +537,6 @@ class TokenStream implements Parser.CurrentPositionReporter {
                 break;
             case "let":
                 id = Id_let;
-                break;
-            case "static":
-                if (isStrict) {
-                    id = Id_static;
-                }
                 break;
             default:
                 id = 0;
