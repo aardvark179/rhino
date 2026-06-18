@@ -225,12 +225,20 @@ public class BaseFunction extends ScriptableObject implements Function {
                 proto,
                 sealed,
                 (c, ctor) -> {
+                    VarScope top = ScriptableObject.getTopLevelScope(scope);
+
                     var function = (Scriptable) ScriptableObject.getProperty(scope, FUNCTION_CLASS);
                     var functionProto =
                             (Scriptable)
                                     ScriptableObject.getProperty(function, PROTOTYPE_PROPERTY_NAME);
                     proto.setPrototype(functionProto);
                     proto.setAttributes("constructor", DONTENUM | READONLY);
+
+                    var asyncGeneratorProto =
+                            ScriptableObject.getTopScopeValue(
+                                    top, ES6AsyncGenerator.ASYNC_GENERATOR_TAG);
+
+                    proto.defineProperty("prototype", asyncGeneratorProto, READONLY | DONTENUM);
                 });
     }
 
@@ -803,7 +811,10 @@ public class BaseFunction extends ScriptableObject implements Function {
             // should be %GeneratorPrototype%, not Object.prototype
             VarScope top = ScriptableObject.getTopLevelScope(scope);
             Object generatorProto =
-                    ScriptableObject.getTopScopeValue(top, ES6Generator.GENERATOR_TAG);
+                    isAsync()
+                            ? ScriptableObject.getTopScopeValue(
+                                    top, ES6AsyncGenerator.ASYNC_GENERATOR_TAG)
+                            : ScriptableObject.getTopScopeValue(top, ES6Generator.GENERATOR_TAG);
             if (generatorProto instanceof Scriptable) {
                 proto = (Scriptable) generatorProto;
             } else {
