@@ -162,8 +162,12 @@ abstract class Icode {
             NEW_ACCUMULATED = REF_CALL_ACCUMULATED - 1,
             CALLSPECIAL_ACCUMULATED = NEW_ACCUMULATED - 1,
 
+            // Wrap top-of-stack in an AwaitMarker (used inside async generator bodies so the
+            // driver can distinguish await from yield).
+            WRAP_AWAIT = CALLSPECIAL_ACCUMULATED - 1,
+
             // Last icode
-            MIN_ICODE = CALLSPECIAL_ACCUMULATED;
+            MIN_ICODE = WRAP_AWAIT;
 
     static String bytecodeName(int bytecode) {
         if (!validBytecode(bytecode)) {
@@ -349,6 +353,8 @@ abstract class Icode {
                 return "NEW_ACCUMULATED";
             case CALLSPECIAL_ACCUMULATED:
                 return "CALLSPECIAL_ACCUMULATED";
+            case WRAP_AWAIT:
+                return "WRAP_AWAIT";
         }
 
         // icode without name

@@ -417,7 +417,8 @@ public final class IRFactory {
                                 body,
                                 acl,
                                 acl.isForEach(),
-                                acl.isForOf());
+                                acl.isForOf(),
+                                false);
             }
         } finally {
             for (int i = 0; i < pushed; i++) {
@@ -616,7 +617,15 @@ public final class IRFactory {
             Node obj = transform(loop.getIteratedObject());
             Node body = transform(loop.getBody());
             return createForIn(
-                    declType, loop, lhs, obj, body, loop, loop.isForEach(), loop.isForOf());
+                    declType,
+                    loop,
+                    lhs,
+                    obj,
+                    body,
+                    loop,
+                    loop.isForEach(),
+                    loop.isForOf(),
+                    loop.isForAwaitOf());
         } finally {
             parser.popScope();
         }
@@ -673,6 +682,8 @@ public final class IRFactory {
                             && defaultParams.get(i - 1) instanceof String) {
                         AstNode rhs = (AstNode) defaultParams.get(i);
                         String name = (String) defaultParams.get(i - 1);
+                        Node transformedRhs = transform(rhs);
+                        inferNameIfMissing(new Name(0, name), transformedRhs, null);
                         Node paramInit =
                                 createIf(
                                         createBinary(
@@ -684,7 +695,7 @@ public final class IRFactory {
                                                 createAssignment(
                                                         Token.ASSIGN,
                                                         parser.createName(name),
-                                                        transform(rhs)),
+                                                        transformedRhs),
                                                 body.getLineno(),
                                                 body.getColumn()),
                                         null,
@@ -713,13 +724,27 @@ public final class IRFactory {
                     Node a = i[0];
                     if (i[1] instanceof AstNode) {
                         AstNode b = (AstNode) i[1];
-                        a.replaceChild(b, transform(b));
+                        Node transformed = transform(b);
+                        if (i.length > 2 && i[2] instanceof Name) {
+                            inferNameIfMissing(i[2], transformed, null);
+                        }
+                        a.replaceChild(b, transformed);
                     }
                 }
             }
 
             if (destructuring != null) {
-                body.addChildToFront(new Node(Token.EXPR_VOID, destructuring, lineno, column));
+                Node destructuringStmt = new Node(Token.EXPR_VOID, destructuring, lineno, column);
+                if (fn.isGenerator()) {
+                    Node paramInitBlock = fn.getGeneratorParamInitBlock();
+                    if (paramInitBlock == null) {
+                        paramInitBlock = new Node(Token.BLOCK);
+                        fn.setGeneratorParamInitBlock(paramInitBlock);
+                    }
+                    paramInitBlock.addChildToFront(destructuringStmt);
+                } else {
+                    body.addChildToFront(destructuringStmt);
+                }
             }
 
             int syntheticType = fn.getFunctionType();
@@ -893,7 +918,8 @@ public final class IRFactory {
                                 body,
                                 acl,
                                 acl.isForEach(),
-                                acl.isForOf());
+                                acl.isForOf(),
+                                false);
             }
         } finally {
             for (int i = 0; i < pushed; i++) {
@@ -1787,7 +1813,8 @@ public final class IRFactory {
             Node body,
             AstNode ast,
             boolean isForEach,
-            boolean isForOf) {
+            boolean isForOf,
+            boolean isForAwaitOf) {
         astNodePos.push(ast);
         try {
             int destructuring = -1;
@@ -1824,18 +1851,31 @@ public final class IRFactory {
             }
 
             Node localBlock = new Node(Token.LOCAL_BLOCK);
-            int initType =
-                    isForEach
-                            ? Token.ENUM_INIT_VALUES
-                            : isForOf
-                                    ? Token.ENUM_INIT_VALUES_IN_ORDER
-                                    : (destructuring != -1
-                                            ? Token.ENUM_INIT_ARRAY
-                                            : Token.ENUM_INIT_KEYS);
+            int initType;
+            if (isForAwaitOf) {
+                initType = Token.ENUM_INIT_ASYNC_ITERATOR;
+            } else if (isForEach) {
+                initType = Token.ENUM_INIT_VALUES;
+            } else if (isForOf) {
+                initType = Token.ENUM_INIT_VALUES_IN_ORDER;
+            } else {
+                initType = destructuring != -1 ? Token.ENUM_INIT_ARRAY : Token.ENUM_INIT_KEYS;
+            }
             Node init = new Node(initType, obj);
             init.putProp(Node.LOCAL_BLOCK_PROP, localBlock);
-            Node cond = new Node(Token.ENUM_NEXT);
-            cond.putProp(Node.LOCAL_BLOCK_PROP, localBlock);
+            Node cond;
+            if (isForAwaitOf) {
+                // cond = ENUM_ASYNC_STEP(AWAIT(ENUM_ASYNC_NEXT)); produces a boolean !done.
+                Node asyncNext = new Node(Token.ENUM_ASYNC_NEXT);
+                asyncNext.putProp(Node.LOCAL_BLOCK_PROP, localBlock);
+                Node await = new Node(Token.AWAIT, asyncNext);
+                Node asyncStep = new Node(Token.ENUM_ASYNC_STEP, await);
+                asyncStep.putProp(Node.LOCAL_BLOCK_PROP, localBlock);
+                cond = asyncStep;
+            } else {
+                cond = new Node(Token.ENUM_NEXT);
+                cond.putProp(Node.LOCAL_BLOCK_PROP, localBlock);
+            }
             Node id = new Node(Token.ENUM_ID);
             id.putProp(Node.LOCAL_BLOCK_PROP, localBlock);
 

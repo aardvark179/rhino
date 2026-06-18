@@ -278,6 +278,8 @@ public class ScriptNode extends Scope {
         annexBFunctions.add(new Object[] {letSymbol, fn});
     }
 
+    public void putDestructuringRvalues(Node left, Node right, Name name) {}
+
     void addSymbol(Symbol symbol) {
         if (variableNames != null) codeBug();
         if (symbol.getDeclType() == Token.LP) {

@@ -191,9 +191,20 @@ class BodyCodegen {
                 (scriptOrFn instanceof FunctionNode)
                         && ((FunctionNode) scriptOrFn).isAsync()
                         && !((FunctionNode) scriptOrFn).isES6Generator();
+        boolean isAsyncGenerator =
+                (scriptOrFn instanceof FunctionNode)
+                        && ((FunctionNode) scriptOrFn).isAsyncGenerator();
         if (isAsyncNonGenerator) {
             addOptRuntimeInvoke(
                     "createAsyncFunction",
+                    "(Lorg/mozilla/javascript/Context;"
+                            + "Lorg/mozilla/javascript/VarScope;"
+                            + "Lorg/mozilla/javascript/Scriptable;"
+                            + "Lorg/mozilla/javascript/JSFunction;II"
+                            + ")Ljava/lang/Object;");
+        } else if (isAsyncGenerator) {
+            addOptRuntimeInvoke(
+                    "createAsyncGenerator",
                     "(Lorg/mozilla/javascript/Context;"
                             + "Lorg/mozilla/javascript/VarScope;"
                             + "Lorg/mozilla/javascript/Scriptable;"
@@ -898,6 +909,19 @@ class BodyCodegen {
                 cfw.addAStore(getLocalBlockRegister(node));
                 break;
 
+            case Token.ENUM_INIT_ASYNC_ITERATOR:
+                generateExpression(child, node);
+                cfw.addALoad(contextLocal);
+                cfw.addALoad(variableObjectLocal);
+                addScriptRuntimeInvoke(
+                        "enumInitAsyncIterator",
+                        "(Ljava/lang/Object;"
+                                + "Lorg/mozilla/javascript/Context;"
+                                + "Lorg/mozilla/javascript/VarScope;"
+                                + ")Ljava/lang/Object;");
+                cfw.addAStore(getLocalBlockRegister(node));
+                break;
+
             case Token.EXPR_VOID:
                 if (child.getType() == Token.SETVAR) {
                     /* special case this so as to avoid unnecessary
@@ -1278,6 +1302,34 @@ class BodyCodegen {
                     break;
                 }
 
+            case Token.ENUM_ASYNC_NEXT:
+                {
+                    int local = getLocalBlockRegister(node);
+                    cfw.addALoad(local);
+                    cfw.addALoad(contextLocal);
+                    addScriptRuntimeInvoke(
+                            "enumAsyncNext",
+                            "(Ljava/lang/Object;"
+                                    + "Lorg/mozilla/javascript/Context;"
+                                    + ")Ljava/lang/Object;");
+                    break;
+                }
+
+            case Token.ENUM_ASYNC_STEP:
+                {
+                    int local = getLocalBlockRegister(node);
+                    cfw.addALoad(local); // push enumObj
+                    generateExpression(child, node); // push awaited IteratorResult
+                    cfw.addALoad(contextLocal);
+                    addScriptRuntimeInvoke(
+                            "enumAsyncStep",
+                            "(Ljava/lang/Object;"
+                                    + "Ljava/lang/Object;"
+                                    + "Lorg/mozilla/javascript/Context;"
+                                    + ")Ljava/lang/Boolean;");
+                    break;
+                }
+
             case Token.ARRAYLIT:
                 visitArrayLiteral(node, child, false);
                 break;
@@ -1332,6 +1384,19 @@ class BodyCodegen {
                                 + "Lorg/mozilla/javascript/VarScope;"
                                 + "Ljava/lang/Object;"
                                 + ")Lorg/mozilla/javascript/Scriptable;");
+                break;
+
+            case Token.ITERATOR_CLOSE_ABRUPT:
+                generateExpression(child, node);
+                cfw.addALoad(contextLocal);
+                cfw.addALoad(variableObjectLocal);
+                addScriptRuntimeInvoke(
+                        "closeIteratorAbrupt",
+                        "(Ljava/lang/Object;"
+                                + "Lorg/mozilla/javascript/Context;"
+                                + "Lorg/mozilla/javascript/VarScope;"
+                                + ")V");
+                Codegen.pushUndefined(cfw);
                 break;
 
             case Token.TYPEOFNAME:
@@ -1971,6 +2036,14 @@ class BodyCodegen {
         Node child = node.getFirstChild();
         if (child != null) generateExpression(child, node);
         else Codegen.pushUndefined(cfw);
+
+        // Inside an async generator, wrap awaited values so the driver can tell them apart
+        // from plain yielded values.
+        if (node.getType() == Token.AWAIT
+                && scriptOrFn instanceof FunctionNode
+                && ((FunctionNode) scriptOrFn).isAsyncGenerator()) {
+            addScriptRuntimeInvoke("wrapAwait", "(Ljava/lang/Object;)Ljava/lang/Object;");
+        }
 
         if (node.getType() == Token.YIELD_STAR) {
             // We will replace the result with one that signifies we should have a generator

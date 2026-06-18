@@ -56,8 +56,11 @@ import org.mozilla.javascript.interpreterv2.instruction.EndFinally;
 import org.mozilla.javascript.interpreterv2.instruction.EnterDotQuery;
 import org.mozilla.javascript.interpreterv2.instruction.EnterScope;
 import org.mozilla.javascript.interpreterv2.instruction.EnterWith;
+import org.mozilla.javascript.interpreterv2.instruction.EnumAsyncNext;
+import org.mozilla.javascript.interpreterv2.instruction.EnumAsyncStep;
 import org.mozilla.javascript.interpreterv2.instruction.EnumId;
 import org.mozilla.javascript.interpreterv2.instruction.EnumInitArray;
+import org.mozilla.javascript.interpreterv2.instruction.EnumInitAsyncIterator;
 import org.mozilla.javascript.interpreterv2.instruction.EnumInitKeys;
 import org.mozilla.javascript.interpreterv2.instruction.EnumInitValues;
 import org.mozilla.javascript.interpreterv2.instruction.EnumInitValuesInOrder;
@@ -85,6 +88,7 @@ import org.mozilla.javascript.interpreterv2.instruction.In;
 import org.mozilla.javascript.interpreterv2.instruction.Instanceof;
 import org.mozilla.javascript.interpreterv2.instruction.Instruction;
 import org.mozilla.javascript.interpreterv2.instruction.Int;
+import org.mozilla.javascript.interpreterv2.instruction.IteratorCloseAbrupt;
 import org.mozilla.javascript.interpreterv2.instruction.JumpInstruction;
 import org.mozilla.javascript.interpreterv2.instruction.LeaveDotQuery;
 import org.mozilla.javascript.interpreterv2.instruction.LeaveScope;
@@ -165,6 +169,7 @@ import org.mozilla.javascript.interpreterv2.instruction.ValueAndThis;
 import org.mozilla.javascript.interpreterv2.instruction.ValueAndThisOptional;
 import org.mozilla.javascript.interpreterv2.instruction.VarIncDec;
 import org.mozilla.javascript.interpreterv2.instruction.VoidInstruction;
+import org.mozilla.javascript.interpreterv2.instruction.WrapAwait;
 import org.mozilla.javascript.interpreterv2.instruction.Yield;
 import org.mozilla.javascript.interpreterv2.instruction.YieldStar;
 import org.mozilla.javascript.interpreterv2.operand.BooleanOperand;
@@ -690,6 +695,10 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 visitUnaryOperation(
                         child, obj -> new EnumInitValuesInOrder(obj, getLocalBlockRef(node)));
                 return;
+            case Token.ENUM_INIT_ASYNC_ITERATOR:
+                visitUnaryOperation(
+                        child, obj -> new EnumInitAsyncIterator(obj, getLocalBlockRef(node)));
+                return;
 
             default:
                 throw badTree(node);
@@ -1192,6 +1201,9 @@ public class Compiler<T extends ScriptOrFn<T>> {
             case Token.TO_OBJECT_COERCIBLE:
                 visitUnaryOperation(child, obj -> new ToObject(obj));
                 return;
+            case Token.ITERATOR_CLOSE_ABRUPT:
+                visitUnaryOperation(child, obj -> new IteratorCloseAbrupt(obj));
+                return;
             case Token.VOID:
                 {
                     visitExpression(child, 0);
@@ -1442,6 +1454,17 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     addInstruction(new EnumId(getLocalBlockRef(node)));
                     return;
                 }
+            case Token.ENUM_ASYNC_NEXT:
+                {
+                    addInstruction(new EnumAsyncNext(getLocalBlockRef(node)));
+                    return;
+                }
+            case Token.ENUM_ASYNC_STEP:
+                {
+                    visitUnaryOperation(
+                            child, obj -> new EnumAsyncStep(obj, getLocalBlockRef(node)));
+                    return;
+                }
             case Token.BIGINT:
                 {
                     addInstruction(new BigInt(node.getBigInt()));
@@ -1552,8 +1575,17 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     } else {
                         valueOperand = UndefinedOperand.instance;
                     }
-
-                    addInstruction(new Yield(valueOperand, (short) node.getLineno()));
+                    // Inside an async generator we need to tell yield and await apart at the
+                    // driver level. Wrap the value of an await in an AwaitMarker; a plain yield
+                    // yields the raw value.
+                    if (op == Token.AWAIT
+                            && scriptOrFn instanceof FunctionNode
+                            && ((FunctionNode) scriptOrFn).isAsyncGenerator()) {
+                        addInstruction(new WrapAwait(valueOperand));
+                        addInstruction(new Yield(PopOperand.instance, (short) node.getLineno()));
+                    } else {
+                        addInstruction(new Yield(valueOperand, (short) node.getLineno()));
+                    }
                     addInstruction(new ThawFrame(true, (short) node.getLineno()));
                     return;
                 }

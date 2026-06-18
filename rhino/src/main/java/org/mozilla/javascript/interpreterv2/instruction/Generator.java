@@ -3,6 +3,7 @@ package org.mozilla.javascript.interpreterv2.instruction;
 import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
+import org.mozilla.javascript.ES6AsyncGenerator;
 import org.mozilla.javascript.ES6Generator;
 import org.mozilla.javascript.JSFunction;
 import org.mozilla.javascript.NativeGenerator;
@@ -32,7 +33,11 @@ public class Generator extends Instruction {
             if (cx.getLanguageVersion() >= Context.VERSION_ES6) {
                 JSFunction fn = (JSFunction) generatorFrame.fnOrScript;
                 ES6Generator gen = new ES6Generator(frame.scope, fn, generatorFrame);
-                if (fn.isAsync() && !fn.isGeneratorFunction()) {
+                if (fn.isAsync() && fn.isGeneratorFunction()) {
+                    // Async generator function: wrap the underlying generator in an async
+                    // generator object that drives requests through a FIFO queue.
+                    frame.result = new ES6AsyncGenerator(frame.scope, gen);
+                } else if (fn.isAsync() && !fn.isGeneratorFunction()) {
                     // Async non-generator function: drive via Promise runner.
                     // isGeneratorFunction() returns descriptor.isES6Generator(), which is
                     // false for async non-generators (we only called setIsGenerator(), not
