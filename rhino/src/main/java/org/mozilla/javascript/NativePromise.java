@@ -221,8 +221,7 @@ public class NativePromise extends ScriptableObject {
     }
 
     // PromiseResolve abstract operation
-    private static Object resolveInternal(
-            Context cx, VarScope scope, Object constructor, Object arg) {
+    static Object resolveInternal(Context cx, VarScope scope, Object constructor, Object arg) {
         if (arg instanceof NativePromise) {
             Object argConstructor = ScriptRuntime.getObjectProp(arg, "constructor", cx, scope);
             if (argConstructor == constructor) {
@@ -476,7 +475,7 @@ public class NativePromise extends ScriptableObject {
     }
 
     // Promise.prototype.then
-    private Object then(Context cx, VarScope scope, Object[] args) {
+    Object then(Context cx, VarScope scope, Object[] args) {
         Constructable constructable =
                 AbstractEcmaObjectOperations.speciesConstructor(
                         cx,
@@ -912,7 +911,7 @@ public class NativePromise extends ScriptableObject {
     // "Promise Capability Record"
     // This abstracts a promise from the specific native implementation by keeping track
     // of the "resolve" and "reject" functions.
-    private static class Capability {
+    static class Capability {
         Object promise;
         private Object rawResolve = Undefined.instance;
         Callable resolve;
