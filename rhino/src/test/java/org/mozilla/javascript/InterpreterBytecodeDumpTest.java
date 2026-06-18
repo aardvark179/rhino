@@ -200,19 +200,23 @@ class InterpreterBytecodeDumpTest {
     @Test
     void catchScopeAndExceptionTableArePrinted() throws IOException {
         var output = getByteCodeFrom("try { x } catch(e) { e }");
-        assertTrue(output.contains("CATCH_SCOPE "),
-            String.format("Expected <\n%s\n> to contain 'CATCH_SCOPE'", output));
-        assertTrue(output.contains("Exception handlers: "),
-            String.format("Expected <\n%s\n> to contain 'Exception handlers: '", output));
-        assertTrue(output.contains("type=catch"),
-            String.format("Expected <\n%s\n> to contain 'type=catch'", output));
+        assertTrue(
+                output.contains("CATCH_SCOPE "),
+                String.format("Expected <\n%s\n> to contain 'CATCH_SCOPE'", output));
+        assertTrue(
+                output.contains("Exception handlers: "),
+                String.format("Expected <\n%s\n> to contain 'Exception handlers: '", output));
+        assertTrue(
+                output.contains("type=catch"),
+                String.format("Expected <\n%s\n> to contain 'type=catch'", output));
     }
 
     @Test
     void finallyExceptionTableIsPrinted() throws IOException {
         var output = getByteCodeFrom("try { x } finally { y }");
-        assertTrue(output.contains("type=finally"),
-            String.format("Expected <\n%s\n> to contain 'type=finally'", output));
+        assertTrue(
+                output.contains("type=finally"),
+                String.format("Expected <\n%s\n> to contain 'type=finally'", output));
     }
 
     @Test
@@ -456,7 +460,7 @@ class InterpreterBytecodeDumpTest {
     void objectRestIsPrinted() throws IOException {
         assertEquals(
                 Utils.portableLines(
-                        "ICode dump, for null, length = 35",
+                        "ICode dump, for null, length = 39",
                         "MaxStack = 3",
                         " [0] LINE : 1",
                         " [3] ENTER_SCOPE",
@@ -487,9 +491,13 @@ class InterpreterBytecodeDumpTest {
                         " [29] POP",
                         " [30] REG_STR_C1 \"$0\"",
                         " [31] NAME",
-                        " [32] LEAVE_SCOPE",
+                        " [32] TO_OBJECT_COERCIBLE",
                         " [33] POP",
-                        " [34] RETURN_RESULT",
+                        " [34] REG_STR_C1 \"$0\"",
+                        " [35] NAME",
+                        " [36] LEAVE_SCOPE",
+                        " [37] POP",
+                        " [38] RETURN_RESULT",
                         ""),
                 getByteCodeFrom("var {a, ...rest} = obj"));
     }
