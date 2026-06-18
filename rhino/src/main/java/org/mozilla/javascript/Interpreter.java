@@ -728,6 +728,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Token.NEW] = new DoNew();
         instructionObjs[base + Token.TYPEOF] = new DoTypeOf();
         instructionObjs[base + Token.TO_OBJECT_COERCIBLE] = new DoToObjectCoercible();
+        instructionObjs[base + Token.ITERATOR_CLOSE_ABRUPT] = new DoIteratorCloseAbrupt();
         instructionObjs[base + Icode.TYPEOFNAME] = new DoTypeOfName();
         instructionObjs[base + Token.STRING] = new DoString();
         instructionObjs[base + Icode.SHORTNUMBER] = new DoShortNumber();
@@ -763,8 +764,11 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Token.ENUM_INIT_ARRAY] = new DoEnumInit();
         instructionObjs[base + Token.ENUM_INIT_VALUES_IN_ORDER] = new DoEnumInit();
         instructionObjs[base + Token.ENUM_INIT_VALUES_IN_ORDER] = new DoEnumInit();
+        instructionObjs[base + Token.ENUM_INIT_ASYNC_ITERATOR] = new DoEnumInitAsyncIterator();
         instructionObjs[base + Token.ENUM_NEXT] = new DoEnumOp();
         instructionObjs[base + Token.ENUM_ID] = new DoEnumOp();
+        instructionObjs[base + Token.ENUM_ASYNC_NEXT] = new DoEnumAsyncNext();
+        instructionObjs[base + Token.ENUM_ASYNC_STEP] = new DoEnumAsyncStep();
         instructionObjs[base + Token.REF_SPECIAL] = new DoRefSpecial();
         instructionObjs[base + Token.REF_MEMBER] = new DoRefMember();
         instructionObjs[base + Token.REF_NS_MEMBER] = new DoRefNsMember();
@@ -774,6 +778,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Icode.SCOPE_SAVE] = new DoScopeSave();
         instructionObjs[base + Icode.SPREAD] = new DoSpread();
         instructionObjs[base + Icode.OBJECT_REST] = new DoObjectRest();
+        instructionObjs[base + Icode.WRAP_AWAIT] = new DoWrapAwait();
         instructionObjs[base + Icode.CLOSURE_EXPR] = new DoClosureExpr();
         instructionObjs[base + Icode.CLOSURE_STMT] = new DoClosureStatement();
         instructionObjs[base + Token.REGEXP] = new DoRegExp();
@@ -1154,16 +1159,8 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             if (!frame.frozen) {
                 // First time encountering this opcode: create new generator
                 // object and return
-                generatorCreate(cx, frame);
+                generatorCreate(cx, frame, state);
                 return BREAK_LOOP;
-            }
-            /* This is both where we yield from and re-enter the
-             * generator.
-             */
-            if (!frame.frozen) {
-                return new YieldResult(
-                        freezeGenerator(
-                                cx, frame, state, state.generatorState, op == Icode.YIELD_STAR));
             }
             Object obj = thawGenerator(frame, state, state.generatorState, op);
             if (obj != Scriptable.NOT_FOUND) {
@@ -1173,7 +1170,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             return null;
         }
 
-        private static void generatorCreate(Context cx, CallFrame frame) {
+        private static void generatorCreate(Context cx, CallFrame frame, InterpreterState state) {
             // First time encountering this opcode: create new generator
             // object and return
             frame.pc--; // we want to come back here when we resume
@@ -1182,7 +1179,11 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             if (cx.getLanguageVersion() >= Context.VERSION_ES6) {
                 JSFunction fn = (JSFunction) generatorFrame.fnOrScript;
                 ES6Generator gen = new ES6Generator(frame.scope, fn, generatorFrame);
-                if (fn.isAsync() && !fn.isGeneratorFunction()) {
+                if (fn.isAsync() && fn.isGeneratorFunction()) {
+                    // Async generator function: wrap the underlying generator in an async
+                    // generator object that drives requests through a FIFO queue.
+                    frame.result = new ES6AsyncGenerator(frame.scope, gen);
+                } else if (fn.isAsync() && !fn.isGeneratorFunction()) {
                     // Async non-generator function: drive via Promise runner.
                     // isGeneratorFunction() returns descriptor.isES6Generator(), which is
                     // false for async non-generators (we only called setIsGenerator(), not
@@ -2944,6 +2945,19 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         }
     }
 
+    private static class DoIteratorCloseAbrupt extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            Object[] stack = frame.stack;
+            double[] sDbl = frame.doubleStack;
+            Object iter = stack[frame.stackTop];
+            if (iter == DOUBLE_MARK) iter = ScriptRuntime.wrapNumber(sDbl[frame.stackTop]);
+            ScriptRuntime.closeIteratorAbrupt(iter, cx, frame.scope);
+            stack[frame.stackTop] = Undefined.instance;
+            return null;
+        }
+    }
+
     private static class DoTypeOfName extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
@@ -3445,6 +3459,53 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                     (op == Token.ENUM_NEXT)
                             ? ScriptRuntime.enumNext(val, cx)
                             : ScriptRuntime.enumId(val, cx);
+            return null;
+        }
+    }
+
+    private static class DoEnumInitAsyncIterator extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            Object lhs = frame.stack[frame.stackTop];
+            if (lhs == DOUBLE_MARK)
+                lhs = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
+            state.indexReg += frame.compilerData.maxVars;
+            frame.stack[state.indexReg] = ScriptRuntime.enumInitAsyncIterator(lhs, cx, frame.scope);
+            --frame.stackTop;
+            return null;
+        }
+    }
+
+    private static class DoEnumAsyncNext extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            state.indexReg += frame.compilerData.maxVars;
+            Object enumObj = frame.stack[state.indexReg];
+            frame.stack[++frame.stackTop] = ScriptRuntime.enumAsyncNext(enumObj, cx);
+            return null;
+        }
+    }
+
+    private static class DoWrapAwait extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            Object v = frame.stack[frame.stackTop];
+            if (v == DOUBLE_MARK) v = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
+            frame.stack[frame.stackTop] = ScriptRuntime.wrapAwait(v);
+            return null;
+        }
+    }
+
+    private static class DoEnumAsyncStep extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            state.indexReg += frame.compilerData.maxVars;
+            Object enumObj = frame.stack[state.indexReg];
+            Object awaited = frame.stack[frame.stackTop];
+            if (awaited == DOUBLE_MARK) {
+                awaited = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
+            }
+            frame.stack[frame.stackTop] = ScriptRuntime.enumAsyncStep(enumObj, awaited, cx);
             return null;
         }
     }
@@ -4332,8 +4393,12 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             // If construct returns scriptable,
             // then it replaces on stack top saved original instance
             // of the object.
-            if (callResult instanceof Scriptable) {
-                frame.stack[frame.stackTop] = callResult;
+            if (!Undefined.isUndefined(callResult)) {
+                if (callResult instanceof Scriptable) {
+                    frame.stack[frame.stackTop] = callResult;
+                } else {
+                    throw ScriptRuntime.typeErrorById("msg.ctor.res.not.object");
+                }
             }
         } else {
             Kit.codeBug();

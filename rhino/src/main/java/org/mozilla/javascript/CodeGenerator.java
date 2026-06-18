@@ -17,9 +17,9 @@ import org.mozilla.javascript.ast.Jump;
 import org.mozilla.javascript.ast.RegExpLiteral;
 import org.mozilla.javascript.ast.ScriptNode;
 import org.mozilla.javascript.ast.TemplateCharacters;
+import org.mozilla.javascript.ast.TemplateLiteral;
 import org.mozilla.javascript.sourcemap.Position;
 import org.mozilla.javascript.sourcemap.SourceMapper;
-import org.mozilla.javascript.ast.TemplateLiteral;
 
 /** Generates bytecode for the Interpreter. */
 class CodeGenerator<T extends ScriptOrFn<T>> {
@@ -598,6 +598,7 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
             case Token.ENUM_INIT_VALUES:
             case Token.ENUM_INIT_ARRAY:
             case Token.ENUM_INIT_VALUES_IN_ORDER:
+            case Token.ENUM_INIT_ASYNC_ITERATOR:
                 visitExpression(child, 0);
                 addIndexOp(type, getLocalBlockRef(node));
                 stackChange(-1);
@@ -682,9 +683,15 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                 {
                     Node lastChild = node.getLastChild();
                     while (child != lastChild) {
-                        visitExpression(child, 0);
-                        addIcode(Icode.POP);
-                        stackChange(-1);
+                        if (child.getType() == Token.LOCAL_BLOCK) {
+                            // Embedded statement-level side-effect (e.g. try/finally for
+                            // iterator cleanup in destructuring). Produces no value, so no POP.
+                            visitStatement(child, stackDepth);
+                        } else {
+                            visitExpression(child, 0);
+                            addIcode(Icode.POP);
+                            stackChange(-1);
+                        }
                         child = child.getNext();
                     }
                     // Preserve tail context flag if any
@@ -961,6 +968,7 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
             case Token.TYPEOF:
             case Token.VOID:
             case Token.TO_OBJECT_COERCIBLE:
+            case Token.ITERATOR_CLOSE_ABRUPT:
                 visitExpression(child, 0);
                 if (type == Token.VOID) {
                     addIcode(Icode.POP);
@@ -1161,8 +1169,16 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
 
             case Token.ENUM_NEXT:
             case Token.ENUM_ID:
+            case Token.ENUM_ASYNC_NEXT:
                 addIndexOp(type, getLocalBlockRef(node));
                 stackChange(1);
+                break;
+
+            case Token.ENUM_ASYNC_STEP:
+                // Child is the expression that evaluates to the awaited IteratorResult.
+                visitExpression(child, 0);
+                addIndexOp(type, getLocalBlockRef(node));
+                // opcode pops the result and pushes the boolean: net zero on top of the child.
                 break;
 
             case Token.BIGINT:
@@ -1270,8 +1286,16 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                 if (type == Token.YIELD_STAR) {
                     addIcode(Icode.YIELD_STAR);
                 } else {
-                    // Token.YIELD and Token.AWAIT both use the same yield opcode;
-                    // the async Promise runner drives the generator for await.
+                    // Inside an async generator we need to tell yield and await apart at the
+                    // driver level. Wrap the value of an await in an AwaitMarker; a plain yield
+                    // yields the raw value.
+                    if (type == Token.AWAIT
+                            && scriptOrFn instanceof FunctionNode
+                            && ((FunctionNode) scriptOrFn).isAsyncGenerator()) {
+                        addIcode(Icode.WRAP_AWAIT);
+                    }
+                    // Token.YIELD and Token.AWAIT both use the same yield opcode; the async
+                    // Promise runner drives the generator for await.
                     addToken(Token.YIELD);
                 }
                 addUint16(node.getLineno() & 0xFFFF);

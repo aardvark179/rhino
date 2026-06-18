@@ -1978,7 +1978,7 @@ public class Parser {
         if (currentToken != Token.FOR) codeBug();
         consumeToken();
         int forPos = ts.tokenBeg, lineno = lineNumber(), column = columnNumber();
-        boolean isForEach = false, isForIn = false, isForOf = false;
+        boolean isForEach = false, isForIn = false, isForOf = false, isForAwaitOf = false;
         int eachPos = -1, inPos = -1, lp = -1, rp = -1;
         AstNode init = null; // init is also foo in 'foo in object'
         AstNode cond = null; // cond is also object in 'foo in object'
@@ -1988,8 +1988,15 @@ public class Parser {
         Scope tempScope = new Scope();
         pushScope(tempScope); // decide below what AST class to use
         try {
-            // See if this is a for each () instead of just a for ()
-            if (matchToken(Token.NAME, true)) {
+            // See if this is a for-await-of loop: only allowed inside an async function
+            if (peekToken() == Token.NAME && "await".equals(ts.getString())) {
+                if (!insideAsyncFunction()) {
+                    reportError("msg.bad.await");
+                }
+                consumeToken();
+                isForAwaitOf = true;
+            } else if (matchToken(Token.NAME, true)) {
+                // See if this is a for each () instead of just a for ()
                 if ("each".equals(ts.getString())) {
                     isForEach = true;
                     eachPos = ts.tokenBeg - forPos;
@@ -2068,12 +2075,16 @@ public class Parser {
                 if (isForOf && isForEach) {
                     reportError("msg.invalid.for.each");
                 }
+                if (isForAwaitOf && !isForOf) {
+                    reportError("msg.bad.for.await");
+                }
                 fis.setIterator(init);
                 fis.setIteratedObject(cond);
                 fis.setInPosition(inPos);
                 fis.setIsForEach(isForEach);
                 fis.setEachPosition(eachPos);
                 fis.setIsForOf(isForOf);
+                fis.setIsForAwaitOf(isForAwaitOf);
                 pn = fis;
             } else {
                 ForLoop fl = new ForLoop(forPos);
@@ -5185,101 +5196,151 @@ public class Parser {
         try {
             pushScope(result);
             defineSymbol(Token.LET, tempName, true);
+            Node comma = new Node(Token.COMMA);
+            result.addChildToBack(comma);
+            List<String> destructuringNames = new ArrayList<>();
+            boolean empty = true;
+            String iteratorName = null;
+            String lastResultName = null;
+            Node iteratorAssignNode = null;
+            if (left instanceof ArrayLiteral) {
+                DestructuringArrayResult arrayResult =
+                        destructuringArray(
+                                (ArrayLiteral) left,
+                                variableType,
+                                tempName,
+                                comma,
+                                destructuringNames,
+                                defaultValue,
+                                transformer,
+                                isFunctionParameter);
+                empty = arrayResult.empty;
+                iteratorName = arrayResult.iteratorName;
+                lastResultName = arrayResult.lastResultName;
+                iteratorAssignNode = arrayResult.iteratorAssignNode;
+                if (iteratorName != null) {
+                    letNode.addChildToBack(createName(Token.NAME, iteratorName, null));
+                }
+                if (lastResultName != null) {
+                    letNode.addChildToBack(createName(Token.NAME, lastResultName, null));
+                }
+                for (var name : arrayResult.tempResultName) {
+                    letNode.addChildToBack(createName(Token.NAME, name, null));
+                }
+            } else if (left instanceof ObjectLiteral) {
+                empty =
+                        destructuringObject(
+                                (ObjectLiteral) left,
+                                variableType,
+                                tempName,
+                                comma,
+                                destructuringNames,
+                                defaultValue,
+                                transformer,
+                                isFunctionParameter,
+                                letNode,
+                                result);
+            } else if (left.getType() == Token.GETPROP || left.getType() == Token.GETELEM) {
+                switch (variableType) {
+                    case Token.CONST:
+                    case Token.LET:
+                    case Token.VAR:
+                        reportError("msg.bad.assign.left");
+                }
+                comma.addChildToBack(simpleAssignment(left, createName(tempName), transformer));
+            } else {
+                reportError("msg.bad.assign.left");
+            }
+            if (empty) {
+                // Don't want a COMMA node with no children. Just add a zero.
+                comma.addChildToBack(createNumber(0));
+            }
+
+            // Close the iterator on normal completion, and via a finally block on abrupt
+            // completion (thrown exception or generator .return()). The try/finally ensures
+            // iter.return() is invoked even when the destructuring is interrupted by a yield
+            // inside it whose generator is subsequently closed.
+            if (iteratorName != null && lastResultName != null) {
+                // Allocate temp for return method used by the normal-path close
+                String returnMethodName = currentScriptOrFn.getNextTempName();
+                defineSymbol(Token.LET, returnMethodName, true);
+                letNode.addChildToBack(createName(Token.NAME, returnMethodName, null));
+
+                // Allocate sentinel: set to true once the iterator is open, cleared after
+                // the normal-path close completes. The finally only runs the abrupt close
+                // when this is still set, so (a) a throw during iterator setup, (b) a throw
+                // during the normal-path close, and (c) successful normal completion all
+                // avoid an unwanted second call to return().
+                String needsCloseName = currentScriptOrFn.getNextTempName();
+                defineSymbol(Token.LET, needsCloseName, true);
+                letNode.addChildToBack(createName(Token.NAME, needsCloseName, null));
+
+                // Check if iterator is done: !lastResult.done
+                Node getDone =
+                        new Node(Token.GETPROP, createName(lastResultName), Node.newString("done"));
+                Node notDone = new Node(Token.NOT, getDone);
+
+                // Get iterator.return and store: f = iterator.return
+                Node getReturn =
+                        new Node(Token.GETPROP, createName(iteratorName), Node.newString("return"));
+                Node assignReturn =
+                        new Node(
+                                Token.SETNAME,
+                                createName(Token.BINDNAME, returnMethodName, null),
+                                getReturn);
+
+                // Check if return method is not undefined: (f = iterator.return) !== undefined
+                Node notUndefined = new Node(Token.NE, assignReturn, new Node(Token.UNDEFINED));
+
+                // Call return method: f.call(iterator)
+                Node getCall =
+                        new Node(
+                                Token.GETPROP,
+                                createName(returnMethodName),
+                                Node.newString("call"));
+                Node callReturn = new Node(Token.CALL, getCall);
+                callReturn.addChildToBack(createName(iteratorName)); // 'this' argument
+
+                // Per spec (IteratorClose), the return() result is coerced to an Object,
+                // throwing a TypeError if it is null or undefined.
+                Node checkedCallReturn = new Node(Token.TO_OBJECT_COERCIBLE, callReturn);
+
+                // Inner ternary: (f = iterator.return) !== undefined ? f.call(iterator) : undefined
+                Node innerTernary =
+                        new Node(
+                                Token.HOOK,
+                                notUndefined,
+                                checkedCallReturn,
+                                new Node(Token.UNDEFINED));
+
+                // Outer ternary: !lastResult.done ? innerTernary : undefined
+                Node normalClose =
+                        new Node(Token.HOOK, notDone, innerTernary, new Node(Token.UNDEFINED));
+
+                wrapIteratorUseInTryFinally(
+                        comma, iteratorAssignNode, iteratorName, needsCloseName, normalClose);
+            }
+
+            result.putProp(Node.DESTRUCTURING_NAMES, destructuringNames);
+
+            // For let/const declarations, the user-visible destructured variables must
+            // live in the enclosing scope, not in any LETEXPR scope. Walk past all
+            // intermediate LETEXPR scopes (from nested destructuring) to find the
+            // real enclosing scope where the declaration lives.
+            if (variableType == Token.LET || variableType == Token.CONST) {
+                Scope targetScope = result.getParentScope();
+                while (targetScope != null && targetScope.getType() == Token.LETEXPR) {
+                    targetScope = targetScope.getParentScope();
+                }
+                if (targetScope != null) {
+                    for (String name : destructuringNames) {
+                        result.moveSymbol(name, targetScope);
+                    }
+                }
+            }
         } finally {
             popScope();
         }
-        Node comma = new Node(Token.COMMA);
-        result.addChildToBack(comma);
-        List<String> destructuringNames = new ArrayList<>();
-        boolean empty = true;
-        String iteratorName = null;
-        String lastResultName = null;
-        if (left instanceof ArrayLiteral) {
-            DestructuringArrayResult arrayResult =
-                    destructuringArray(
-                            (ArrayLiteral) left,
-                            variableType,
-                            tempName,
-                            comma,
-                            destructuringNames,
-                            defaultValue,
-                            transformer,
-                            isFunctionParameter);
-            empty = arrayResult.empty;
-            iteratorName = arrayResult.iteratorName;
-            lastResultName = arrayResult.lastResultName;
-        } else if (left instanceof ObjectLiteral) {
-            empty =
-                    destructuringObject(
-                            (ObjectLiteral) left,
-                            variableType,
-                            tempName,
-                            comma,
-                            destructuringNames,
-                            defaultValue,
-                            transformer,
-                            isFunctionParameter,
-                            letNode,
-                            result);
-        } else if (left.getType() == Token.GETPROP || left.getType() == Token.GETELEM) {
-            switch (variableType) {
-                case Token.CONST:
-                case Token.LET:
-                case Token.VAR:
-                    reportError("msg.bad.assign.left");
-            }
-            comma.addChildToBack(simpleAssignment(left, createName(tempName), transformer));
-        } else {
-            reportError("msg.bad.assign.left");
-        }
-        if (empty) {
-            // Don't want a COMMA node with no children. Just add a zero.
-            comma.addChildToBack(createNumber(0));
-        }
-
-        // Add iterator closing to the comma sequence if needed
-        // Generate: !lastResult.done ? ((f = iterator.return) !== undefined ? f.call(iterator) :
-        // undefined) : undefined
-        if (isFunctionParameter && iteratorName != null && lastResultName != null) {
-            // Allocate temp for return method
-            String returnMethodName = currentScriptOrFn.getNextTempName();
-            defineSymbol(Token.LET, returnMethodName, true);
-
-            // Check if iterator is done: !lastResult.done
-            Node getDone =
-                    new Node(Token.GETPROP, createName(lastResultName), Node.newString("done"));
-            Node notDone = new Node(Token.NOT, getDone);
-
-            // Get iterator.return and store: f = iterator.return
-            Node getReturn =
-                    new Node(Token.GETPROP, createName(iteratorName), Node.newString("return"));
-            Node assignReturn =
-                    new Node(
-                            Token.SETNAME,
-                            createName(Token.BINDNAME, returnMethodName, null),
-                            getReturn);
-
-            // Check if return method is not undefined: (f = iterator.return) !== undefined
-            Node notUndefined = new Node(Token.NE, assignReturn, new Node(Token.UNDEFINED));
-
-            // Call return method: f.call(iterator)
-            Node getCall =
-                    new Node(Token.GETPROP, createName(returnMethodName), Node.newString("call"));
-            Node callReturn = new Node(Token.CALL, getCall);
-            callReturn.addChildToBack(createName(iteratorName)); // 'this' argument
-
-            // Inner ternary: (f = iterator.return) !== undefined ? f.call(iterator) : undefined
-            Node innerTernary =
-                    new Node(Token.HOOK, notUndefined, callReturn, new Node(Token.UNDEFINED));
-
-            // Outer ternary: !lastResult.done ? innerTernary : undefined
-            Node outerTernary =
-                    new Node(Token.HOOK, notDone, innerTernary, new Node(Token.UNDEFINED));
-
-            comma.addChildToBack(outerTernary);
-        }
-
-        result.putProp(Node.DESTRUCTURING_NAMES, destructuringNames);
         return result;
     }
 
@@ -5287,14 +5348,131 @@ public class Parser {
         boolean empty;
         String iteratorName;
         String lastResultName;
+        List<String> tempResultName;
+        // First iterator-related node added to `parent` (the SETNAME opening the iterator).
+        // Serves as the split point for wrapping iterator work in a try/finally. Null when
+        // the destructuring doesn't use the iterator protocol (pre-ES6, object destructuring).
+        Node iteratorAssignNode;
 
-        DestructuringArrayResult(boolean empty, String iteratorName, String lastResultName) {
+        DestructuringArrayResult(
+                boolean empty,
+                String iteratorName,
+                String lastResultName,
+                List<String> tempResultName,
+                Node iteratorAssignNode) {
             this.empty = empty;
             this.iteratorName = iteratorName;
             this.lastResultName = lastResultName;
+            this.tempResultName = tempResultName;
+            this.iteratorAssignNode = iteratorAssignNode;
         }
     }
 
+    /**
+     * Restructures a destructuring {@code comma} body so the iterator-using portion (starting with
+     * {@code iteratorAssignNode}) runs inside a try/finally. The finally invokes IteratorClose's
+     * abrupt-completion branch when the {@code needsCloseName} sentinel is still set, ensuring
+     * iter.return() is called on exceptions and generator {@code .return()}.
+     *
+     * <p>Emitted structure (appended to {@code comma}, after any pre-iterator children that were
+     * left in place, e.g. default-value setup):
+     *
+     * <pre>
+     *   LOCAL_BLOCK {
+     *     TRY {
+     *       BLOCK {
+     *         iteratorAssign;        // iter = rhs[Symbol.iterator]()
+     *         needsClose = true;     // mark open
+     *         ...original iterator-using children...
+     *         needsClose = false;    // clear before normal close so a throw from return()
+     *                                // doesn't trigger a redundant abrupt close
+     *         normalClose;           // spec IteratorClose normal-completion path
+     *       }
+     *     } FINALLY {
+     *       needsClose ? ITERATOR_CLOSE_ABRUPT(iter) : undefined;
+     *     }
+     *   }
+     * </pre>
+     */
+    private void wrapIteratorUseInTryFinally(
+            Node comma,
+            Node iteratorAssignNode,
+            String iteratorName,
+            String needsCloseName,
+            Node normalClose) {
+        // Move iteratorAssignNode and everything after it from `comma` into a BLOCK that
+        // will become the try body. Each moved expression is wrapped in EXPR_VOID so it
+        // evaluates as a statement in the BLOCK context.
+        Node tryBody = new Node(Token.BLOCK);
+        Node cursor = iteratorAssignNode;
+        boolean insertedSentinelSet = false;
+        while (cursor != null) {
+            Node next = cursor.getNext();
+            comma.removeChild(cursor);
+            tryBody.addChildToBack(new Node(Token.EXPR_VOID, cursor));
+            if (!insertedSentinelSet) {
+                // Right after the iterator is obtained, mark it as needing close.
+                Node setSentinelTrue =
+                        new Node(
+                                Token.SETNAME,
+                                createName(Token.BINDNAME, needsCloseName, null),
+                                new Node(Token.TRUE));
+                tryBody.addChildToBack(new Node(Token.EXPR_VOID, setSentinelTrue));
+                insertedSentinelSet = true;
+            }
+            cursor = next;
+        }
+
+        // Clear the sentinel before the normal-path close runs; a throw from return() on the
+        // normal path should propagate as-is rather than trigger a redundant abrupt close.
+        Node clearSentinel =
+                new Node(
+                        Token.SETNAME,
+                        createName(Token.BINDNAME, needsCloseName, null),
+                        new Node(Token.FALSE));
+        tryBody.addChildToBack(new Node(Token.EXPR_VOID, clearSentinel));
+
+        // Normal-path IteratorClose (HOOK already built by the caller).
+        tryBody.addChildToBack(new Node(Token.EXPR_VOID, normalClose));
+
+        // Finally body: needsClose ? ITERATOR_CLOSE_ABRUPT(iter) : undefined
+        Node abruptClose = new Node(Token.ITERATOR_CLOSE_ABRUPT, createName(iteratorName));
+        Node finallyExpr =
+                new Node(
+                        Token.HOOK,
+                        createName(needsCloseName),
+                        abruptClose,
+                        new Node(Token.UNDEFINED));
+        Node finallyBody = new Node(Token.BLOCK);
+        finallyBody.addChildToBack(new Node(Token.EXPR_VOID, finallyExpr));
+
+        // Build the try/finally IR (mirrors IRFactory.createTryCatchFinally's finally-only path).
+        Node handlerBlock = new Node(Token.LOCAL_BLOCK);
+        Jump tryJump = new Jump(Token.TRY, tryBody);
+        tryJump.putProp(Node.LOCAL_BLOCK_PROP, handlerBlock);
+
+        makeFinallyNode(finallyBody, handlerBlock, tryJump);
+
+        handlerBlock.addChildToBack(tryJump);
+
+        // Re-attach as a statement-level child of the outer COMMA. COMMA handling in the
+        // backends recognizes LOCAL_BLOCK children and generates them as statements.
+        comma.addChildToBack(handlerBlock);
+
+        // Append a trailing expression so LOCAL_BLOCK is never the final child of COMMA.
+        // createDestructuringAssignment appends {@code createName(tempName)} after this helper
+        // returns for the outer case; inner/nested calls don't, so without this placeholder the
+        // inner COMMA would end with LOCAL_BLOCK, which COMMA's last-child handling evaluates as
+        // an expression. The value is either discarded (inner destructuring used only for
+        // side-effects) or overwritten by the outer caller's tempName reference.
+        comma.addChildToBack(new Node(Token.UNDEFINED));
+    }
+
+    private Node buildAbruptCloseHook(String iteratorName, String needsCloseName) {
+        Node abruptClose = new Node(Token.ITERATOR_CLOSE_ABRUPT, createName(iteratorName));
+        return new Node(
+                Token.HOOK, createName(needsCloseName), abruptClose, new Node(Token.UNDEFINED));
+    }
 
     public static void makeFinallyNode(Node finallyBody, Node handlerBlock, Jump tryJump) {
         Node finallyTarget = Node.newTarget();
@@ -5321,6 +5499,7 @@ public class Parser {
 
         tryJump.addChildToBack(finallyEnd);
     }
+
     DestructuringArrayResult destructuringArray(
             ArrayLiteral array,
             int variableType,
@@ -5337,39 +5516,29 @@ public class Parser {
         boolean iteratorSetup = false;
         String iteratorName = null;
         String lastResultName = null;
+        Node iteratorAssignNode = null;
+        List<String> elemTempNames = new ArrayList<>();
 
         for (AstNode n : array.getElements()) {
-            if (n.getType() == Token.EMPTY) {
-                index++;
-                continue;
-            }
-
-            Node rightElem;
-
             if (defaultValue != null && !defaultValuesSetup) {
                 setupDefaultValues(tempName, parent, defaultValue, setOp, transformer);
                 defaultValuesSetup = true;
             }
 
-            // Set up iterator for function parameters (after default value is applied)
+            // Set up iterator for array destructuring (after default value is applied)
             // Only use iterator protocol in ES6+; older versions use index-based access
-            if (isFunctionParameter
-                    && !iteratorSetup
-                    && compilerEnv.getLanguageVersion() >= Context.VERSION_ES6) {
+            if (!iteratorSetup && compilerEnv.getLanguageVersion() >= Context.VERSION_ES6) {
                 // Allocate temp names for iterator tracking
                 iteratorName = currentScriptOrFn.getNextTempName();
-                lastResultName = currentScriptOrFn.getNextTempName();
                 // Define the iterator temp variables for strict mode
                 defineSymbol(Token.LET, iteratorName, true);
-                defineSymbol(Token.LET, lastResultName, true);
 
                 // Generate: iterator = tempName[Symbol.iterator]()
                 // Load SymbolKey.ITERATOR directly from the shared literal table
                 // instead of evaluating the two-step Symbol.iterator name lookup.
                 Node symbolIterator = new Node(Token.LOAD_LITERAL);
                 symbolIterator.putIntProp(
-                        Node.LITERAL_INDEX_PROP,
-                        currentScriptOrFn.addLiteral(SymbolKey.ITERATOR));
+                        Node.LITERAL_INDEX_PROP, currentScriptOrFn.addLiteral(SymbolKey.ITERATOR));
                 Node getIteratorMethod =
                         new Node(Token.GETELEM, createName(tempName), symbolIterator);
                 Node callIterator = new Node(Token.CALL, getIteratorMethod);
@@ -5379,64 +5548,37 @@ public class Parser {
                                 createName(Token.BINDNAME, iteratorName, null),
                                 callIterator);
                 parent.addChildToBack(iteratorAssign);
+                iteratorAssignNode = iteratorAssign;
                 iteratorSetup = true;
                 empty = false;
             }
 
-            // Generate code to get element
-            if (isFunctionParameter && iteratorName != null) {
-                // ES6+: Call iterator.next() and store the full result to check done later
-                Node getNextProp =
-                        new Node(Token.GETPROP, createName(iteratorName), Node.newString("next"));
-                Node callNext = new Node(Token.CALL, getNextProp);
-                Node storeResult =
-                        new Node(
-                                Token.SETNAME,
-                                createName(Token.BINDNAME, lastResultName, null),
-                                callNext);
-                parent.addChildToBack(storeResult);
-                // Extract .value from the result
-                String elemTempName = currentScriptOrFn.getNextTempName();
-                // Define the element temp variable for strict mode
-                defineSymbol(Token.LET, elemTempName, true);
-                Node getValue =
-                        new Node(
-                                Token.GETPROP, createName(lastResultName), Node.newString("value"));
-                Node storeElem =
-                        new Node(
-                                Token.SETNAME,
-                                createName(Token.BINDNAME, elemTempName, null),
-                                getValue);
-                parent.addChildToBack(storeElem);
-                // Use the temp variable for element access
-                rightElem = createName(elemTempName);
-                empty = false;
-            } else {
-                // Regular index-based access for var/let/const
-                rightElem = new Node(Token.GETELEM, createName(tempName), createNumber(index));
+            if (n.getType() == Token.EMPTY) {
+                // If using iterator protocol, advance the iterator past this position
+                if (iteratorName != null) {
+                    if (lastResultName == null) {
+                        lastResultName = currentScriptOrFn.getNextTempName();
+                        defineSymbol(Token.LET, lastResultName, true);
+                    }
+                    Node getNextProp =
+                            new Node(
+                                    Token.GETPROP,
+                                    createName(iteratorName),
+                                    Node.newString("next"));
+                    Node callNext = new Node(Token.CALL, getNextProp);
+                    Node storeResult =
+                            new Node(
+                                    Token.SETNAME,
+                                    createName(Token.BINDNAME, lastResultName, null),
+                                    callNext);
+                    parent.addChildToBack(storeResult);
+                    empty = false;
+                }
+                index++;
+                continue;
             }
 
-            if (n.getType() == Token.NAME) {
-                /* [x] = [1] */
-                String name = n.getString();
-                parent.addChildToBack(
-                        new Node(setOp, createName(Token.BINDNAME, name, null), rightElem));
-                if (variableType != -1) {
-                    defineSymbol(variableType, name, true);
-                    destructuringNames.add(name);
-                }
-            } else if (n.getType() == Token.ASSIGN) {
-                /* [x = 1] = [2] */
-                processDestructuringDefaults(
-                        variableType,
-                        parent,
-                        destructuringNames,
-                        (Assignment) n,
-                        rightElem,
-                        setOp,
-                        transformer,
-                        isFunctionParameter);
-            } else if (n instanceof Spread) {
+            if (n instanceof Spread) {
                 // [...rest] = [1, 2, 3]
                 // rest element should be the last
                 if (index < array.getElements().size() - 1) {
@@ -5445,22 +5587,41 @@ public class Parser {
 
                 AstNode restTarget = ((Spread) n).getExpression();
 
-                // call array.slice(index) to collect remaining elements
-                Node sliceCall =
-                        new Node(
-                                Token.CALL,
-                                new Node(
-                                        Token.GETPROP,
-                                        createName(tempName),
-                                        Node.newString("slice")));
-                sliceCall.addChildToBack(createNumber(index));
+                Node restValue;
+                if (iteratorName != null) {
+                    // When using the iterator protocol, collect remaining
+                    // elements via Array.from(iterator). The iterator has
+                    // not been advanced past this point, so Array.from
+                    // collects exactly the remaining elements. Array.from
+                    // also properly closes the iterator when done, so we
+                    // clear the iterator tracking to skip the manual
+                    // closing code generated after the loop.
+                    restValue =
+                            new Node(
+                                    Token.CALL,
+                                    new Node(
+                                            Token.GETPROP,
+                                            createName("Array"),
+                                            Node.newString("from")));
+                    restValue.addChildToBack(createName(iteratorName));
+                } else {
+                    // call array.slice(index) to collect remaining elements
+                    restValue =
+                            new Node(
+                                    Token.CALL,
+                                    new Node(
+                                            Token.GETPROP,
+                                            createName(tempName),
+                                            Node.newString("slice")));
+                    restValue.addChildToBack(createNumber(index));
+                }
 
                 if (restTarget.getType() == Token.NAME) {
                     // [...rest]
                     String name = restTarget.getString();
 
                     parent.addChildToBack(
-                            new Node(setOp, createName(Token.BINDNAME, name, null), sliceCall));
+                            new Node(setOp, createName(Token.BINDNAME, name, null), restValue));
 
                     if (variableType != -1) {
                         defineSymbol(variableType, name, true);
@@ -5472,28 +5633,98 @@ public class Parser {
                             destructuringAssignmentHelper(
                                     variableType,
                                     restTarget,
-                                    sliceCall,
+                                    restValue,
                                     currentScriptOrFn.getNextTempName(),
                                     null,
                                     transformer,
                                     isFunctionParameter));
                 }
+                empty = false;
             } else {
-                parent.addChildToBack(
-                        destructuringAssignmentHelper(
-                                variableType,
-                                n,
-                                rightElem,
-                                currentScriptOrFn.getNextTempName(),
-                                null,
-                                transformer,
-                                isFunctionParameter));
+                Node rightElem;
+
+                // Generate code to get element (not needed for Spread,
+                // which collects remaining elements separately above)
+                if (iteratorName != null) {
+                    if (lastResultName == null) {
+                        lastResultName = currentScriptOrFn.getNextTempName();
+                        defineSymbol(Token.LET, lastResultName, true);
+                    }
+                    // ES6+: Call iterator.next() and store the full result
+                    Node getNextProp =
+                            new Node(
+                                    Token.GETPROP,
+                                    createName(iteratorName),
+                                    Node.newString("next"));
+                    Node callNext = new Node(Token.CALL, getNextProp);
+                    Node storeResult =
+                            new Node(
+                                    Token.SETNAME,
+                                    createName(Token.BINDNAME, lastResultName, null),
+                                    callNext);
+                    parent.addChildToBack(storeResult);
+                    // Extract .value from the result
+                    String elemTempName = currentScriptOrFn.getNextTempName();
+                    elemTempNames.add(elemTempName);
+                    // Define the element temp variable for strict mode
+                    defineSymbol(Token.LET, elemTempName, true);
+                    Node getValue =
+                            new Node(
+                                    Token.GETPROP,
+                                    createName(lastResultName),
+                                    Node.newString("value"));
+                    Node storeElem =
+                            new Node(
+                                    Token.SETNAME,
+                                    createName(Token.BINDNAME, elemTempName, null),
+                                    getValue);
+                    parent.addChildToBack(storeElem);
+                    // Use the temp variable for element access
+                    rightElem = createName(elemTempName);
+                    empty = false;
+                } else {
+                    // Regular index-based access for var/let/const
+                    rightElem = new Node(Token.GETELEM, createName(tempName), createNumber(index));
+                }
+
+                if (n.getType() == Token.NAME) {
+                    /* [x] = [1] */
+                    String name = n.getString();
+                    parent.addChildToBack(
+                            new Node(setOp, createName(Token.BINDNAME, name, null), rightElem));
+                    if (variableType != -1) {
+                        defineSymbol(variableType, name, true);
+                        destructuringNames.add(name);
+                    }
+                } else if (n.getType() == Token.ASSIGN) {
+                    /* [x = 1] = [2] */
+                    processDestructuringDefaults(
+                            variableType,
+                            parent,
+                            destructuringNames,
+                            (Assignment) n,
+                            rightElem,
+                            setOp,
+                            transformer,
+                            isFunctionParameter);
+                } else {
+                    parent.addChildToBack(
+                            destructuringAssignmentHelper(
+                                    variableType,
+                                    n,
+                                    rightElem,
+                                    currentScriptOrFn.getNextTempName(),
+                                    null,
+                                    transformer,
+                                    isFunctionParameter));
+                }
             }
             index++;
             empty = false;
         }
 
-        return new DestructuringArrayResult(empty, iteratorName, lastResultName);
+        return new DestructuringArrayResult(
+                empty, iteratorName, lastResultName, elemTempNames, iteratorAssignNode);
     }
 
     private void processDestructuringDefaults(
@@ -5509,11 +5740,7 @@ public class Parser {
         Node right = null;
         if (left.getType() == Token.NAME) {
             String name = left.getString();
-            // x = (x == undefined) ?
-            //          (($1[0] == undefined) ?
-            //              1
-            //              : $1[0])
-            //          : x
+            // x = ($1[0] === undefined) ? defaultValue : $1[0]
 
             right = (transformer != null) ? transformer.transform(n.getRight()) : n.getRight();
 
@@ -5527,22 +5754,15 @@ public class Parser {
                             right,
                             rightElem);
 
-            Node cond =
-                    new Node(
-                            Token.HOOK,
-                            new Node(
-                                    Token.SHEQ,
-                                    new KeywordLiteral().setType(Token.UNDEFINED),
-                                    createName(name)),
-                            cond_inner,
-                            left);
-
             // store it to be transformed later
             if (transformer == null) {
-                currentScriptOrFn.putDestructuringRvalues(cond_inner, right);
+                currentScriptOrFn.putDestructuringRvalues(cond_inner, right, new Name(0, name));
+            } else {
+                inferFunctionName(name, right);
             }
 
-            parent.addChildToBack(new Node(setOp, createName(Token.BINDNAME, name, null), cond));
+            parent.addChildToBack(
+                    new Node(setOp, createName(Token.BINDNAME, name, null), cond_inner));
             if (variableType != -1) {
                 defineSymbol(variableType, name, true);
                 destructuringNames.add(name);
@@ -5578,6 +5798,23 @@ public class Parser {
             } else {
                 reportError("msg.bad.assign.left");
             }
+        }
+    }
+
+    private void inferFunctionName(String name, Node right) {
+        if (compilerEnv.getLanguageVersion() < Context.VERSION_ES6) {
+            return;
+        }
+        if (right == null || right.getType() != Token.FUNCTION) {
+            return;
+        }
+        if (NativeObject.PROTO_PROPERTY.equals(name)) {
+            return;
+        }
+        int fnIndex = right.getExistingIntProp(Node.FUNCTION_PROP);
+        FunctionNode functionNode = currentScriptOrFn.getFunctionNode(fnIndex);
+        if (functionNode.getType() != 0 && functionNode.getFunctionName() == null) {
+            functionNode.setFunctionName(new Name(0, name));
         }
     }
 
@@ -5750,12 +5987,7 @@ public class Parser {
                 letNode.addChildToBack(tempVar);
 
                 // define the computed property temp
-                pushScope(letExprScope);
-                try {
-                    defineSymbol(Token.LET, keyTempName, true);
-                } finally {
-                    popScope();
-                }
+                defineSymbol(Token.LET, keyTempName, true);
 
                 Node keyRef = createName(keyTempName);
                 extractedKeys.add(keyRef);

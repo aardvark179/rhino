@@ -111,10 +111,15 @@ public class FunctionNode extends ScriptNode {
 
     @Override
     public void putDestructuringRvalues(Node left, Node right) {
+        putDestructuringRvalues(left, right, null);
+    }
+
+    @Override
+    public void putDestructuringRvalues(Node left, Node right, Name name) {
         if (destructuringRvalues == null) {
             destructuringRvalues = new ArrayList<>();
         }
-        destructuringRvalues.add(new Node[] {left, right});
+        destructuringRvalues.add(new Node[] {left, right, name});
     }
 
     ArrayList<Object> defaultParams;
@@ -353,6 +358,11 @@ public class FunctionNode extends ScriptNode {
     public void setIsAsync() {
         isAsync = true;
         needsActivation = true;
+    }
+
+    /** Returns whether this is an {@code async function*} (async generator). */
+    public boolean isAsyncGenerator() {
+        return isAsync && isES6Generator;
     }
 
     @Override

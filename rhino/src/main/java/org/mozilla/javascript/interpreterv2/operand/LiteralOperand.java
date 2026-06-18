@@ -1,10 +1,7 @@
-
 package org.mozilla.javascript.interpreterv2.operand;
 
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
-import org.mozilla.javascript.interpreterv2.InstructionSimplification;
-import org.mozilla.javascript.interpreterv2.KnownType;
 
 public final class LiteralOperand extends Operand {
 

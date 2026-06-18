@@ -2,28 +2,31 @@ package org.mozilla.javascript.interpreterv2.instruction;
 
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
+import org.mozilla.javascript.ScriptRuntime;
 import org.mozilla.javascript.interpreterv2.InstructionFormatter;
+import org.mozilla.javascript.interpreterv2.operand.Operand;
 
-public class Literal extends Instruction {
-    private final Object literal;
+public class WrapAwait extends Instruction {
+    private final Operand op;
 
-    public Literal(Object literal) {
-        this.literal = literal;
+    public WrapAwait(Operand op) {
+        this.op = op;
     }
 
     @Override
     public void interpret(Context cx, CallFrameV2 frame) {
-        frame.push(literal);
+        frame.push(ScriptRuntime.wrapAwait(op.retrieve(cx, frame)));
+
         frame.pc += 1;
     }
 
     @Override
     public int stackChange() {
-        return 1;
+        return 1 + op.stackChange();
     }
 
     @Override
     public String toDebugString() {
-        return InstructionFormatter.formatInstruction(this, "literal", literal);
+        return InstructionFormatter.formatInstruction(this, "op", op);
     }
 }

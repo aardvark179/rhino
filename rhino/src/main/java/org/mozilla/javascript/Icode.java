@@ -167,8 +167,12 @@ abstract class Icode {
 
             HOMEOBJ = OBJECT_REST - 1,
 
+            // Wrap top-of-stack in an AwaitMarker (used inside async generator bodies so the
+            // driver can distinguish await from yield).
+            WRAP_AWAIT = HOMEOBJ - 1,
+
             // Last icode
-            MIN_ICODE = HOMEOBJ;
+            MIN_ICODE = WRAP_AWAIT;
 
     static String bytecodeName(int bytecode) {
         if (!validBytecode(bytecode)) {
@@ -356,6 +360,8 @@ abstract class Icode {
                 return "SPREAD";
             case OBJECT_REST:
                 return "OBJECT_REST";
+            case WRAP_AWAIT:
+                return "WRAP_AWAIT";
         }
 
         // icode without name
