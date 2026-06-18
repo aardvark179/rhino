@@ -2679,6 +2679,7 @@ public class ScriptRuntime {
         boolean enumNumbers;
 
         Scriptable iterator;
+        boolean isAsyncIteration;
     }
 
     public static Scriptable toIterator(Context cx, Scriptable obj, boolean keyOnly) {
@@ -2762,6 +2763,7 @@ public class ScriptRuntime {
     public static final int ENUMERATE_VALUES_NO_ITERATOR = 4;
     public static final int ENUMERATE_ARRAY_NO_ITERATOR = 5;
     public static final int ENUMERATE_VALUES_IN_ORDER = 6;
+    public static final int ENUMERATE_VALUES_IN_ORDER_ASYNC = 7;
 
     /**
      * @deprecated Use {@link #enumInit(Object, Context, VarScope, int)} instead
@@ -2956,6 +2958,105 @@ public class ScriptRuntime {
         }
 
         return result;
+    }
+
+    /**
+     * Internal marker that wraps the operand of an {@code await} inside an async-generator body, so
+     * the driver can tell a yield point that is an {@code await} (resume generator with the
+     * resolved value) from a plain {@code yield} (resolve the consumer's pending request).
+     */
+    public static final class AwaitMarker {
+        private final Object value;
+
+        public AwaitMarker(Object value) {
+            this.value = value;
+        }
+
+        public Object getValue() {
+            return value;
+        }
+    }
+
+    /** Wrap {@code v} in an {@link AwaitMarker}. Invoked from generated code for {@code await}. */
+    public static Object wrapAwait(Object v) {
+        return new AwaitMarker(v);
+    }
+
+    /**
+     * Initialise async iteration for a for-await-of loop. Looks up {@code [Symbol.asyncIterator]}
+     * on the operand and falls back to {@code [Symbol.iterator]} when absent (per the spec's
+     * CreateAsyncFromSyncIterator coercion, simplified: the sync iterator's results will flow
+     * through the existing await machinery unchanged).
+     */
+    public static Object enumInitAsyncIterator(Object value, Context cx, VarScope scope) {
+        IdEnumeration x = new IdEnumeration();
+        x.obj = toObjectOrNull(cx, value, scope);
+        if (x.obj == null || !(x.obj instanceof SymbolScriptable)) {
+            throw typeErrorById("msg.not.iterable", toString(value));
+        }
+        x.enumType = ENUMERATE_VALUES_IN_ORDER_ASYNC;
+        x.isAsyncIteration = true;
+
+        Object iteratorFn = Scriptable.NOT_FOUND;
+        if (ScriptableObject.hasProperty(x.obj, SymbolKey.ASYNC_ITERATOR)) {
+            iteratorFn = ScriptableObject.getProperty(x.obj, SymbolKey.ASYNC_ITERATOR);
+        }
+        if (iteratorFn == Scriptable.NOT_FOUND
+                || iteratorFn == null
+                || Undefined.isUndefined(iteratorFn)) {
+            if (!ScriptableObject.hasProperty(x.obj, SymbolKey.ITERATOR)) {
+                throw typeErrorById("msg.not.iterable", toString(value));
+            }
+            iteratorFn = ScriptableObject.getProperty(x.obj, SymbolKey.ITERATOR);
+        }
+        if (!(iteratorFn instanceof Callable)) {
+            throw typeErrorById("msg.not.iterable", toString(value));
+        }
+        Callable f = (Callable) iteratorFn;
+        VarScope callScope =
+                (f instanceof Function) ? ((Function) f).getDeclarationScope() : cx.topCallScope;
+        Object v = f.call(cx, callScope, x.obj, emptyArgs);
+        if (!(v instanceof Scriptable)) {
+            throw typeErrorById("msg.not.iterable", toString(value));
+        }
+        x.iterator = (Scriptable) v;
+        return x;
+    }
+
+    /**
+     * Invoke {@code iterator.next()} on an async-iteration enumeration and return the raw result
+     * (which is typically a Promise of an IteratorResult, but may be a plain IteratorResult when
+     * the underlying iterator is a sync iterator coerced to async). The caller is expected to
+     * {@code await} this value and then pass the resolved IteratorResult to {@link
+     * #enumAsyncStep(Object, Object, Context)}.
+     */
+    public static Object enumAsyncNext(Object enumObj, Context cx) {
+        IdEnumeration x = (IdEnumeration) enumObj;
+        Object nextFn = ScriptableObject.getProperty(x.iterator, ES6Iterator.NEXT_METHOD);
+        if (!(nextFn instanceof Callable)) {
+            throw notFunctionError(x.iterator, ES6Iterator.NEXT_METHOD);
+        }
+        Callable f = (Callable) nextFn;
+        VarScope callScope =
+                (f instanceof Function) ? ((Function) f).getDeclarationScope() : cx.topCallScope;
+        return f.call(cx, callScope, x.iterator, emptyArgs);
+    }
+
+    /**
+     * After the async-iteration result has been awaited, process it: store the {@code .value} on
+     * the enumeration so a subsequent {@code ENUM_ID} reads it, and return {@code Boolean.TRUE} if
+     * iteration should continue (i.e. {@code !done}), else {@code Boolean.FALSE}.
+     */
+    public static Boolean enumAsyncStep(Object enumObj, Object awaitedResult, Context cx) {
+        IdEnumeration x = (IdEnumeration) enumObj;
+        Scriptable resultObj = toObject(cx, cx.topCallScope, awaitedResult);
+        Object done = ScriptableObject.getProperty(resultObj, ES6Iterator.DONE_PROPERTY);
+        if (done != Scriptable.NOT_FOUND && toBoolean(done)) {
+            x.currentId = Undefined.instance;
+            return Boolean.FALSE;
+        }
+        x.currentId = ScriptableObject.getProperty(resultObj, ES6Iterator.VALUE_PROPERTY);
+        return Boolean.TRUE;
     }
 
     private static void enumChangeObject(IdEnumeration x) {
@@ -3462,6 +3563,81 @@ public class ScriptRuntime {
                 ScriptRuntime.getElemFunctionAndThis(obj, SymbolKey.ITERATOR, cx, scope);
         final Scriptable iterable = ScriptRuntime.lastStoredScriptable(cx);
         return getIterator.call(cx, scope, iterable, ScriptRuntime.emptyArgs);
+    }
+
+    /** Result of {@link #callAsyncIterator}: the iterator and whether it is async. */
+    public static final class AsyncIteratorResult {
+        private final Object iterator;
+        private final boolean isAsync;
+
+        AsyncIteratorResult(Object iterator, boolean isAsync) {
+            this.iterator = iterator;
+            this.isAsync = isAsync;
+        }
+
+        public Object getIterator() {
+            return iterator;
+        }
+
+        public boolean isAsync() {
+            return isAsync;
+        }
+    }
+
+    /**
+     * Get an async iterator for {@code obj} following the hint=async variant of GetIterator: try
+     * {@code [Symbol.asyncIterator]} first, and only fall back to {@code [Symbol.iterator]} when
+     * the async lookup does not produce a callable method. Used by {@code yield*} in async
+     * generator functions.
+     */
+    public static AsyncIteratorResult callAsyncIterator(Object obj, Context cx, VarScope scope) {
+        Scriptable sobj = toObjectOrNull(cx, obj, scope);
+        if (sobj != null) {
+            Object asyncMethod = ScriptableObject.getProperty(sobj, SymbolKey.ASYNC_ITERATOR);
+            if (asyncMethod != Scriptable.NOT_FOUND
+                    && asyncMethod != null
+                    && !Undefined.isUndefined(asyncMethod)) {
+                if (!(asyncMethod instanceof Callable)) {
+                    throw notFunctionError(sobj, SymbolKey.ASYNC_ITERATOR);
+                }
+                Callable f = (Callable) asyncMethod;
+                VarScope callScope =
+                        (f instanceof Function)
+                                ? ((Function) f).getDeclarationScope()
+                                : cx.topCallScope;
+                Object iter = f.call(cx, callScope, sobj, emptyArgs);
+                return new AsyncIteratorResult(iter, true);
+            }
+        }
+        // Fall back to the sync iterator protocol.
+        Object iter = callIterator(obj, cx, scope);
+        return new AsyncIteratorResult(iter, false);
+    }
+
+    /**
+     * Implements the abrupt-completion branch of the ECMAScript IteratorClose abstract operation.
+     * Called from destructuring (and similar) code during unwinding so the original abrupt
+     * completion is preserved: any exception thrown by iterator.return is swallowed, and a
+     * non-object return value does NOT raise a TypeError. If {@code iterator} is null or not a
+     * Scriptable (e.g. it was never opened) this is a no-op.
+     */
+    public static void closeIteratorAbrupt(Object iterator, Context cx, VarScope scope) {
+        if (!(iterator instanceof Scriptable)) {
+            return;
+        }
+        Scriptable iter = (Scriptable) iterator;
+        try {
+            Object ret = ScriptableObject.getProperty(iter, "return");
+            if (ret == Scriptable.NOT_FOUND || ret == Undefined.instance || ret == null) {
+                return;
+            }
+            if (!(ret instanceof Callable)) {
+                return;
+            }
+            ((Callable) ret).call(cx, scope, iter, ScriptRuntime.emptyArgs);
+        } catch (RuntimeException ignored) {
+            // Per spec: on abrupt completion, errors from return() are discarded.
+        }
     }
 
     /**
