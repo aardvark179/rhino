@@ -126,6 +126,7 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                     FunctionNode fn = theFunction.getFunctionNode(i);
                     if (fn.getFunctionType() == FunctionNode.FUNCTION_STATEMENT) {
                         addIndexOp(Icode.CLOSURE_STMT, i);
+                        addUint8(0);
                     }
                 }
             }
@@ -284,7 +285,8 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
             case Token.FUNCTION:
                 {
                     int fnIndex = node.getExistingIntProp(Node.FUNCTION_PROP);
-                    int fnType = scriptOrFn.getFunctionNode(fnIndex).getFunctionType();
+                    var fnNode = scriptOrFn.getFunctionNode(fnIndex);
+                    int fnType = fnNode.getFunctionType();
                     // Only function expressions or function expression
                     // statements need closure code creating new function
                     // object on stack as function statements are initialized
@@ -294,6 +296,11 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                     if (fnType == FunctionNode.FUNCTION_EXPRESSION_STATEMENT
                             || fnType == FunctionNode.FUNCTION_BLOCK_SCOPED) {
                         addIndexOp(Icode.CLOSURE_STMT, fnIndex);
+                        if (fnNode.isAnnexBHoisted()) {
+                            addUint8(1);
+                        } else {
+                            addUint8(0);
+                        }
                     } else {
                         if (fnType != FunctionNode.FUNCTION_STATEMENT) {
                             throw Kit.codeBug();

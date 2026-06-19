@@ -357,7 +357,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
             for (int i = 0; i < functionCount; i++) {
                 FunctionNode fn = theFunction.getFunctionNode(i);
                 if (fn.getFunctionType() == FunctionNode.FUNCTION_STATEMENT) {
-                    addInstruction(new ClosureStatement(i));
+                    addInstruction(new ClosureStatement(i, false));
                 }
             }
             addInstruction(new Generator((short) theFunction.getBaseLineno()));
@@ -394,7 +394,8 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 {
                     updateLineNumber(node);
                     int fnIndex = node.getExistingIntProp(Node.FUNCTION_PROP);
-                    int fnType = scriptOrFn.getFunctionNode(fnIndex).getFunctionType();
+                    var fnNode = scriptOrFn.getFunctionNode(fnIndex);
+                    int fnType = fnNode.getFunctionType();
                     // Only function expressions or function expression statements need closure code
                     // creating new function object on stack as function statements are initialized
                     // at script/function start. In addition, function expressions can not be
@@ -402,7 +403,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
 
                     if (fnType == FunctionNode.FUNCTION_EXPRESSION_STATEMENT
                             || fnType == FunctionNode.FUNCTION_BLOCK_SCOPED) {
-                        addInstruction(new ClosureStatement(fnIndex));
+                        addInstruction(new ClosureStatement(fnIndex, fnNode.isAnnexBHoisted()));
                     } else {
                         if (fnType != FunctionNode.FUNCTION_STATEMENT) {
                             throw Kit.codeBug();

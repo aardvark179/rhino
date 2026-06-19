@@ -9,15 +9,17 @@ import org.mozilla.javascript.interpreterv2.InstructionFormatter;
 
 public class ClosureStatement extends Instruction {
     private final int fnIndex;
+    private final boolean hoist;
 
-    public ClosureStatement(int fnIndex) {
+    public ClosureStatement(int fnIndex, boolean hoist) {
         this.fnIndex = fnIndex;
+        this.hoist = hoist;
     }
 
     @Override
     public void interpret(Context cx, CallFrameV2 frame) {
         frame.pc += 1;
-        initFunction(cx, frame.scope, frame.fnOrScript.getDescriptor(), fnIndex);
+        initFunction(cx, frame.scope, frame.fnOrScript.getDescriptor(), fnIndex, hoist);
     }
 
     @Override

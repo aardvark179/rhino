@@ -330,6 +330,9 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             case Icode.OBJECT_REST:
                 // computedKeyCount byte
                 return 1 + 1;
+            case Icode.CLOSURE_STMT:
+                // hoisted indicator byte
+                return 1 + 1;
         }
         if (!Icode.validBytecode(bytecode)) throw Kit.codeBug();
         return 1;
@@ -381,10 +384,21 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
     }
 
     static void initFunction(Context cx, VarScope scope, JSDescriptor<?> parent, int index) {
+        initFunction(cx, scope, parent, index, false);
+    }
+
+    static void initFunction(
+            Context cx, VarScope scope, JSDescriptor<?> parent, int index, boolean hoist) {
         JSFunction fn;
         fn = JSFunction.createFunction(cx, scope, parent, index, null);
         var desc = fn.getDescriptor();
         ScriptRuntime.initFunction(cx, scope, fn, desc.getFunctionType(), parent.isEvalFunction());
+        if (hoist) {
+            while (scope.isNestedScope()) {
+                scope = scope.getParentScope();
+            }
+            scope.put(fn.getFunctionName(), scope, fn);
+        }
     }
 
     static <T extends ScriptOrFn<T>> Object interpret(
@@ -3581,13 +3595,15 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
     private static class DoClosureStatement extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            initFunction(cx, frame.scope, frame.fnOrScript.getDescriptor(), state.indexReg);
+            boolean hoist = frame.compilerData.itsICode[frame.pc++] != 0;
+            initFunction(cx, frame.scope, frame.fnOrScript.getDescriptor(), state.indexReg, hoist);
             return null;
         }
 
         @Override
         void dumpICode(int op, String tname, ICodeDumpContext ctx) {
-            ctx.out.println(tname + " #" + ctx.indexReg);
+            boolean hoist = ctx.compilerData.itsICode[ctx.pc++] != 0;
+            ctx.out.println(tname + " #" + ctx.indexReg + (hoist ? "hoisted" : "un-hoisted"));
         }
     }
 
