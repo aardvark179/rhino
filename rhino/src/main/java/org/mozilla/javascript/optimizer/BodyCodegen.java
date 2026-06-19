@@ -2162,12 +2162,13 @@ class BodyCodegen {
             return;
         }
         cfw.addPush(functionType);
+        cfw.addPush(ofn.fnode.isAnnexBHoisted());
         cfw.addALoad(variableObjectLocal);
         cfw.addALoad(contextLocal); // load 'cx'
         addOptRuntimeInvoke(
                 "initFunction",
                 "(Lorg/mozilla/javascript/JSFunction;"
-                        + "I"
+                        + "IZ"
                         + "Lorg/mozilla/javascript/VarScope;"
                         + "Lorg/mozilla/javascript/Context;"
                         + ")V");
