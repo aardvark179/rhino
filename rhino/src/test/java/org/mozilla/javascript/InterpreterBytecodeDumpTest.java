@@ -46,26 +46,32 @@ class InterpreterBytecodeDumpTest {
     void methodsArePrinted() throws IOException {
         assertEquals(
                 Utils.portableLines(
-                        "ICode dump, for f, length = 4",
-                        "MaxStack = 0",
-                        " [0] LINE : 1",
-                        " [3] RETUNDEF",
-                        "ICode dump, for null, length = 16",
-                        "MaxStack = 4",
-                        " [0] LINE : 1",
-                        " [3] REG_STR_C0 \"o\"",
-                        " [4] BINDNAME",
-                        " [5] REG_IND_C0",
-                        " [6] LITERAL_NEW_OBJECT [f] false",
-                        " [8] REG_IND_C0",
-                        " [9] METHOD_EXPR #0",
-                        " [10] LITERAL_SET",
-                        " [11] OBJECTLIT",
-                        " [12] REG_STR_C0 \"o\"",
-                        " [13] SETNAME",
-                        " [14] POP_RESULT",
-                        " [15] RETURN_RESULT",
-                        ""),
+                        """
+                    ICode dump, for f, length = 4
+                    MaxStack = 0
+                     [0] LINE : 1
+                     [3] RETUNDEF
+                    ICode dump, for null, length = 21
+                    MaxStack = 6
+                     [0] LINE : 1
+                     [3] REG_STR_C0 "o"
+                     [4] BINDNAME
+                     [5] REG_IND_C0
+                     [6] LITERAL_NEW_OBJECT [f] false
+                     [8] DUP2
+                     [9] POP
+                     [10] NULL
+                     [11] SWAP
+                     [12] UNDEF
+                     [13] REG_IND_C0
+                     [14] CLOSURE_EXPR #0
+                     [15] LITERAL_SET
+                     [16] OBJECTLIT
+                     [17] REG_STR_C0 "o"
+                     [18] SETNAME
+                     [19] POP_RESULT
+                     [20] RETURN_RESULT
+                    """),
                 getByteCodeFrom("o = { f() {} }"));
     }
 
