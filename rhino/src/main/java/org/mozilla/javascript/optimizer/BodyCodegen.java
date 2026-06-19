@@ -2286,7 +2286,11 @@ class BodyCodegen {
                 Codegen.DESCRIPTORS_FIELD_SIGNATURE);
         cfw.addPush(fnIndex);
         cfw.add(ByteCode.AALOAD);
-        if (functionType == FunctionNode.ARROW_FUNCTION) {
+        if (ofn.fnode.isMethodDefinition()) {
+            cfw.add(ByteCode.ACONST_NULL);
+            Codegen.pushUndefined(cfw);
+            cfw.addALoad(savedHomeObjectLocal);
+        } else if (functionType == FunctionNode.ARROW_FUNCTION) {
             cfw.addALoad(thisObjLocal);
             if (isGenerator) {
                 // Generators cannot be constructors, so new.target is always undefined.
@@ -2301,10 +2305,6 @@ class BodyCodegen {
                     scriptOrFnClass,
                     "getHomeObject",
                     "()Lorg/mozilla/javascript/Scriptable;");
-        } else if (ofn.fnode.isMethodDefinition()) {
-            cfw.add(ByteCode.ACONST_NULL);
-            Codegen.pushUndefined(cfw);
-            cfw.addALoad(savedHomeObjectLocal);
         } else {
             cfw.add(ByteCode.ACONST_NULL);
             Codegen.pushUndefined(cfw);

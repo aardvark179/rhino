@@ -81,10 +81,9 @@ abstract class Icode {
             LITERAL_NEW_OBJECT = INTNUMBER - 1,
             LITERAL_NEW_ARRAY = LITERAL_NEW_OBJECT - 1,
             LITERAL_SET = LITERAL_NEW_ARRAY - 1,
-            METHOD_EXPR = LITERAL_SET - 1,
 
             // Array literal with skipped index like [1,,2]
-            SPARE_ARRAYLIT = METHOD_EXPR - 1,
+            SPARE_ARRAYLIT = LITERAL_SET - 1,
 
             // Load index register to prepare for the following index operation
             REG_IND_C0 = SPARE_ARRAYLIT - 1,
@@ -178,8 +177,10 @@ abstract class Icode {
             // replace the current block scope with a copy of itself
             SCOPE_REPLACE = RESETVAR - 1,
 
+            HOMEOBJ = SCOPE_REPLACE - 1,
+
             // Last icode
-            MIN_ICODE = SCOPE_REPLACE;
+            MIN_ICODE = HOMEOBJ;
 
     static String bytecodeName(int bytecode) {
         if (!validBytecode(bytecode)) {
@@ -269,8 +270,6 @@ abstract class Icode {
                 return "LITERAL_NEW_ARRAY";
             case LITERAL_SET:
                 return "LITERAL_SET";
-            case METHOD_EXPR:
-                return "METHOD_EXPR";
             case SPARE_ARRAYLIT:
                 return "SPARE_ARRAYLIT";
             case REG_IND_C0:
