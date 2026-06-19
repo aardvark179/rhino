@@ -41,10 +41,10 @@ public class EndFinally extends Instruction {
         if (this == o) {
             return true;
         }
-        if (!(o instanceof ReturnSubroutine)) {
+        if (!(o instanceof EndFinally)) {
             return false;
         }
-        ReturnSubroutine other = (ReturnSubroutine) o;
+        EndFinally other = (EndFinally) o;
         return returnPcOffset == other.returnPcOffset;
     }
 

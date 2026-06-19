@@ -93,7 +93,6 @@ import org.mozilla.javascript.interpreterv2.instruction.LitSpread;
 import org.mozilla.javascript.interpreterv2.instruction.Literal;
 import org.mozilla.javascript.interpreterv2.instruction.LocalClear;
 import org.mozilla.javascript.interpreterv2.instruction.LocalLoad;
-import org.mozilla.javascript.interpreterv2.instruction.MethodExpression;
 import org.mozilla.javascript.interpreterv2.instruction.Mod;
 import org.mozilla.javascript.interpreterv2.instruction.Multiply;
 import org.mozilla.javascript.interpreterv2.instruction.Name;
@@ -169,6 +168,7 @@ import org.mozilla.javascript.interpreterv2.instruction.YieldStar;
 import org.mozilla.javascript.interpreterv2.operand.BooleanOperand;
 import org.mozilla.javascript.interpreterv2.operand.DoubleOperand;
 import org.mozilla.javascript.interpreterv2.operand.GetVarOperand;
+import org.mozilla.javascript.interpreterv2.operand.HomeObjectOperand;
 import org.mozilla.javascript.interpreterv2.operand.IntOperand;
 import org.mozilla.javascript.interpreterv2.operand.LiteralOperand;
 import org.mozilla.javascript.interpreterv2.operand.NewTargetOperand;
@@ -755,7 +755,20 @@ public class Compiler<T extends ScriptOrFn<T>> {
                             && fn.getFunctionType() != FunctionNode.ARROW_FUNCTION) {
                         throw Kit.codeBug();
                     }
-                    addInstruction(ClosureExpression.createInstruction(fnIndex));
+                    boolean isArrow = fn.getFunctionType() == FunctionNode.ARROW_FUNCTION;
+                    Operand lexThisOp;
+                    Operand homeObjOp;
+                    Operand newTargetOp;
+                    if (isArrow) {
+                        lexThisOp = ThisOperand.instance;
+                        homeObjOp = HomeObjectOperand.instance;
+                        newTargetOp = NewTargetOperand.instance;
+                    } else {
+                        lexThisOp = NullOperand.instance;
+                        homeObjOp = NullOperand.instance;
+                        newTargetOp = UndefinedOperand.instance;
+                    }
+                    addInstruction(ClosureExpression.createInstruction(fnIndex, lexThisOp, homeObjOp, newTargetOp));
                     if (fn.isMethodDefinition()) {
                         throw Kit.codeBug();
                     }
@@ -1963,13 +1976,24 @@ public class Compiler<T extends ScriptOrFn<T>> {
                         && fn.getFunctionType() != FunctionNode.ARROW_FUNCTION) {
                     throw Kit.codeBug();
                 }
+                boolean isArrow = fn.getFunctionType() == FunctionNode.ARROW_FUNCTION;
+                Operand lexThisOp;
+                Operand homeObjOp;
+                Operand newTargetOp;
                 if (fn.isMethodDefinition()) {
-                    // Stack: [..., obj, storage, (key if emitted)].
-                    int objOffset = keyExprEmitted ? -2 : -1;
-                    addInstruction(new MethodExpression(fnIndex, new PeekOperand(objOffset)));
+                    lexThisOp = NullOperand.instance;
+                    homeObjOp = new PeekOperand(keyExprEmitted ? -2 : -1);
+                    newTargetOp = UndefinedOperand.instance;
+                } else if(isArrow) {
+                    lexThisOp = ThisOperand.instance;
+                    homeObjOp = HomeObjectOperand.instance;
+                    newTargetOp = NewTargetOperand.instance;
                 } else {
-                    addInstruction(ClosureExpression.createInstruction(fnIndex));
+                    lexThisOp = NullOperand.instance;
+                    homeObjOp = NullOperand.instance;
+                    newTargetOp = UndefinedOperand.instance;
                 }
+                addInstruction(ClosureExpression.createInstruction(fnIndex, lexThisOp, homeObjOp, newTargetOp));
                 valueOp = PopOperand.instance;
             } else {
                 kind = 0;
@@ -2056,13 +2080,25 @@ public class Compiler<T extends ScriptOrFn<T>> {
                         && fn.getFunctionType() != FunctionNode.ARROW_FUNCTION) {
                     throw Kit.codeBug();
                 }
+                boolean isArrow = fn.getFunctionType() == FunctionNode.ARROW_FUNCTION;
+                Operand lexThisOp;
+                Operand homeObjOp;
+                Operand newTargetOp;
                 if (fn.isMethodDefinition()) {
-                    // Stack: [..., obj, storage, (key if emitted)].
-                    int objOffset = keyExprEmitted ? -2 : -1;
-                    addInstruction(new MethodExpression(fnIndex, new PeekOperand(objOffset)));
+                    lexThisOp = NullOperand.instance;
+                    homeObjOp = new PeekOperand(keyExprEmitted ? -2 : -1);
+                    newTargetOp = UndefinedOperand.instance;
+                } else if(isArrow) {
+                    lexThisOp = ThisOperand.instance;
+                    homeObjOp = HomeObjectOperand.instance;
+                    newTargetOp = NewTargetOperand.instance;
                 } else {
-                    addInstruction(ClosureExpression.createInstruction(fnIndex));
+                    lexThisOp = NullOperand.instance;
+                    homeObjOp = NullOperand.instance;
+                    newTargetOp = UndefinedOperand.instance;
                 }
+
+                addInstruction(ClosureExpression.createInstruction(fnIndex, lexThisOp, homeObjOp, newTargetOp));
                 valueOp = PopOperand.instance;
             } else {
                 kind = 0;

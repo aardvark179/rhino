@@ -747,6 +747,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Token.NULL] = new DoNull();
         instructionObjs[base + Token.THIS] = new DoThis();
         instructionObjs[base + Token.SUPER] = new DoSuper();
+        instructionObjs[base + Icode.HOMEOBJ] = new DoHomeObj();
         instructionObjs[base + Token.THISFN] = new DoThisFunction();
         instructionObjs[base + Token.NEW_TARGET] = new DoNewTarget();
         instructionObjs[base + Token.FALSE] = new DoFalse();
@@ -773,7 +774,6 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Icode.SPREAD] = new DoSpread();
         instructionObjs[base + Icode.OBJECT_REST] = new DoObjectRest();
         instructionObjs[base + Icode.CLOSURE_EXPR] = new DoClosureExpr();
-        instructionObjs[base + Icode.METHOD_EXPR] = new DoMethodExpr();
         instructionObjs[base + Icode.CLOSURE_STMT] = new DoClosureStatement();
         instructionObjs[base + Token.REGEXP] = new DoRegExp();
         instructionObjs[base + Token.LOAD_LITERAL] = new DoLoadLiteral();
@@ -3275,6 +3275,21 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         }
     }
 
+    private static class DoHomeObj extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            // If we are referring to "super", then we always have an
+            // activation
+            // (this is done in IrFactory). The home object is stored as
+            // part of the
+            // activation frame to propagate it correctly for nested
+            // functions.
+            Scriptable homeObject = frame.fnOrScript.getHomeObject();
+            frame.stack[++frame.stackTop] = homeObject;
+            return null;
+        }
+    }
+
     private static class DoThisFunction extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
@@ -3511,22 +3526,10 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
     private static class DoClosureExpr extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            JSFunction fn = createClosure(cx, frame, state.indexReg);
-            frame.stack[++frame.stackTop] = fn;
-            return null;
-        }
-
-        @Override
-        void dumpICode(int op, String tname, ICodeDumpContext ctx) {
-            ctx.out.println(tname + " #" + ctx.indexReg);
-        }
-    }
-
-    private static class DoMethodExpr extends InstructionClass {
-        @Override
-        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            Scriptable homeObject = (Scriptable) frame.stack[frame.stackTop - 1];
-            JSFunction fn = createMethod(cx, frame, state.indexReg, homeObject);
+            Object nt = frame.stack[frame.stackTop--];
+            Scriptable homeObj = (Scriptable) frame.stack[frame.stackTop--];
+            Object thisObj = frame.stack[frame.stackTop--];
+            JSFunction fn = createClosure(cx, frame, state.indexReg, thisObj, homeObj, nt);
             frame.stack[++frame.stackTop] = fn;
             return null;
         }
@@ -4448,12 +4451,15 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         }
     }
 
-    private static JSFunction createClosure(Context cx, CallFrame frame, int index) {
+    private static JSFunction createClosure(
+            Context cx,
+            CallFrame frame,
+            int index,
+            Object lexThis,
+            Scriptable homeObj,
+            Object newTarget) {
         var desc = frame.fnOrScript.getDescriptor().getFunction(index);
-        boolean isArrow = desc.getFunctionType() == FunctionNode.ARROW_FUNCTION;
-        var homeObject = isArrow ? frame.fnOrScript.getHomeObject() : null;
-        var newTarget = isArrow ? frame.newTarget : Undefined.instance;
-        JSFunction f = new JSFunction(cx, frame.scope, desc, frame.thisObj, newTarget, homeObject);
+        JSFunction f = new JSFunction(cx, frame.scope, desc, lexThis, newTarget, homeObj);
         return f;
     }
 

@@ -328,8 +328,14 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                         // For example, eval("function () {}") should return a
                         // function, not undefined.
                         if (!itsInFunctionFlag) {
-                            addIndexOp(Icode.CLOSURE_EXPR, fnIndex);
+                            addToken(Token.NULL);
                             stackChange(1);
+                            addToken(Token.NULL);
+                            stackChange(1);
+                            addIcode(Icode.UNDEF);
+                            stackChange(1);
+                            addIndexOp(Icode.CLOSURE_EXPR, fnIndex);
+                            stackChange(-2);
                             addIcode(Icode.POP_RESULT);
                             stackChange(-1);
                         }
@@ -642,12 +648,25 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                             && fn.getFunctionType() != FunctionNode.ARROW_FUNCTION) {
                         throw Kit.codeBug();
                     }
+                    boolean isArrow = fn.getFunctionType() == FunctionNode.ARROW_FUNCTION;
                     if (fn.isMethodDefinition()) {
-                        addIndexOp(Icode.METHOD_EXPR, fnIndex);
+                        addIcode(Icode.DUP2);
+                        addIcode(Icode.POP);
+                        addToken(Token.NULL);
+                        addIcode(Icode.SWAP);
+                        addIcode(Icode.UNDEF);
+                    } else if (isArrow) {
+                        addToken(Token.THIS);
+                        addIcode(Icode.HOMEOBJ);
+                        addToken(Token.NEW_TARGET);
                     } else {
-                        addIndexOp(Icode.CLOSURE_EXPR, fnIndex);
+                        addToken(Token.NULL);
+                        addToken(Token.NULL);
+                        addIcode(Icode.UNDEF);
                     }
-                    stackChange(1);
+                    stackChange(3);
+                    addIndexOp(Icode.CLOSURE_EXPR, fnIndex);
+                    stackChange(-2);
                 }
                 break;
 
