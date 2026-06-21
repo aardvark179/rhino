@@ -6,7 +6,6 @@ import static org.mozilla.classfile.ClassFileWriter.ACC_STATIC;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -3420,10 +3419,7 @@ class BodyCodegen {
     private static final int EXCEPTION_MAX = 5;
 
     private void generateCatchBlock(
-            int exceptionType,
-            int catchLabel,
-            int exceptionLocal,
-            int handler) {
+            int exceptionType, int catchLabel, int exceptionLocal, int handler) {
         if (handler == 0) {
             handler = cfw.acquireLabel();
         }

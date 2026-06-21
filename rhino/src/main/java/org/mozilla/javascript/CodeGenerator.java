@@ -17,9 +17,9 @@ import org.mozilla.javascript.ast.Jump;
 import org.mozilla.javascript.ast.RegExpLiteral;
 import org.mozilla.javascript.ast.ScriptNode;
 import org.mozilla.javascript.ast.TemplateCharacters;
+import org.mozilla.javascript.ast.TemplateLiteral;
 import org.mozilla.javascript.sourcemap.Position;
 import org.mozilla.javascript.sourcemap.SourceMapper;
-import org.mozilla.javascript.ast.TemplateLiteral;
 
 /** Generates bytecode for the Interpreter. */
 class CodeGenerator<T extends ScriptOrFn<T>> {

@@ -15,7 +15,6 @@ import org.mozilla.javascript.JSFunction;
 import org.mozilla.javascript.Kit;
 import org.mozilla.javascript.Node;
 import org.mozilla.javascript.NodeTransformer;
-import org.mozilla.javascript.RegExpProxy;
 import org.mozilla.javascript.ScriptOrFn;
 import org.mozilla.javascript.ScriptRuntime;
 import org.mozilla.javascript.Token;
@@ -51,6 +50,7 @@ import org.mozilla.javascript.interpreterv2.instruction.Dup;
 import org.mozilla.javascript.interpreterv2.instruction.ElemAndThis;
 import org.mozilla.javascript.interpreterv2.instruction.ElemAndThisOptional;
 import org.mozilla.javascript.interpreterv2.instruction.ElemIncDec;
+import org.mozilla.javascript.interpreterv2.instruction.EndFinally;
 import org.mozilla.javascript.interpreterv2.instruction.EnterDotQuery;
 import org.mozilla.javascript.interpreterv2.instruction.EnterScope;
 import org.mozilla.javascript.interpreterv2.instruction.EnterWith;
@@ -127,7 +127,6 @@ import org.mozilla.javascript.interpreterv2.instruction.Regexp;
 import org.mozilla.javascript.interpreterv2.instruction.Rethrow;
 import org.mozilla.javascript.interpreterv2.instruction.Return;
 import org.mozilla.javascript.interpreterv2.instruction.ReturnResult;
-import org.mozilla.javascript.interpreterv2.instruction.EndFinally;
 import org.mozilla.javascript.interpreterv2.instruction.ReturnUndefined;
 import org.mozilla.javascript.interpreterv2.instruction.RightShift;
 import org.mozilla.javascript.interpreterv2.instruction.SaveScope;
@@ -768,7 +767,9 @@ public class Compiler<T extends ScriptOrFn<T>> {
                         homeObjOp = NullOperand.instance;
                         newTargetOp = UndefinedOperand.instance;
                     }
-                    addInstruction(ClosureExpression.createInstruction(fnIndex, lexThisOp, homeObjOp, newTargetOp));
+                    addInstruction(
+                            ClosureExpression.createInstruction(
+                                    fnIndex, lexThisOp, homeObjOp, newTargetOp));
                     if (fn.isMethodDefinition()) {
                         throw Kit.codeBug();
                     }
@@ -1984,7 +1985,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     lexThisOp = NullOperand.instance;
                     homeObjOp = new PeekOperand(keyExprEmitted ? -2 : -1);
                     newTargetOp = UndefinedOperand.instance;
-                } else if(isArrow) {
+                } else if (isArrow) {
                     lexThisOp = ThisOperand.instance;
                     homeObjOp = HomeObjectOperand.instance;
                     newTargetOp = NewTargetOperand.instance;
@@ -1993,7 +1994,9 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     homeObjOp = NullOperand.instance;
                     newTargetOp = UndefinedOperand.instance;
                 }
-                addInstruction(ClosureExpression.createInstruction(fnIndex, lexThisOp, homeObjOp, newTargetOp));
+                addInstruction(
+                        ClosureExpression.createInstruction(
+                                fnIndex, lexThisOp, homeObjOp, newTargetOp));
                 valueOp = PopOperand.instance;
             } else {
                 kind = 0;
@@ -2088,7 +2091,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     lexThisOp = NullOperand.instance;
                     homeObjOp = new PeekOperand(keyExprEmitted ? -2 : -1);
                     newTargetOp = UndefinedOperand.instance;
-                } else if(isArrow) {
+                } else if (isArrow) {
                     lexThisOp = ThisOperand.instance;
                     homeObjOp = HomeObjectOperand.instance;
                     newTargetOp = NewTargetOperand.instance;
@@ -2098,7 +2101,9 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     newTargetOp = UndefinedOperand.instance;
                 }
 
-                addInstruction(ClosureExpression.createInstruction(fnIndex, lexThisOp, homeObjOp, newTargetOp));
+                addInstruction(
+                        ClosureExpression.createInstruction(
+                                fnIndex, lexThisOp, homeObjOp, newTargetOp));
                 valueOp = PopOperand.instance;
             } else {
                 kind = 0;

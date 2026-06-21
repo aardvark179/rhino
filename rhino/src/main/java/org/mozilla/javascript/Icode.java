@@ -164,7 +164,6 @@ abstract class Icode {
 
             // object rest - create object excluding extracted keys
             OBJECT_REST = SPREAD - 1,
-
             HOMEOBJ = OBJECT_REST - 1,
 
             // Last icode

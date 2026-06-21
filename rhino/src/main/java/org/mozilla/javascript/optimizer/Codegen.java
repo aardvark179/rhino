@@ -41,8 +41,8 @@ import org.mozilla.javascript.ast.Name;
 import org.mozilla.javascript.ast.RegExpLiteral;
 import org.mozilla.javascript.ast.ScriptNode;
 import org.mozilla.javascript.ast.TemplateCharacters;
-import org.mozilla.javascript.debug.DebuggableScript;
 import org.mozilla.javascript.ast.TemplateLiteral;
+import org.mozilla.javascript.debug.DebuggableScript;
 
 /**
  * This class generates code for a given IR tree.

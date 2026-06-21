@@ -15,7 +15,7 @@ public class ClosureExpression extends Instruction {
     private final Operand newTargetOp;
 
     public static ClosureExpression createInstruction(
-        int fnIndex, Operand lexThisOp, Operand homeObjOp, Operand newTargetOp) {
+            int fnIndex, Operand lexThisOp, Operand homeObjOp, Operand newTargetOp) {
         return new ClosureExpression(fnIndex, lexThisOp, homeObjOp, newTargetOp);
     }
 

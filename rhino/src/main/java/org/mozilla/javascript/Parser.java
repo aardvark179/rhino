@@ -5133,7 +5133,6 @@ public class Parser {
         }
     }
 
-
     public static void makeFinallyNode(Node finallyBody, Node handlerBlock, Jump tryJump) {
         Node finallyTarget = Node.newTarget();
         tryJump.setFinally(finallyTarget);
@@ -5159,6 +5158,7 @@ public class Parser {
 
         tryJump.addChildToBack(finallyEnd);
     }
+
     DestructuringArrayResult destructuringArray(
             ArrayLiteral array,
             int variableType,
@@ -5206,8 +5206,7 @@ public class Parser {
                 // instead of evaluating the two-step Symbol.iterator name lookup.
                 Node symbolIterator = new Node(Token.LOAD_LITERAL);
                 symbolIterator.putIntProp(
-                        Node.LITERAL_INDEX_PROP,
-                        currentScriptOrFn.addLiteral(SymbolKey.ITERATOR));
+                        Node.LITERAL_INDEX_PROP, currentScriptOrFn.addLiteral(SymbolKey.ITERATOR));
                 Node getIteratorMethod =
                         new Node(Token.GETELEM, createName(tempName), symbolIterator);
                 Node callIterator = new Node(Token.CALL, getIteratorMethod);

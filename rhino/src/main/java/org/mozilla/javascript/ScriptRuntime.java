@@ -2698,6 +2698,52 @@ public class ScriptRuntime {
         return null;
     }
 
+    public static void accumulateIteratorValues(
+            Context cx, VarScope scope, ResultAccumulator results, Object source) {
+        Scriptable src = ScriptRuntime.toObject(cx, scope, source);
+        final Object iterator = ScriptRuntime.callIterator(src, cx, scope);
+        try (IteratorLikeIterable it = new IteratorLikeIterable(cx, scope, iterator)) {
+            for (Object temp : it) {
+                results.addResult(temp);
+            }
+        }
+        results.addResult(ObjectLiteralDescriptor.SPREAD_END);
+    }
+
+    public static void accumulateObjectKeyValues(
+            Context cx, VarScope scope, ResultAccumulator results, Object source) {
+        if (source != null && !Undefined.isUndefined(source)) {
+            Scriptable src = ScriptRuntime.toObject(cx, scope, source);
+            Object[] ids;
+            if (src instanceof ScriptableObject) {
+                var scriptable = (ScriptableObject) src;
+                try (var map = scriptable.startCompoundOp(false)) {
+                    ids = scriptable.getIds(map, false, true);
+                }
+            } else {
+                ids = src.getIds();
+            }
+
+            for (Object id : ids) {
+                Object value = getPropertyById(src, id);
+                results.addResult(id);
+                results.addResult(value);
+            }
+        }
+    }
+
+    private static Object getPropertyById(Scriptable src, Object id) {
+        if (id instanceof String) {
+            return ScriptableObject.getProperty(src, (String) id);
+        } else if (id instanceof Integer) {
+            return ScriptableObject.getProperty(src, (int) id);
+        } else if (ScriptRuntime.isSymbol(id)) {
+            return ScriptableObject.getProperty(src, (Symbol) id);
+        } else {
+            throw Kit.codeBug();
+        }
+    }
+
     /**
      * For backwards compatibility with generated class files
      *

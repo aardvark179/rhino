@@ -1,0 +1,182 @@
+package org.mozilla.javascript;
+
+import java.util.ArrayList;
+
+public abstract class ObjectLiteralDescriptor {
+    // We expext the majority of object literals to be simple, only
+    // associating values with keys. Method fall into this category
+    // but may require some inference of function names. Any such
+    // inference can be handled at compile time and should not be on
+    // our hot path here.
+    //
+    // Computed properties require us to get the key and the value
+    // from the evaluated list of expressions.
+    //
+    // Spread may be best handled in here by a `SPREAD` indicator, but
+    // might be better done with a `SPREAD_START` and `SPREAD_END`,
+    // it's going to depend a little on how complex the iterator
+    // behaviour we need to tackle is in destructuring.
+    //
+    // Spread does seem to make more sense as emitting a start and end
+    // token, and accumulating the results in between. This would
+    // allow for a simple accumulation bytecode we can use for object
+    // literals and other destructing type things. We don't even need
+    // a spread start, because the use site should understand that it
+    // is in the process of gathering spread results.
+    //
+    // SKIPPED indices need to be indicated in the list of ops, but
+    // shouldn't be anything the interpreters need to worry about.
+
+    public abstract ScriptableObject createObject(Object[] values);
+
+    public static class SimpleClassLitDescriptor extends ObjectLiteralDescriptor {
+        private final Object[] keys;
+
+        public SimpleClassLitDescriptor(Object[] keys) {
+            this.keys = keys;
+        }
+
+        public ScriptableObject createObject(Object[] values) {
+            var obj = new NativeObject();
+            for (int i = 0; i < values.length; i++) {
+                obj.put(keys[i], values[i]);
+            }
+            return obj;
+        }
+    }
+
+    public static final Object COMPUTED_KEY = new Object();
+
+    public static class ComputedKeyObjectLiteral extends ObjectLiteralDescriptor {
+        private final Object[] ops;
+
+        public ComputedKeyObjectLiteral(Object[] ops) {
+            this.ops = ops;
+        }
+
+        public ScriptableObject createObject(Object[] values) {
+            var obj = new NativeObject();
+            int v = 0;
+            for (int k = 0; k < ops.length; k++) {
+                var key = ops[k] == COMPUTED_KEY ? values[v++] : ops[k];
+                var value = values[v++];
+                obj.put(key, value);
+            }
+            return obj;
+        }
+    }
+
+    private abstract static class AccessorEntry {
+        private final Object key;
+
+        public AccessorEntry(Object key) {
+            this.key = key;
+        }
+    }
+
+    private static class SetterEntry extends AccessorEntry {
+        public SetterEntry(Object key) {
+            super(key);
+        }
+    }
+
+    private static class GetterEntry extends AccessorEntry {
+        public GetterEntry(Object key) {
+            super(key);
+        }
+    }
+
+    private static class SpreadEntry {}
+
+    public static final Object SPREAD_END = new Object();
+
+    public static class ComplexObjectLiteral extends ObjectLiteralDescriptor {
+        private final Object[] ops;
+
+        public ComplexObjectLiteral(Object[] ops) {
+            this.ops = ops;
+        }
+
+        public ScriptableObject createObject(Object[] values) {
+            var obj = new NativeObject();
+            int v = 0;
+            for (int k = 0; k < ops.length; k++) {
+                var key = ops[k] == COMPUTED_KEY ? values[v++] : ops[k];
+                if (key instanceof AccessorEntry e) {
+                    v = processAccessor(obj, e, values, v);
+                } else if (key instanceof SpreadEntry e) {
+                    while (values[v] != SPREAD_END) {
+                        key = values[v++];
+                        var value = values[v++];
+                        obj.put(key, value);
+                    }
+                } else {
+                    var value = values[v++];
+                    obj.put(key, value);
+                }
+            }
+            return obj;
+        }
+
+        private int processAccessor(NativeObject obj, AccessorEntry e, Object[] values, int v) {
+            var key = e.key == COMPUTED_KEY ? values[v++] : e.key;
+            var value = values[v++];
+            // Set the accessor slot bits as needed.
+            return v;
+        }
+    }
+
+    // Give ourselves a builder for the compiler to use
+
+    public static class Builder {
+        private ArrayList<Object> ops;
+        boolean hasKeys = false;
+        boolean hasComputed = false;
+        boolean hasGetterSetter = false;
+        boolean hasSpread = false;
+
+        public void addLiteralKey(String k) {
+            ops.add(k);
+            hasKeys = true;
+        }
+
+        public void addComputedKey() {
+            ops.add(COMPUTED_KEY);
+            hasComputed = true;
+        }
+
+        public void addGetter(String s) {
+            ops.add(new GetterEntry(s));
+            hasGetterSetter = true;
+        }
+
+        public void addSetter(String s) {
+            ops.add(new SetterEntry(s));
+            hasGetterSetter = true;
+        }
+
+        public void addComputedGetter() {
+            ops.add(new GetterEntry(COMPUTED_KEY));
+            hasGetterSetter = true;
+        }
+
+        public void addComputedSetter() {
+            ops.add(new SetterEntry(COMPUTED_KEY));
+            hasGetterSetter = true;
+        }
+
+        public void addSpread() {
+            ops.add(new SpreadEntry());
+        }
+
+        public ObjectLiteralDescriptor build() {
+            if (hasSpread || hasGetterSetter) {
+                return new ComplexObjectLiteral(ops.toArray());
+            } else if (hasComputed) {
+                return new ComputedKeyObjectLiteral(ops.toArray());
+            } else {
+                return new SimpleClassLitDescriptor(ops.toArray());
+            }
+        }
+    }
+}
