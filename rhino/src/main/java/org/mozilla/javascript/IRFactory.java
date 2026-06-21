@@ -432,26 +432,32 @@ public final class IRFactory {
         if (node.isDestructuring()) {
             return node;
         }
+        var builder = new ArrayLiteralDescriptor.Builder();
         List<AstNode> elems = node.getElements();
         Node array = new Node(Token.ARRAYLIT);
         List<Integer> skipIndexes = null;
         for (int i = 0; i < elems.size(); ++i) {
             AstNode elem = elems.get(i);
             if (elem.getType() == Token.DOTDOTDOT) {
+                builder = builder.withSpread();
                 Spread spread = (Spread) elem;
                 Node transformedSpreadNode = transform(spread);
                 array.addChildToBack(transformedSpreadNode);
                 array.putIntProp(
                         Node.NUMBER_OF_SPREAD, array.getIntProp(Node.NUMBER_OF_SPREAD, 0) + 1);
             } else if (elem.getType() != Token.EMPTY) {
+                builder = builder.withElement();
                 array.addChildToBack(transform(elem));
             } else {
                 if (skipIndexes == null) {
                     skipIndexes = new ArrayList<>();
                 }
+                builder = builder.withSkip();
                 skipIndexes.add(Integer.valueOf(i));
             }
         }
+        array.putIntProp(
+                Node.LITERAL_INDEX_PROP, parser.currentScriptOrFn.addLiteral(builder.build()));
         array.putIntProp(Node.DESTRUCTURING_ARRAY_LENGTH, node.getDestructuringLength());
         if (skipIndexes != null) {
             int[] skips = new int[skipIndexes.size()];

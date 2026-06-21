@@ -787,6 +787,12 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Token.OBJECTLIT] = new DoObjectLit();
         instructionObjs[base + Token.ARRAYLIT] = new DoArrayLiteral();
         instructionObjs[base + Icode.SPARE_ARRAYLIT] = new DoArrayLiteral();
+        instructionObjs[base + Icode.RESULT_ACCUMULATOR] = new DoResultAccumulattor();
+        instructionObjs[base + Icode.ACCUMULATE_RESULT] = new DoAccumulateResult();
+        instructionObjs[base + Icode.ACCUMULATE_ITERATOR] = new DoAccumulateIterator();
+        instructionObjs[base + Icode.ACCUMULATE_KEYVALUES] = new DoAccumulateKeyValues();
+        instructionObjs[base + Icode.MAKE_OBJECT] = new DoMakeObject();
+        instructionObjs[base + Icode.MAKE_ARRAAY] = new DoMakeArray();
         instructionObjs[base + Icode.ENTERDQ] = new DoEnterDotQuery();
         instructionObjs[base + Icode.LEAVEDQ] = new DoLeaveDotQuery();
         instructionObjs[base + Token.DEFAULTNAMESPACE] = new DoDefaultNamespace();
@@ -3838,6 +3844,80 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             } else {
                 ctx.out.println(tname);
             }
+        }
+    }
+
+    private static class DoResultAccumulattor extends InstructionClass {
+
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            frame.stack[++frame.stackTop] = new ResultAccumulator(state.indexReg);
+            return null;
+        }
+    }
+
+    private static class DoAccumulateResult extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            var obj = frame.stack[frame.stackTop];
+            if (obj == DOUBLE_MARK) {
+                obj = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
+            }
+            frame.stackTop--;
+            ((ResultAccumulator) frame.stack[frame.stackTop]).addResult(obj);
+            return null;
+        }
+    }
+
+    private static class DoAccumulateIterator extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            var iter = frame.stack[frame.stackTop];
+            if (iter == DOUBLE_MARK) {
+                iter = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
+            }
+            frame.stackTop--;
+            var results = ((ResultAccumulator) frame.stack[frame.stackTop]);
+            ScriptRuntime.accumulateIteratorValues(cx, frame.scope, results, iter);
+            return null;
+        }
+    }
+
+    private static class DoMakeArray extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            var desc =
+                    (ArrayLiteralDescriptor)
+                            frame.fnOrScript.getDescriptor().getLiteral(state.indexReg);
+            var results = (ResultAccumulator) frame.stack[frame.stackTop];
+            frame.stack[frame.stackTop] = desc.createArray(cx, frame.scope, results);
+            return null;
+        }
+    }
+
+    private static class DoMakeObject extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            var desc =
+                    (ObjectLiteralDescriptor)
+                            frame.fnOrScript.getDescriptor().getLiteral(state.indexReg);
+            var results = (ResultAccumulator) frame.stack[frame.stackTop];
+            frame.stack[frame.stackTop] = desc.createObject(results.getResults());
+            return null;
+        }
+    }
+
+    private static class DoAccumulateKeyValues extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            var obj = frame.stack[frame.stackTop];
+            if (obj == DOUBLE_MARK) {
+                obj = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
+            }
+            frame.stackTop--;
+            var results = ((ResultAccumulator) frame.stack[frame.stackTop]);
+            ScriptRuntime.accumulateObjectKeyValues(cx, frame.scope, results, obj);
+            return null;
         }
     }
 

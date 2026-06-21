@@ -11,7 +11,7 @@ public class ResultAccumulator {
     public void addResult(Object result) {
         if (size == results.length) {
             var newResults = new Object[results.length * 2];
-            System.arraycopy(result, 0, newResults, 0, results.length);
+            System.arraycopy(results, 0, newResults, 0, results.length);
             results = newResults;
         }
         results[size++] = result;

@@ -1684,59 +1684,22 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
             ++count;
         }
 
-        int numberOfSpread = node.getIntProp(Node.NUMBER_OF_SPREAD, 0);
-        int[] skipIndexes = (int[]) node.getProp(Node.SKIP_INDEXES_PROP);
-
-        // compute source positions if we have skip indexes
-        int[] sourcePositions = null;
-        if (skipIndexes != null) {
-            sourcePositions = new int[count];
-            int sourcePos = 0;
-            int skipIdx = 0;
-            for (int i = 0; i < count; i++) {
-                while (skipIdx < skipIndexes.length && skipIndexes[skipIdx] == sourcePos) {
-                    sourcePos++;
-                    skipIdx++;
-                }
-                sourcePositions[i] = sourcePos;
-                sourcePos++;
-            }
-        }
-
-        // Store skip indexes in literalIds if present
-        int skipIndexesId = -1;
-        if (skipIndexes != null) {
-            skipIndexesId = literalIds.size();
-            literalIds.add(skipIndexes);
-        }
-
-        addIndexOp(Icode.LITERAL_NEW_ARRAY, count - numberOfSpread);
-        addUint16(skipIndexesId + 1);
+        addIndexOp(Icode.RESULT_ACCUMULATOR, count);
         stackChange(1);
 
-        int childIdx = 0;
         while (child != null) {
             if (child.getType() == Token.DOTDOTDOT) {
                 visitExpression(child.getFirstChild(), 0);
-                addIcode(Icode.SPREAD);
-                if (skipIndexes != null) {
-                    addUint16(sourcePositions[childIdx]);
-                } else {
-                    addUint16(0);
-                }
-                stackChange(-1);
+                addIcode(Icode.ACCUMULATE_ITERATOR);
             } else {
-                visitLiteralValue(child);
+                visitExpression(child, 0);
+                addIcode(Icode.ACCUMULATE_RESULT);
             }
+            stackChange(-1);
             child = child.getNext();
-            childIdx++;
         }
 
-        if (skipIndexes == null) {
-            addToken(Token.ARRAYLIT);
-        } else {
-            addIndexOp(Icode.SPARE_ARRAYLIT, skipIndexesId);
-        }
+        addIndexOp(Icode.MAKE_ARRAAY, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
     }
 
     private void visitLiteralValue(Node child) {
