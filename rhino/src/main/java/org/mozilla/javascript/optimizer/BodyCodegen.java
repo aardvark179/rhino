@@ -227,7 +227,6 @@ class BodyCodegen {
         generatorDispatchLabel = -1;
         generatorDispatchFrame = null;
         resumptionPoints = null;
-        savedHomeObjectLocal = -1;
         parentStrictnessLocal = -1;
     }
 
@@ -1846,7 +1845,12 @@ class BodyCodegen {
                     cfw.markLabel(end);
                     break;
                 }
-
+            case Token.TO_PROPKEY:
+                {
+                    generateExpression(child, node);
+                    addOptRuntimeInvoke("toPropKey", "(Ljava/lang/Object;)Ljava/lang/Object;");
+                    break;
+                }
             default:
                 throw new RuntimeException("Unexpected node type " + type);
         }
@@ -2257,8 +2261,48 @@ class BodyCodegen {
         incReferenceWordLocal(variableObjectLocal);
     }
 
+    private boolean isMethodDefinition(Node node) {
+        if (node.getType() != Token.FUNCTION) {
+            return false;
+        }
+        int fnIndex = node.getExistingIntProp(Node.FUNCTION_PROP);
+        return OptFunctionNode.get(scriptOrFn, fnIndex).fnode.isMethodDefinition();
+    }
+
     private void visitFunction(OptFunctionNode ofn, int functionType) {
         int fnIndex = codegen.getIndex(ofn.fnode);
+        if (ofn.fnode.isMethodDefinition()) {
+            // The home object has been left on the stack by the enclosing literal.
+            // stack: [home]
+            cfw.add(ByteCode.NEW, Codegen.JSFUNCTION_CLASS_NAME);
+            cfw.add(ByteCode.DUP_X1);
+            cfw.add(ByteCode.SWAP); // stack: [fn, fn, home]
+            cfw.addALoad(contextLocal);
+            cfw.add(ByteCode.SWAP);
+            cfw.addALoad(variableObjectLocal);
+            cfw.add(ByteCode.SWAP);
+            // The descriptors array always lives on the main class, even when this body method has
+            // been placed in a different (split) chunk class.
+            cfw.add(
+                ByteCode.GETSTATIC,
+                codegen.mainClassName,
+                Codegen.DESCRIPTORS_FIELD_NAME,
+                Codegen.DESCRIPTORS_FIELD_SIGNATURE);
+            cfw.addPush(fnIndex);
+            cfw.add(ByteCode.AALOAD);
+            cfw.add(ByteCode.SWAP);
+            cfw.add(ByteCode.ACONST_NULL);
+            cfw.add(ByteCode.SWAP);
+            Codegen.pushUndefined(cfw);
+            cfw.add(ByteCode.SWAP); // stack: [fn, fn, cx, scope, builder, null, undefined, home]
+            cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/Scriptable");
+            cfw.addInvoke(
+                    ByteCode.INVOKESPECIAL,
+                    Codegen.JSFUNCTION_CLASS_NAME,
+                    "<init>",
+                    Codegen.JSFUNCTION_CONSTRUCTOR_SIGNATURE);
+            return;
+        }
         cfw.add(ByteCode.NEW, Codegen.JSFUNCTION_CLASS_NAME);
         // Call function constructor
         cfw.add(ByteCode.DUP);
@@ -2273,11 +2317,7 @@ class BodyCodegen {
                 Codegen.DESCRIPTORS_FIELD_SIGNATURE);
         cfw.addPush(fnIndex);
         cfw.add(ByteCode.AALOAD);
-        if (ofn.fnode.isMethodDefinition()) {
-            cfw.add(ByteCode.ACONST_NULL);
-            Codegen.pushUndefined(cfw);
-            cfw.addALoad(savedHomeObjectLocal);
-        } else if (functionType == FunctionNode.ARROW_FUNCTION) {
+        if (functionType == FunctionNode.ARROW_FUNCTION) {
             cfw.addALoad(thisObjLocal);
             if (isGenerator) {
                 // Generators cannot be constructors, so new.target is always undefined.
@@ -2455,12 +2495,6 @@ class BodyCodegen {
     }
 
     private void visitArrayLiteral(Node node, Node child, boolean topLevel) {
-        int numberOfSpread = node.getIntProp(Node.NUMBER_OF_SPREAD, 0);
-        if (numberOfSpread > 0) {
-            visitArrayLiteralWithSpread(node, child, numberOfSpread);
-            return;
-        }
-
         int count = countArguments(child);
 
         // If code budget is tight swap out literals into separate method
@@ -2496,171 +2530,7 @@ class BodyCodegen {
                             + ")Lorg/mozilla/javascript/Scriptable;");
             return;
         }
-
-        // load array to store array literal objects
-        if (isGenerator) {
-            // TODO: this is actually only necessary if the yield operation is
-            // a child of this array or its children (bug 757410)
-            for (int i = 0; i != count; ++i) {
-                generateExpression(child, node);
-                child = child.getNext();
-            }
-            addNewObjectArray(count);
-            for (int i = 0; i != count; ++i) {
-                cfw.add(ByteCode.DUP_X1);
-                cfw.add(ByteCode.SWAP);
-                cfw.addPush(count - i - 1);
-                cfw.add(ByteCode.SWAP);
-                cfw.add(ByteCode.AASTORE);
-            }
-        } else {
-            addNewObjectArray(count);
-            for (int i = 0; i != count; ++i) {
-                cfw.add(ByteCode.DUP);
-                cfw.addPush(i);
-                generateExpression(child, node);
-                cfw.add(ByteCode.AASTORE);
-                child = child.getNext();
-            }
-        }
-        int[] skipIndexes = (int[]) node.getProp(Node.SKIP_INDEXES_PROP);
-        if (skipIndexes == null) {
-            cfw.add(ByteCode.ACONST_NULL);
-            cfw.add(ByteCode.ICONST_0);
-        } else {
-            cfw.addPush(OptRuntime.encodeIntArray(skipIndexes));
-            cfw.addPush(skipIndexes.length);
-        }
-        cfw.addALoad(contextLocal);
-        cfw.addALoad(variableObjectLocal);
-        addOptRuntimeInvoke(
-                "newArrayLiteral",
-                "([Ljava/lang/Object;"
-                        + "Ljava/lang/String;"
-                        + "I"
-                        + "Lorg/mozilla/javascript/Context;"
-                        + "Lorg/mozilla/javascript/VarScope;"
-                        + ")Lorg/mozilla/javascript/Scriptable;");
-    }
-
-    private void visitArrayLiteralWithSpread(Node node, Node child, int numberOfSpread) {
-        int count = countArguments(child);
-        int[] skipIndexes = (int[]) node.getProp(Node.SKIP_INDEXES_PROP);
-
-        // compute source positions if we have skip indexes
-        int[] sourcePositions = null;
-        if (skipIndexes != null) {
-            sourcePositions = new int[count];
-            int sourcePos = 0;
-            int skipIdx = 0;
-            for (int i = 0; i < count; i++) {
-                while (skipIdx < skipIndexes.length && skipIndexes[skipIdx] == sourcePos) {
-                    sourcePos++;
-                    skipIdx++;
-                }
-                sourcePositions[i] = sourcePos;
-                sourcePos++;
-            }
-        }
-
-        // Create NewLiteralStorage for the array
-        cfw.addALoad(contextLocal);
-        cfw.addLoadConstant(count - numberOfSpread);
-        cfw.addLoadConstant(0); // createKeys = false for arrays
-        cfw.addInvoke(
-                ByteCode.INVOKESTATIC,
-                "org/mozilla/javascript/NewLiteralStorage",
-                "create",
-                "(Lorg/mozilla/javascript/Context;IZ)Lorg/mozilla/javascript/NewLiteralStorage;");
-
-        // Set skip indexes if present
-        if (skipIndexes != null) {
-            cfw.add(ByteCode.DUP);
-            cfw.addLoadConstant(skipIndexes.length);
-            cfw.add(ByteCode.NEWARRAY, ByteCode.T_INT);
-            for (int i = 0; i < skipIndexes.length; i++) {
-                cfw.add(ByteCode.DUP);
-                cfw.addLoadConstant(i);
-                cfw.addLoadConstant(skipIndexes[i]);
-                cfw.add(ByteCode.IASTORE);
-            }
-            cfw.addInvoke(
-                    ByteCode.INVOKEVIRTUAL,
-                    "org/mozilla/javascript/NewLiteralStorage",
-                    "setSkipIndexes",
-                    "([I)V");
-        }
-
-        // Process each element
-        int childIdx = 0;
-        while (child != null) {
-            if (child.getType() == Token.DOTDOTDOT) {
-                // Handle spread element: push the expression and call spread
-                cfw.add(ByteCode.DUP);
-                cfw.addALoad(contextLocal);
-                cfw.addALoad(variableObjectLocal);
-                generateExpression(child.getFirstChild(), node);
-                // Push source position (0 if no skip indexes)
-                if (skipIndexes != null) {
-                    cfw.addLoadConstant(sourcePositions[childIdx]);
-                } else {
-                    cfw.addLoadConstant(0);
-                }
-                cfw.addInvoke(
-                        ByteCode.INVOKEVIRTUAL,
-                        "org/mozilla/javascript/NewLiteralStorage",
-                        "spread",
-                        "(Lorg/mozilla/javascript/Context;"
-                                + "Lorg/mozilla/javascript/VarScope;"
-                                + "Ljava/lang/Object;"
-                                + "I"
-                                + ")V");
-            } else {
-                // Handle regular element: push the value
-                cfw.add(ByteCode.DUP);
-                generateExpression(child, node);
-                cfw.addInvoke(
-                        ByteCode.INVOKEVIRTUAL,
-                        "org/mozilla/javascript/NewLiteralStorage",
-                        "pushValue",
-                        "(Ljava/lang/Object;)V");
-            }
-            child = child.getNext();
-            childIdx++;
-        }
-
-        // Convert NewLiteralStorage to array
-        int storageLocal = getNewWordLocal();
-        cfw.addAStore(storageLocal);
-        cfw.addALoad(storageLocal);
-        cfw.addInvoke(
-                ByteCode.INVOKEVIRTUAL,
-                "org/mozilla/javascript/NewLiteralStorage",
-                "getValues",
-                "()[Ljava/lang/Object;");
-
-        // Get adjusted skip indexes
-        if (skipIndexes != null) {
-            cfw.addALoad(storageLocal);
-            cfw.addInvoke(
-                    ByteCode.INVOKEVIRTUAL,
-                    "org/mozilla/javascript/NewLiteralStorage",
-                    "getAdjustedSkipIndexes",
-                    "()[I");
-        } else {
-            cfw.add(ByteCode.ACONST_NULL); // skipIndexes
-        }
-        releaseWordLocal((short) storageLocal);
-
-        cfw.addALoad(contextLocal);
-        cfw.addALoad(variableObjectLocal);
-        addOptRuntimeInvoke(
-                "newArrayLiteral",
-                "([Ljava/lang/Object;"
-                        + "[I"
-                        + "Lorg/mozilla/javascript/Context;"
-                        + "Lorg/mozilla/javascript/VarScope;"
-                        + ")Lorg/mozilla/javascript/Scriptable;");
+        visitLiteral(node, child);
     }
 
     /** load two arrays with property ids and values */
@@ -2824,9 +2694,155 @@ class BodyCodegen {
         }
     }
 
+    private void visitLiteral(Node node, Node child) {
+        while (child != null) {
+            int type = child.getType();
+            switch (type) {
+                case Token.EMPTY_OBJECT:
+                    {
+                        cfw.addALoad(contextLocal);
+                        cfw.addALoad(variableObjectLocal);
+                        cfw.addInvoke(
+                                ByteCode.INVOKEVIRTUAL,
+                                "org/mozilla/javascript/Context",
+                                "newObject",
+                                "(Lorg/mozilla/javascript/VarScope;)Lorg/mozilla/javascript/Scriptable;");
+                        break;
+                    }
+                case Token.RESULT_ACCUMULATOR:
+                    {
+                        cfw.add(ByteCode.NEW, "org/mozilla/javascript/ResultAccumulator");
+                        cfw.add(ByteCode.DUP);
+                        cfw.addLoadConstant(child.getIntProp(Node.RESULTS_SIZE_PROP, 0));
+                        cfw.addInvoke(
+                                ByteCode.INVOKESPECIAL,
+                                "org/mozilla/javascript/ResultAccumulator",
+                                "<init>",
+                                "(I)V");
+                        break;
+                    }
+                case Token.ACCUMULATE_RESULT:
+                    {
+                        Node value = child.getFirstChild();
+                        if (isMethodDefinition(value)) {
+                            // stack: [home, acc] -> [home, acc, acc, home]
+                            cfw.add(ByteCode.DUP2);
+                            cfw.add(ByteCode.SWAP);
+                        } else {
+                            cfw.add(ByteCode.DUP);
+                        }
+                        generateExpression(value, child);
+                        cfw.add(ByteCode.SWAP);
+                        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
+                        cfw.add(ByteCode.SWAP);
+                        cfw.addInvoke(
+                                ByteCode.INVOKEVIRTUAL,
+                                "org/mozilla/javascript/ResultAccumulator",
+                                "addResult",
+                                "(Ljava/lang/Object;)V");
+                        break;
+                    }
+                case Token.ACCUMULATE_KEYVALUES:
+                    {
+                        cfw.add(ByteCode.DUP);
+                        generateExpression(child.getFirstChild(), child);
+                        cfw.add(ByteCode.SWAP);
+                        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
+                        cfw.addALoad(contextLocal);
+                        cfw.addALoad(variableObjectLocal);
+                        addOptRuntimeInvoke(
+                                "accumulatekeyvalues",
+                                "("
+                                        + "Ljava/lang/Object;"
+                                        + "Lorg/mozilla/javascript/ResultAccumulator;"
+                                        + "Lorg/mozilla/javascript/Context;"
+                                        + "Lorg/mozilla/javascript/VarScope;"
+                                        + ")V");
+                        break;
+                    }
+                case Token.ACCUMULATE_ITERATOR:
+                    {
+                        cfw.add(ByteCode.DUP);
+                        generateExpression(child.getFirstChild(), child);
+                        cfw.add(ByteCode.SWAP);
+                        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
+                        cfw.addALoad(contextLocal);
+                        cfw.addALoad(variableObjectLocal);
+                        addOptRuntimeInvoke(
+                                "accumulateIterator",
+                                "("
+                                        + "Ljava/lang/Object;"
+                                        + "Lorg/mozilla/javascript/ResultAccumulator;"
+                                        + "Lorg/mozilla/javascript/Context;"
+                                        + "Lorg/mozilla/javascript/VarScope;"
+                                        + ")V");
+                        break;
+                    }
+                default:
+                    Kit.codeBug(Token.typeToName(type));
+            }
+            child = child.getNext();
+        }
+
+        int type = node.getType();
+        if (type == Token.ARRAYLIT) {
+            var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
+            Object constant = codegen.getConstant(scriptOrFn, index);
+            cfw.addLoadDynamicConstant(constant);
+            cfw.add(ByteCode.SWAP);
+            cfw.addALoad(contextLocal);
+            cfw.add(ByteCode.SWAP);
+            cfw.addALoad(variableObjectLocal);
+            cfw.add(ByteCode.SWAP);
+            cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
+            cfw.addInvoke(
+                    ByteCode.INVOKEVIRTUAL,
+                    "org/mozilla/javascript/ArrayLiteralDescriptor",
+                    "createArray",
+                    "("
+                            + "Lorg/mozilla/javascript/Context;"
+                            + "Lorg/mozilla/javascript/VarScope;"
+                            + "Lorg/mozilla/javascript/ResultAccumulator;"
+                            + ")Lorg/mozilla/javascript/Scriptable;");
+        } else if (type == Token.OBJECTLIT) {
+            var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
+            Object constant = codegen.getConstant(scriptOrFn, index);
+            cfw.addLoadDynamicConstant(constant);
+            cfw.add(ByteCode.DUP_X2);
+            cfw.add(ByteCode.POP);
+            cfw.addALoad(contextLocal);
+            cfw.add(ByteCode.DUP_X2);
+            cfw.add(ByteCode.POP);
+            cfw.addALoad(variableObjectLocal);
+            cfw.add(ByteCode.DUP_X2);
+            cfw.add(ByteCode.POP);
+            cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
+            cfw.addInvoke(
+                    ByteCode.INVOKEVIRTUAL,
+                    "org/mozilla/javascript/ResultAccumulator",
+                    "getResults",
+                    "()[Ljava/lang/Object;");
+            cfw.addInvoke(
+                    ByteCode.INVOKEVIRTUAL,
+                    "org/mozilla/javascript/ObjectLiteralDescriptor",
+                    "createObject",
+                    "("
+                            + "Lorg/mozilla/javascript/Context;"
+                            + "Lorg/mozilla/javascript/VarScope;"
+                            + "Lorg/mozilla/javascript/Scriptable;"
+                            + "[Ljava/lang/Object;"
+                            + ")Lorg/mozilla/javascript/Scriptable;");
+        } else {
+            Kit.codeBug(Token.typeToName(type));
+        }
+    }
+
     private void visitObjectLiteral(Node node, Node child, boolean topLevel) {
         Object[] properties = (Object[]) node.getProp(Node.OBJECT_IDS_PROP);
-        int count = properties == null ? 0 : properties.length;
+        int count = 0;
+        for (Node n = child; n != null; n = n.getNext()) {
+            ++count;
+        }
 
         // If code budget is tight swap out literals into separate method
         if (!topLevel
@@ -2862,53 +2878,7 @@ class BodyCodegen {
             return;
         }
 
-        cfw.addALoad(contextLocal);
-        cfw.addALoad(variableObjectLocal);
-        cfw.addInvoke(
-                ByteCode.INVOKEVIRTUAL,
-                "org/mozilla/javascript/Context",
-                "newObject",
-                "(Lorg/mozilla/javascript/VarScope;)Lorg/mozilla/javascript/Scriptable;");
-        cfw.add(ByteCode.DUP);
-        savedHomeObjectLocal = getNewWordLocal();
-        cfw.addAStore(savedHomeObjectLocal);
-        cfw.add(ByteCode.DUP);
-
-        addLoadProperties(node, child, properties, count);
-
-        // stack: [store]
-        cfw.add(ByteCode.DUP); // stack: [store, store]
-        cfw.addInvoke(
-                ByteCode.INVOKEVIRTUAL,
-                "org/mozilla/javascript/NewLiteralStorage",
-                "getKeys",
-                "()[Ljava/lang/Object;"); // stack: [store, keys]
-        cfw.add(ByteCode.SWAP); // stack: [keys, store]
-        cfw.add(ByteCode.DUP); // stack: [keys, store, store]
-        cfw.addInvoke(
-                ByteCode.INVOKEVIRTUAL,
-                "org/mozilla/javascript/NewLiteralStorage",
-                "getValues",
-                "()[Ljava/lang/Object;"); // stack: [keys, store, values]
-        cfw.add(ByteCode.SWAP); // stack: [keys, values, store]
-        cfw.addInvoke(
-                ByteCode.INVOKEVIRTUAL,
-                "org/mozilla/javascript/NewLiteralStorage",
-                "getGetterSetters",
-                "()[I"); // stack: [keys, values, getterSetters]
-
-        cfw.addALoad(contextLocal);
-        cfw.addALoad(variableObjectLocal);
-        addScriptRuntimeInvoke(
-                "fillObjectLiteral",
-                "("
-                        + "Lorg/mozilla/javascript/Scriptable;"
-                        + "[Ljava/lang/Object;"
-                        + "[Ljava/lang/Object;"
-                        + "[I"
-                        + "Lorg/mozilla/javascript/Context;"
-                        + "Lorg/mozilla/javascript/VarScope;"
-                        + ")V");
+        visitLiteral(node, child);
     }
 
     private void visitSpecialCall(Node node, int type, int specialType, Node child) {
@@ -5107,7 +5077,6 @@ class BodyCodegen {
     private int itsZeroArgArray;
     private int itsOneArgArray;
     private int generatorStateLocal;
-    private int savedHomeObjectLocal;
     private int newTargetLocal;
     private int parentStrictnessLocal;
 

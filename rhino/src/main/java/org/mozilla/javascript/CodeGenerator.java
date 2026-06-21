@@ -8,7 +8,6 @@ package org.mozilla.javascript;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -1341,6 +1340,12 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                     break;
                 }
 
+            case Token.TO_PROPKEY:
+                {
+                    visitExpression(child, 0);
+                    addToken(Token.TO_PROPKEY);
+                    break;
+                }
             default:
                 throw badTree(node);
         }
@@ -1599,185 +1604,65 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
     }
 
     private void visitLiteral(Node node, Node child) {
+        while (child != null) {
+            int type = child.getType();
+            switch (type) {
+                case Token.EMPTY_OBJECT:
+                    {
+                        addToken(Token.EMPTY_OBJECT);
+                        stackChange(1);
+                        break;
+                    }
+                case Token.TO_PROPKEY:
+                    {
+                        visitExpression(child, 0);
+                        addToken(Token.TO_PROPKEY);
+                        break;
+                    }
+                case Token.RESULT_ACCUMULATOR:
+                    {
+                        addIndexOp(
+                                Token.RESULT_ACCUMULATOR,
+                                child.getIntProp(Node.RESULTS_SIZE_PROP, 0));
+                        stackChange(1);
+                        break;
+                    }
+                case Token.ACCUMULATE_RESULT:
+                    {
+                        visitExpression(child.getFirstChild(), 0);
+                        addToken(Token.ACCUMULATE_RESULT);
+                        stackChange(-1);
+                        break;
+                    }
+                case Token.ACCUMULATE_KEYVALUES:
+                    {
+                        visitExpression(child.getFirstChild(), 0);
+                        addToken(Token.ACCUMULATE_KEYVALUES);
+                        stackChange(-1);
+                        break;
+                    }
+                case Token.ACCUMULATE_ITERATOR:
+                    {
+                        visitExpression(child.getFirstChild(), 0);
+                        addToken(Token.ACCUMULATE_ITERATOR);
+                        stackChange(-1);
+                        break;
+                    }
+                default:
+                    throw badTree(node);
+            }
+            child = child.getNext();
+        }
+
         int type = node.getType();
         if (type == Token.ARRAYLIT) {
-            visitArrayLiteral(node, child);
+            addIndexOp(Token.MAKE_ARRAAY, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
         } else if (type == Token.OBJECTLIT) {
-            visitObjectLiteral(node, child);
+            addIndexOp(Token.MAKE_OBJECT, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
+            stackChange(-1);
         } else {
             throw badTree(node);
         }
-    }
-
-    private void visitObjectLiteralWithSpread(
-            Node node, Node child, Object[] propertyIds, int count) {
-        addIcode(Icode.REG_IND4);
-        addInt(-count - 1); // -1 to enforce it's negative even for {...x}
-        addIcode(Icode.LITERAL_NEW_OBJECT);
-        addUint8(0); // unused
-        stackChange(+2);
-
-        int i = 0;
-        while (child != null) {
-            Object propertyId = propertyIds == null ? null : propertyIds[i];
-
-            if (propertyId instanceof Node) {
-                // Might be a node of type Token.COMPUTED_PROPERTY wrapping the actual expression,
-                // or a spread node.
-                Node propNode = (Node) propertyId;
-                visitExpression(propNode.getFirstChild(), 0);
-
-                if (((Node) propertyId).type == Token.DOTDOTDOT) {
-                    // It's actually a spread! We need to do a "continue" to avoid setting it as key
-                    addIcode(Icode.SPREAD);
-                    // Always emit a 2-byte operand so Icode.SPREAD is fixed-width (3 bytes).
-                    // Object-literal spread never uses sourcePositions, so emit 0.
-                    addUint16(0);
-                    stackChange(-1);
-                    child = child.getNext();
-                    i++;
-                    continue;
-                }
-            } else if (propertyId instanceof String) {
-                addStringOp(Token.STRING, (String) propertyId);
-                stackChange(1);
-            } else if (propertyId instanceof Integer) {
-                addNumber((Integer) propertyId);
-            } else {
-                throw badTree(node);
-            }
-            addIcode(Icode.LITERAL_KEY_SET);
-            stackChange(-1);
-            // Value
-            visitLiteralValue(child);
-            child = child.getNext();
-            i++;
-        }
-
-        addToken(Token.OBJECTLIT);
-        stackChange(-1);
-    }
-
-    private void visitObjectLiteral(Node node, Node child) {
-        Object[] propertyIds = (Object[]) node.getProp(Node.OBJECT_IDS_PROP);
-        int count = propertyIds == null ? 0 : propertyIds.length;
-
-        int numberOfSpread = node.getIntProp(Node.NUMBER_OF_SPREAD, 0);
-        if (numberOfSpread > 0) {
-            visitObjectLiteralWithSpread(node, child, propertyIds, count - numberOfSpread);
-            return;
-        }
-
-        boolean hasAnyComputedProperty =
-                propertyIds != null
-                        && Arrays.stream(propertyIds).anyMatch(id -> id instanceof Node);
-        int nextLiteralIndex = literalIds.size();
-        literalIds.add(propertyIds);
-
-        addIndexOp(Icode.LITERAL_NEW_OBJECT, nextLiteralIndex);
-        addUint8(hasAnyComputedProperty ? 1 : 0);
-        stackChange(2);
-
-        int i = 0;
-        while (child != null) {
-            // Computed key
-            Object propertyId = propertyIds == null ? null : propertyIds[i];
-            if (propertyId instanceof Node) {
-                // Will be a node of type Token.COMPUTED_PROPERTY wrapping the actual expression
-                Node computedPropertyNode = (Node) propertyId;
-                visitExpression(computedPropertyNode.first, 0);
-                addIcode(Icode.LITERAL_KEY_SET);
-                stackChange(-1);
-            }
-
-            // Value
-            visitLiteralValue(child);
-            child = child.getNext();
-            i++;
-        }
-
-        addToken(Token.OBJECTLIT);
-
-        stackChange(-1);
-    }
-
-    private void visitArrayLiteral(Node node, Node child) {
-        int count = 0;
-        for (Node n = child; n != null; n = n.getNext()) {
-            ++count;
-        }
-
-        int numberOfSpread = node.getIntProp(Node.NUMBER_OF_SPREAD, 0);
-        int[] skipIndexes = (int[]) node.getProp(Node.SKIP_INDEXES_PROP);
-
-        // compute source positions if we have skip indexes
-        int[] sourcePositions = null;
-        if (skipIndexes != null) {
-            sourcePositions = new int[count];
-            int sourcePos = 0;
-            int skipIdx = 0;
-            for (int i = 0; i < count; i++) {
-                while (skipIdx < skipIndexes.length && skipIndexes[skipIdx] == sourcePos) {
-                    sourcePos++;
-                    skipIdx++;
-                }
-                sourcePositions[i] = sourcePos;
-                sourcePos++;
-            }
-        }
-
-        // Store skip indexes in literalIds if present
-        int skipIndexesId = -1;
-        if (skipIndexes != null) {
-            skipIndexesId = literalIds.size();
-            literalIds.add(skipIndexes);
-        }
-
-        addIndexOp(Icode.LITERAL_NEW_ARRAY, count - numberOfSpread);
-        addUint16(skipIndexesId + 1);
-        stackChange(1);
-
-        int childIdx = 0;
-        while (child != null) {
-            if (child.getType() == Token.DOTDOTDOT) {
-                visitExpression(child.getFirstChild(), 0);
-                addIcode(Icode.SPREAD);
-                if (skipIndexes != null) {
-                    addUint16(sourcePositions[childIdx]);
-                } else {
-                    addUint16(0);
-                }
-                stackChange(-1);
-            } else {
-                visitLiteralValue(child);
-            }
-            child = child.getNext();
-            childIdx++;
-        }
-
-        if (skipIndexes == null) {
-            addToken(Token.ARRAYLIT);
-        } else {
-            addIndexOp(Icode.SPARE_ARRAYLIT, skipIndexesId);
-        }
-    }
-
-    private void visitLiteralValue(Node child) {
-        int childType = child.getType();
-        if (childType == Token.GET) {
-            visitExpression(child.getFirstChild(), 0);
-            addIcode(Icode.LITERAL_GETTER);
-        } else if (childType == Token.SET) {
-            visitExpression(child.getFirstChild(), 0);
-            addIcode(Icode.LITERAL_SETTER);
-        } else if (childType == Token.METHOD) {
-            visitExpression(child.getFirstChild(), 0);
-            addIcode(Icode.LITERAL_SET);
-        } else {
-            visitExpression(child, 0);
-            addIcode(Icode.LITERAL_SET);
-        }
-        stackChange(-1);
     }
 
     private void visitTemplateLiteral(Node node) {

@@ -51,13 +51,14 @@ class InterpreterBytecodeDumpTest {
                     MaxStack = 0
                      [0] LINE : 1
                      [3] RETUNDEF
-                    ICode dump, for null, length = 21
+                    ICode dump, for null, length = 22
                     MaxStack = 6
                      [0] LINE : 1
                      [3] REG_STR_C0 "o"
                      [4] BINDNAME
-                     [5] REG_IND_C0
-                     [6] LITERAL_NEW_OBJECT [f] false
+                     [5] EMPTY_OBJECT
+                     [6] REG_IND_C1
+                     [7] RESULT_ACCUMULATOR
                      [8] DUP2
                      [9] POP
                      [10] NULL
@@ -65,12 +66,13 @@ class InterpreterBytecodeDumpTest {
                      [12] UNDEF
                      [13] REG_IND_C0
                      [14] CLOSURE_EXPR #0
-                     [15] LITERAL_SET
-                     [16] OBJECTLIT
-                     [17] REG_STR_C0 "o"
-                     [18] SETNAME
-                     [19] POP_RESULT
-                     [20] RETURN_RESULT
+                     [15] ACCUMULATE_RESULT
+                     [16] REG_IND_C0
+                     [17] MAKE_OBJECT
+                     [18] REG_STR_C0 "o"
+                     [19] SETNAME
+                     [20] POP_RESULT
+                     [21] RETURN_RESULT
                     """),
                 getByteCodeFrom("o = { f() {} }"));
     }
@@ -221,7 +223,7 @@ class InterpreterBytecodeDumpTest {
     @Test
     void sparseArrayLitIsPrinted() throws IOException {
         var output = getByteCodeFrom("[1,,2]");
-        assertTrue(output.contains("SPARE_ARRAYLIT "));
+        assertTrue(output.contains("MAKE_ARRAAY"));
     }
 
     @Test
@@ -446,7 +448,7 @@ class InterpreterBytecodeDumpTest {
     @Test
     void objectLiteralWithSpreadIsPrinted() throws IOException {
         var output = getByteCodeFrom("({...x})");
-        assertTrue(output.contains("LITERAL_NEW_OBJECT "));
+        assertTrue(output.contains("MAKE_OBJECT"));
     }
 
     @Test

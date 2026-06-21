@@ -14,7 +14,6 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Objects;
 import org.mozilla.javascript.ScriptRuntime.NoSuchMethodShim;
-import org.mozilla.javascript.ast.FunctionNode;
 import org.mozilla.javascript.ast.ScriptNode;
 import org.mozilla.javascript.debug.DebuggableScript;
 
@@ -302,14 +301,6 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
 
             case Icode.LINE:
                 // line number
-                return 1 + 2;
-
-            case Icode.LITERAL_NEW_OBJECT:
-                // make a copy or not flag
-                return 1 + 1;
-
-            case Icode.LITERAL_NEW_ARRAY:
-                // skip indexes ID (uint16)
                 return 1 + 2;
 
             case Icode.SPREAD:
@@ -790,15 +781,14 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Token.REGEXP] = new DoRegExp();
         instructionObjs[base + Token.LOAD_LITERAL] = new DoLoadLiteral();
         instructionObjs[base + Icode.TEMPLATE_LITERAL_CALLSITE] = new DoTemplateLiteralCallSite();
-        instructionObjs[base + Icode.LITERAL_NEW_OBJECT] = new DoLiteralNewObject();
-        instructionObjs[base + Icode.LITERAL_NEW_ARRAY] = new DoLiteralNewArray();
-        instructionObjs[base + Icode.LITERAL_SET] = new DoLiteralSet();
-        instructionObjs[base + Icode.LITERAL_GETTER] = new DoLiteralGetter();
-        instructionObjs[base + Icode.LITERAL_SETTER] = new DoLiteralSetter();
-        instructionObjs[base + Icode.LITERAL_KEY_SET] = new DoLiteralKeySet();
-        instructionObjs[base + Token.OBJECTLIT] = new DoObjectLit();
-        instructionObjs[base + Token.ARRAYLIT] = new DoArrayLiteral();
-        instructionObjs[base + Icode.SPARE_ARRAYLIT] = new DoArrayLiteral();
+        instructionObjs[base + Token.EMPTY_OBJECT] = new DoEmptyObject();
+        instructionObjs[base + Token.RESULT_ACCUMULATOR] = new DoResultAccumulattor();
+        instructionObjs[base + Token.ACCUMULATE_RESULT] = new DoAccumulateResult();
+        instructionObjs[base + Token.ACCUMULATE_ITERATOR] = new DoAccumulateIterator();
+        instructionObjs[base + Token.ACCUMULATE_KEYVALUES] = new DoAccumulateKeyValues();
+        instructionObjs[base + Token.MAKE_OBJECT] = new DoMakeObject();
+        instructionObjs[base + Token.MAKE_ARRAAY] = new DoMakeArray();
+        instructionObjs[base + Token.TO_PROPKEY] = new DoToPropKey();
         instructionObjs[base + Icode.ENTERDQ] = new DoEnterDotQuery();
         instructionObjs[base + Icode.LEAVEDQ] = new DoLeaveDotQuery();
         instructionObjs[base + Token.DEFAULTNAMESPACE] = new DoDefaultNamespace();
@@ -3795,117 +3785,6 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         }
     }
 
-    private static class DoLiteralNewObject extends InstructionClass {
-        @Override
-        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            ++frame.pc;
-            ++frame.stackTop;
-            frame.stack[frame.stackTop] = cx.newObject(frame.scope);
-            ++frame.stackTop;
-
-            // indexReg > 0: index of constant with the keys
-            // indexReg < 0: we have a spread, so no keys array, but we know the length
-            if (state.indexReg < 0) {
-                frame.stack[frame.stackTop] =
-                        NewLiteralStorage.create(cx, -state.indexReg - 1, true);
-            } else {
-                Object[] ids = (Object[]) frame.compilerData.literalIds[state.indexReg];
-                boolean copyArray = frame.compilerData.itsICode[frame.pc] != 0;
-                frame.stack[frame.stackTop] =
-                        NewLiteralStorage.create(
-                                cx, copyArray ? Arrays.copyOf(ids, ids.length) : ids);
-            }
-
-            return null;
-        }
-
-        @Override
-        void dumpICode(int op, String tname, ICodeDumpContext ctx) {
-            boolean copyArray = ctx.compilerData.itsICode[ctx.pc] != 0;
-            if (ctx.indexReg < 0) {
-                ctx.out.println(tname + " length: " + (-ctx.indexReg - 1));
-            } else {
-                Object[] keys = (Object[]) ctx.compilerData.literalIds[ctx.indexReg];
-                ctx.out.println(tname + " " + Arrays.toString(keys) + " " + copyArray);
-            }
-            ++ctx.pc;
-        }
-    }
-
-    private static class DoLiteralNewArray extends InstructionClass {
-        @Override
-        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            // indexReg: number of values in the literal
-            NewLiteralStorage storage = NewLiteralStorage.create(cx, state.indexReg, false);
-
-            int skipIdx = getIndex(frame.compilerData.itsICode, frame.pc);
-            frame.pc += 2;
-
-            // fill in skip indexes in array literal storage
-            if (skipIdx > 0) { // 0 - no skip index, otherwise subtract 1 from idx
-                storage.setSkipIndexes((int[]) frame.compilerData.literalIds[skipIdx - 1]);
-            }
-
-            frame.stack[++frame.stackTop] = storage;
-            return null;
-        }
-
-        @Override
-        void dumpICode(int op, String tname, ICodeDumpContext ctx) {
-            int skipIdx = getIndex(ctx.compilerData.itsICode, ctx.pc);
-            ctx.out.println(tname + " " + ctx.indexReg + " skipIdx=" + skipIdx);
-            ctx.pc += 2;
-        }
-    }
-
-    private static class DoLiteralSet extends InstructionClass {
-        @Override
-        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            Object value = frame.stack[frame.stackTop];
-            if (value == DOUBLE_MARK)
-                value = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
-            --frame.stackTop;
-            var store = (NewLiteralStorage) frame.stack[frame.stackTop];
-            store.pushValue(value);
-            return null;
-        }
-    }
-
-    private static class DoLiteralGetter extends InstructionClass {
-        @Override
-        NewState execute(Context cs, CallFrame frame, InterpreterState state, int op) {
-            Object value = frame.stack[frame.stackTop];
-            --frame.stackTop;
-            var store = (NewLiteralStorage) frame.stack[frame.stackTop];
-            store.pushGetter(value);
-            return null;
-        }
-    }
-
-    private static class DoLiteralSetter extends InstructionClass {
-        @Override
-        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            Object value = frame.stack[frame.stackTop];
-            --frame.stackTop;
-            var store = (NewLiteralStorage) frame.stack[frame.stackTop];
-            store.pushSetter(value);
-            return null;
-        }
-    }
-
-    private static class DoLiteralKeySet extends InstructionClass {
-        @Override
-        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            Object key = frame.stack[frame.stackTop];
-            if (key == DOUBLE_MARK)
-                key = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
-            --frame.stackTop;
-            var store = (NewLiteralStorage) frame.stack[frame.stackTop];
-            store.pushKey(key);
-            return null;
-        }
-    }
-
     private static class DoSpread extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
@@ -4000,46 +3879,96 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         }
     }
 
-    private static class DoObjectLit extends InstructionClass {
+    private static class DoEmptyObject extends InstructionClass {
+
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            var store = (NewLiteralStorage) frame.stack[frame.stackTop];
-            --frame.stackTop;
-            Scriptable object = (Scriptable) frame.stack[frame.stackTop];
-            ScriptRuntime.fillObjectLiteral(
-                    object,
-                    store.getKeys(),
-                    store.getValues(),
-                    store.getGetterSetters(),
-                    cx,
-                    frame.scope);
+            frame.stack[++frame.stackTop] = cx.newObject(frame.scope);
             return null;
         }
     }
 
-    private static class DoArrayLiteral extends InstructionClass {
-        @Override
-        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            var store = (NewLiteralStorage) frame.stack[frame.stackTop];
-            int[] skipIndexes = null;
-            if (op == Icode.SPARE_ARRAYLIT) {
-                skipIndexes = store.getAdjustedSkipIndexes();
-                if (skipIndexes == null) {
-                    skipIndexes = (int[]) frame.compilerData.literalIds[state.indexReg];
-                }
-            }
-            frame.stack[frame.stackTop] =
-                    ScriptRuntime.newArrayLiteral(store.getValues(), skipIndexes, cx, frame.scope);
-            return null;
-        }
+    private static class DoResultAccumulattor extends InstructionClass {
 
         @Override
-        void dumpICode(int op, String tname, ICodeDumpContext ctx) {
-            if (op == Icode.SPARE_ARRAYLIT) {
-                ctx.out.println(tname + " " + ctx.compilerData.literalIds[ctx.indexReg]);
-            } else {
-                ctx.out.println(tname);
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            frame.stack[++frame.stackTop] = new ResultAccumulator(state.indexReg);
+            return null;
+        }
+    }
+
+    private static class DoAccumulateResult extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            var obj = frame.stack[frame.stackTop];
+            if (obj == DOUBLE_MARK) {
+                obj = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
             }
+            frame.stackTop--;
+            ((ResultAccumulator) frame.stack[frame.stackTop]).addResult(obj);
+            return null;
+        }
+    }
+
+    private static class DoAccumulateIterator extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            var iter = frame.stack[frame.stackTop];
+            if (iter == DOUBLE_MARK) {
+                iter = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
+            }
+            frame.stackTop--;
+            var results = ((ResultAccumulator) frame.stack[frame.stackTop]);
+            ScriptRuntime.accumulateIteratorValues(cx, frame.scope, results, iter);
+            return null;
+        }
+    }
+
+    private static class DoToPropKey extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            var obj = frame.stack[frame.stackTop];
+            if (obj == DOUBLE_MARK) {
+                obj = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
+            }
+            frame.stack[frame.stackTop] = obj instanceof Symbol ? obj : ScriptRuntime.toString(obj);
+            return null;
+        }
+    }
+
+    private static class DoMakeArray extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            var desc = (ArrayLiteralDescriptor) frame.compilerData.itsLiterals[state.indexReg];
+            var results = (ResultAccumulator) frame.stack[frame.stackTop];
+            frame.stack[frame.stackTop] = desc.createArray(cx, frame.scope, results);
+            return null;
+        }
+    }
+
+    private static class DoMakeObject extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            var desc = (ObjectLiteralDescriptor) frame.compilerData.itsLiterals[state.indexReg];
+            var results = (ResultAccumulator) frame.stack[frame.stackTop--];
+            var obj = (Scriptable) frame.stack[frame.stackTop];
+            frame.stack[frame.stackTop] =
+                    desc.createObject(cx, frame.scope, obj, results.getResults());
+            return null;
+        }
+    }
+
+    private static class DoAccumulateKeyValues extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            var obj = frame.stack[frame.stackTop];
+            if (obj == DOUBLE_MARK) {
+                obj = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
+            }
+            frame.stackTop--;
+            var results = ((ResultAccumulator) frame.stack[frame.stackTop]);
+            ScriptRuntime.accumulateObjectKeyValues(cx, frame.scope, results, obj);
+            return null;
         }
     }
 
@@ -4662,15 +4591,6 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             Object newTarget) {
         var desc = frame.fnOrScript.getDescriptor().getFunction(index);
         JSFunction f = new JSFunction(cx, frame.scope, desc, lexThis, newTarget, homeObj);
-        return f;
-    }
-
-    private static JSFunction createMethod(
-            Context cx, CallFrame frame, int index, Scriptable homeObject) {
-        var desc = frame.fnOrScript.getDescriptor().getFunction(index);
-        boolean isArrow = desc.getFunctionType() == FunctionNode.ARROW_FUNCTION;
-        var newTarget = isArrow ? frame.newTarget : Undefined.instance;
-        JSFunction f = new JSFunction(cx, frame.scope, desc, frame.thisObj, newTarget, homeObject);
         return f;
     }
 }

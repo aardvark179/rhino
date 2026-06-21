@@ -291,6 +291,78 @@ class SuperTest {
         }
 
         @Test
+        void nestedObjectLiteralBeforeMethod() {
+            String script =
+                    ""
+                            + "var o = { fred: { harry() { return super.toString; } },"
+                            + " bob() { return super.toString; } };\n"
+                            + "Object.setPrototypeOf(o, {});\n"
+                            + "Object.setPrototypeOf(o.fred, {});\n"
+                            + "Object.getPrototypeOf(o).toString = function foo() {};\n"
+                            + "Object.getPrototypeOf(o.fred).toString = function bar() {};\n"
+                            + "o.fred.harry().name + o.bob().name;";
+
+            Utils.assertWithAllModes_ES6("barfoo", script);
+        }
+
+        @Test
+        void methodAfterNestedObjectLiteralWithMethodHasCorrectHomeObject() {
+            String script =
+                    ""
+                            + "var proto = { x: 'proto' };\n"
+                            + "var innerProto = { x: 'innerProto' };\n"
+                            + "var o = {\n"
+                            + "  inner: { g() { return super.x; } },\n"
+                            + "  f() { return super.x; }\n"
+                            + "};\n"
+                            + "Object.setPrototypeOf(o, proto);\n"
+                            + "Object.setPrototypeOf(o.inner, innerProto);\n"
+                            + "o.f() + ':' + o.inner.g();";
+
+            Utils.assertWithAllModes_ES6("proto:innerProto", script);
+        }
+
+        @Test
+        void methodInLargeObjectLiteralHasCorrectHomeObject() {
+            String script =
+                    ""
+                            + "var proto = { x: 'proto' };\n"
+                            + "function make() {\n"
+                            + "  return {\n"
+                            + "    a: 1, b: 2, c: 3, d: 4, e: 5, g: 6, h: 7, i: 8, j: 9, k: 10,\n"
+                            + "    inner: { m() { return super.x; } },\n"
+                            + "    f() { return super.x; }\n"
+                            + "  };\n"
+                            + "}\n"
+                            + "var o = make();\n"
+                            + "Object.setPrototypeOf(o, proto);\n"
+                            + "o.f();";
+
+            Utils.assertWithAllModes_ES6("proto", script);
+        }
+
+        @Test
+        void methodInObjectLiteralInGeneratorHasCorrectHomeObject() {
+            String script =
+                    ""
+                            + "var proto = { x: 'proto' };\n"
+                            + "function* gen() {\n"
+                            + "  return {\n"
+                            + "    a: (yield 1),\n"
+                            + "    inner: { m() { return super.x; } },\n"
+                            + "    f() { return super.x; }\n"
+                            + "  };\n"
+                            + "}\n"
+                            + "var it = gen();\n"
+                            + "it.next();\n"
+                            + "var o = it.next(42).value;\n"
+                            + "Object.setPrototypeOf(o, proto);\n"
+                            + "o.a + ':' + o.f();";
+
+            Utils.assertWithAllModes_ES6("42:proto", script);
+        }
+
+        @Test
         void nestedObjectsLambda() {
             String script =
                     ""

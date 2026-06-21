@@ -77,16 +77,8 @@ abstract class Icode {
             SHORTNUMBER = LINE - 1,
             INTNUMBER = SHORTNUMBER - 1,
 
-            // To create and populate array to hold values for [] and {} literals
-            LITERAL_NEW_OBJECT = INTNUMBER - 1,
-            LITERAL_NEW_ARRAY = LITERAL_NEW_OBJECT - 1,
-            LITERAL_SET = LITERAL_NEW_ARRAY - 1,
-
-            // Array literal with skipped index like [1,,2]
-            SPARE_ARRAYLIT = LITERAL_SET - 1,
-
             // Load index register to prepare for the following index operation
-            REG_IND_C0 = SPARE_ARRAYLIT - 1,
+            REG_IND_C0 = INTNUMBER - 1,
             REG_IND_C1 = REG_IND_C0 - 1,
             REG_IND_C2 = REG_IND_C1 - 1,
             REG_IND_C3 = REG_IND_C2 - 1,
@@ -122,12 +114,8 @@ abstract class Icode {
             // Clear local to allow GC its context
             LOCAL_CLEAR = TAIL_CALL - 1,
 
-            // Literal get/set
-            LITERAL_GETTER = LOCAL_CLEAR - 1,
-            LITERAL_SETTER = LITERAL_GETTER - 1,
-
             // const
-            SETCONST = LITERAL_SETTER - 1,
+            SETCONST = LOCAL_CLEAR - 1,
             SETCONSTVAR = SETCONST - 1,
             SETCONSTVAR1 = SETCONSTVAR - 1,
 
@@ -277,14 +265,6 @@ abstract class Icode {
                 return "SHORTNUMBER";
             case INTNUMBER:
                 return "INTNUMBER";
-            case LITERAL_NEW_OBJECT:
-                return "LITERAL_NEW_OBJECT";
-            case LITERAL_NEW_ARRAY:
-                return "LITERAL_NEW_ARRAY";
-            case LITERAL_SET:
-                return "LITERAL_SET";
-            case SPARE_ARRAYLIT:
-                return "SPARE_ARRAYLIT";
             case REG_IND_C0:
                 return "REG_IND_C0";
             case REG_IND_C1:
@@ -335,10 +315,6 @@ abstract class Icode {
                 return "TAIL_CALL";
             case LOCAL_CLEAR:
                 return "LOCAL_CLEAR";
-            case LITERAL_GETTER:
-                return "LITERAL_GETTER";
-            case LITERAL_SETTER:
-                return "LITERAL_SETTER";
             case SETCONST:
                 return "SETCONST";
             case SETCONSTVAR:
@@ -397,6 +373,8 @@ abstract class Icode {
                 return "TO_NUMERIC";
             case NUMERIC_INC_DEC:
                 return "NUMERIC_INC_DEC";
+            case HOMEOBJ:
+                return "HOMEOBJ";
         }
 
         // icode without name

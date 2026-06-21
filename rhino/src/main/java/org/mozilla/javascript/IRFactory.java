@@ -435,30 +435,26 @@ public final class IRFactory {
         }
         List<AstNode> elems = node.getElements();
         Node array = new Node(Token.ARRAYLIT);
-        List<Integer> skipIndexes = null;
+        Node accumulator = new Node(Token.RESULT_ACCUMULATOR);
+        array.addChildToBack(accumulator);
+        var builder = new ArrayLiteralDescriptor.Builder();
         for (int i = 0; i < elems.size(); ++i) {
             AstNode elem = elems.get(i);
             if (elem.getType() == Token.DOTDOTDOT) {
-                Spread spread = (Spread) elem;
-                Node transformedSpreadNode = transform(spread);
+                builder = builder.withSpread();
+                Node transformedSpreadNode =
+                        new Node(Token.ACCUMULATE_ITERATOR, transform(elem).getFirstChild());
                 array.addChildToBack(transformedSpreadNode);
-                array.putIntProp(
-                        Node.NUMBER_OF_SPREAD, array.getIntProp(Node.NUMBER_OF_SPREAD, 0) + 1);
             } else if (elem.getType() != Token.EMPTY) {
-                array.addChildToBack(transform(elem));
+                builder = builder.withElement();
+                array.addChildToBack(new Node(Token.ACCUMULATE_RESULT, transform(elem)));
             } else {
-                if (skipIndexes == null) {
-                    skipIndexes = new ArrayList<>();
-                }
-                skipIndexes.add(Integer.valueOf(i));
+                builder = builder.withSkip();
             }
         }
-        array.putIntProp(Node.DESTRUCTURING_ARRAY_LENGTH, node.getDestructuringLength());
-        if (skipIndexes != null) {
-            int[] skips = new int[skipIndexes.size()];
-            for (int i = 0; i < skipIndexes.size(); i++) skips[i] = skipIndexes.get(i).intValue();
-            array.putProp(Node.SKIP_INDEXES_PROP, skips);
-        }
+        accumulator.putIntProp(Node.RESULTS_SIZE_PROP, builder.getSize());
+        array.putIntProp(
+                Node.LITERAL_INDEX_PROP, parser.currentScriptOrFn.addLiteral(builder.build()));
         return array;
     }
 
@@ -482,7 +478,7 @@ public final class IRFactory {
         try {
             Node transformedRight = transform(right);
             if (shouldTryToInferName) {
-                inferNameIfMissing(node.getLeft(), transformedRight, null);
+                inferNameIfMissing(node.getLeft(), transformedRight, null, false);
             }
             return createAssignment(node.getType(), target, transformedRight);
         } finally {
@@ -991,33 +987,40 @@ public final class IRFactory {
         List<AbstractObjectProperty> elems = node.getElements();
         Node object = new Node(Token.OBJECTLIT);
         object.setLineColumnNumber(node.getLineno(), node.getColumn());
-        Object[] properties;
-        if (elems.isEmpty()) {
-            properties = ScriptRuntime.emptyArgs;
-        } else {
-            int size = elems.size(), i = 0;
-            properties = new Object[size];
+        object.addChildToBack(new Node(Token.EMPTY_OBJECT));
+        Node accumulator = new Node(Token.RESULT_ACCUMULATOR);
+        object.addChildToBack(accumulator);
+        var builder = new ObjectLiteralDescriptor.Builder();
+        if (!elems.isEmpty()) {
             for (AbstractObjectProperty abstractProp : elems) {
                 if (abstractProp instanceof SpreadObjectProperty) {
+                    builder.addSpread();
                     SpreadObjectProperty spreadObjectProperty = (SpreadObjectProperty) abstractProp;
                     var transformedSpreadNode = transform(spreadObjectProperty.getSpreadNode());
-                    properties[i++] = transformedSpreadNode;
-                    object.putIntProp(
-                            Node.NUMBER_OF_SPREAD, object.getIntProp(Node.NUMBER_OF_SPREAD, 0) + 1);
-                    object.addChildToBack(transformedSpreadNode);
+                    var spreadAccumulator =
+                            new Node(
+                                    Token.ACCUMULATE_KEYVALUES,
+                                    transformedSpreadNode.getFirstChild());
+                    object.addChildToBack(spreadAccumulator);
                 } else {
                     ObjectProperty prop = (ObjectProperty) abstractProp;
                     Object propKey = Parser.getPropKey(prop.getKey());
                     Node inferrableName = null;
+                    boolean computed = false;
+                    Object literalKey = null;
                     if (propKey == null) {
                         Node theId = transform(prop.getKey());
-                        properties[i++] = theId;
+                        computed = true;
+                        object.addChildToBack(
+                                new Node(
+                                        Token.ACCUMULATE_RESULT,
+                                        new Node(Token.TO_PROPKEY, theId.getFirstChild())));
                     } else {
-                        properties[i++] = propKey;
                         assert propKey instanceof String || propKey instanceof Integer;
                         inferrableName = parser.createName(Objects.toString(propKey));
                         inferrableName.setLineColumnNumber(
                                 prop.getKey().getLineno(), prop.getKey().getColumn());
+                        literalKey = propKey;
                     }
 
                     Node right = transform(prop.getValue());
@@ -1027,21 +1030,47 @@ public final class IRFactory {
                                 right,
                                 prop.isGetterMethod()
                                         ? "get "
-                                        : prop.isSetterMethod() ? "set " : null);
+                                        : prop.isSetterMethod() ? "set " : null,
+                                prop.isNormalMethod());
                     }
-
+                    boolean rightIsFunction = right.getType() == Token.FUNCTION;
+                    right = new Node(Token.ACCUMULATE_RESULT, right);
                     if (prop.isGetterMethod()) {
-                        right = createUnary(Token.GET, right);
+                        if (computed) {
+                            builder.addComputedGetter();
+                        } else {
+                            builder.addGetter(literalKey);
+                        }
                     } else if (prop.isSetterMethod()) {
-                        right = createUnary(Token.SET, right);
-                    } else if (prop.isNormalMethod()) {
-                        right = createUnary(Token.METHOD, right);
+                        if (computed) {
+                            builder.addComputedSetter();
+                        } else {
+                            builder.addSetter(literalKey);
+                        }
+                    } else if (prop.isNormalMethod() || rightIsFunction) {
+                        if (computed) {
+                            builder.addComputedMethod();
+                        } else {
+                            builder.addLiteralKey(literalKey);
+                        }
+                    } else {
+                        if (computed) {
+                            if (right.getType() == Token.FUNCTION) {
+                                builder.addComputedMethod();
+                            } else {
+                                builder.addComputedKey();
+                            }
+                        } else {
+                            builder.addLiteralKey(literalKey);
+                        }
                     }
                     object.addChildToBack(right);
                 }
             }
         }
-        object.putProp(Node.OBJECT_IDS_PROP, properties);
+        accumulator.putIntProp(Node.RESULTS_SIZE_PROP, builder.getSize());
+        object.putIntProp(
+                Node.LITERAL_INDEX_PROP, parser.currentScriptOrFn.addLiteral(builder.build()));
         return object;
     }
 
@@ -1387,7 +1416,7 @@ public final class IRFactory {
                     }
                 }
             } else {
-                inferNameIfMissing(left, right, null);
+                inferNameIfMissing(left, right, null, false);
                 if (right != null) {
                     left.addChildToBack(right);
                 }
@@ -2567,14 +2596,15 @@ public final class IRFactory {
     }
 
     /** Infer function name is missing on rhs. In the future, should also handle class names. */
-    private void inferNameIfMissing(Object left, Node right, String prefix) {
+    private void inferNameIfMissing(
+            Object left, Node right, String prefix, boolean methodDeclaration) {
         if (parser.compilerEnv.getLanguageVersion() < Context.VERSION_ES6) {
             return;
         }
 
         if (left instanceof Name && right != null && right.type == Token.FUNCTION) {
             Name name = (Name) left;
-            if (name.getIdentifier().equals(NativeObject.PROTO_PROPERTY)) {
+            if (!methodDeclaration && name.getIdentifier().equals(NativeObject.PROTO_PROPERTY)) {
                 // Ignore weird edge case
                 return;
             }
