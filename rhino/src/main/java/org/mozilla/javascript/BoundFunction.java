@@ -72,7 +72,7 @@ public class BoundFunction extends BaseFunction {
         }
         if (targetFunction instanceof Constructable) {
             return ((Constructable) targetFunction)
-                .construct(cx, nt, scope, concat(boundArgs, extraArgs));
+                    .construct(cx, nt, scope, concat(boundArgs, extraArgs));
         }
         throw ScriptRuntime.typeErrorById("msg.not.ctor");
     }

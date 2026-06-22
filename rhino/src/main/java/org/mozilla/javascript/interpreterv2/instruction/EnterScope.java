@@ -7,8 +7,7 @@ import org.mozilla.javascript.LocalScope;
 public class EnterScope extends Instruction {
     public static EnterScope instance = new EnterScope();
 
-    private EnterScope() {
-    }
+    private EnterScope() {}
 
     @Override
     public void interpret(Context cx, CallFrameV2 frame) {

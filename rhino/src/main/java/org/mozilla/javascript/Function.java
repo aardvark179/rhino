@@ -37,9 +37,8 @@ public interface Function extends Scriptable, Callable, Constructable {
      * <p>This method is invoked by the runtime in order to satisfy a use of the JavaScript {@code
      * new} operator. This method is expected to create a new object and return it.
      *
-     * If nt is equal to this then this call is equivalent `new
-     * f(...arguments), but reflection and super constructor calls may
-     * pass in different values.
+     * <p>If nt is equal to this then this call is equivalent `new f(...arguments), but reflection
+     * and super constructor calls may pass in different values.
      *
      * @param cx the current Context for this thread
      * @param nt the new.target for this call,

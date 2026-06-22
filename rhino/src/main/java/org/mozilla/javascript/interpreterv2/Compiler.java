@@ -403,7 +403,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     // present here at statement level, they must only be present as expressions.
 
                     if (fnType == FunctionNode.FUNCTION_EXPRESSION_STATEMENT
-                        || fnType == FunctionNode.FUNCTION_BLOCK_SCOPED) {
+                            || fnType == FunctionNode.FUNCTION_BLOCK_SCOPED) {
                         addInstruction(new ClosureStatement(fnIndex));
                     } else {
                         if (fnType != FunctionNode.FUNCTION_STATEMENT) {
@@ -753,7 +753,8 @@ public class Compiler<T extends ScriptOrFn<T>> {
         int i = 0;
         while (child != null) {
             visitExpression(child, 0);
-            addInstruction(new SetName(PeekOperand.instance, (String) names[i], PopOperand.instance));
+            addInstruction(
+                    new SetName(PeekOperand.instance, (String) names[i], PopOperand.instance));
             addInstruction(Pop.instance);
             child = child.getNext();
             i++;

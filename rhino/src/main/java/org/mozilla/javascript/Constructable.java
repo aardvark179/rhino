@@ -22,9 +22,8 @@ public interface Constructable {
     /**
      * Call the function as a constructor.
      *
-     * If nt is equal to this then this call is equivalent `new
-     * f(...arguments), but reflection and super constructor calls may
-     * pass in different values.
+     * <p>If nt is equal to this then this call is equivalent `new f(...arguments), but reflection
+     * and super constructor calls may pass in different values.
      *
      * @param cx the current Context for this thread
      * @param nt the new.target for this call,
