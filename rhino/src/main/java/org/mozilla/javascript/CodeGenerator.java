@@ -8,7 +8,6 @@ package org.mozilla.javascript;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -1586,96 +1585,28 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
         }
     }
 
-    private void visitObjectLiteralWithSpread(
-            Node node, Node child, Object[] propertyIds, int count) {
-        addIcode(Icode.REG_IND4);
-        addInt(-count - 1); // -1 to enforce it's negative even for {...x}
-        addIcode(Icode.LITERAL_NEW_OBJECT);
-        addUint8(0); // unused
-        stackChange(+2);
-
-        int i = 0;
-        while (child != null) {
-            Object propertyId = propertyIds == null ? null : propertyIds[i];
-
-            if (propertyId instanceof Node) {
-                // Might be a node of type Token.COMPUTED_PROPERTY wrapping the actual expression,
-                // or a spread node.
-                Node propNode = (Node) propertyId;
-                visitExpression(propNode.getFirstChild(), 0);
-
-                if (((Node) propertyId).type == Token.DOTDOTDOT) {
-                    // It's actually a spread! We need to do a "continue" to avoid setting it as key
-                    addIcode(Icode.SPREAD);
-                    // Always emit a 2-byte operand so Icode.SPREAD is fixed-width (3 bytes).
-                    // Object-literal spread never uses sourcePositions, so emit 0.
-                    addUint16(0);
-                    stackChange(-1);
-                    child = child.getNext();
-                    i++;
-                    continue;
-                }
-            } else if (propertyId instanceof String) {
-                addStringOp(Token.STRING, (String) propertyId);
-                stackChange(1);
-            } else if (propertyId instanceof Integer) {
-                addNumber((Integer) propertyId);
-            } else {
-                throw badTree(node);
-            }
-            addIcode(Icode.LITERAL_KEY_SET);
-            stackChange(-1);
-            // Value
-            visitLiteralValue(child);
-            child = child.getNext();
-            i++;
-        }
-
-        addToken(Token.OBJECTLIT);
-        stackChange(-1);
-    }
-
     private void visitObjectLiteral(Node node, Node child) {
-        Object[] propertyIds = (Object[]) node.getProp(Node.OBJECT_IDS_PROP);
-        int count = propertyIds == null ? 0 : propertyIds.length;
-
-        int numberOfSpread = node.getIntProp(Node.NUMBER_OF_SPREAD, 0);
-        if (numberOfSpread > 0) {
-            visitObjectLiteralWithSpread(node, child, propertyIds, count - numberOfSpread);
-            return;
+        int count = 0;
+        for (Node n = child; n != null; n = n.getNext()) {
+            ++count;
         }
 
-        boolean hasAnyComputedProperty =
-                propertyIds != null
-                        && Arrays.stream(propertyIds).anyMatch(id -> id instanceof Node);
-        int nextLiteralIndex = literalIds.size();
-        literalIds.add(propertyIds);
+        addIndexOp(Icode.RESULT_ACCUMULATOR, count);
+        stackChange(1);
 
-        addIndexOp(Icode.LITERAL_NEW_OBJECT, nextLiteralIndex);
-        addUint8(hasAnyComputedProperty ? 1 : 0);
-        stackChange(2);
-
-        int i = 0;
         while (child != null) {
-            // Computed key
-            Object propertyId = propertyIds == null ? null : propertyIds[i];
-            if (propertyId instanceof Node) {
-                // Will be a node of type Token.COMPUTED_PROPERTY wrapping the actual expression
-                Node computedPropertyNode = (Node) propertyId;
-                visitExpression(computedPropertyNode.first, 0);
-                addIcode(Icode.LITERAL_KEY_SET);
-                stackChange(-1);
+            if (child.getType() == Token.DOTDOTDOT) {
+                visitExpression(child.getFirstChild(), 0);
+                addIcode(Icode.ACCUMULATE_KEYVALUES);
+            } else {
+                visitExpression(child, 0);
+                addIcode(Icode.ACCUMULATE_RESULT);
             }
-
-            // Value
-            visitLiteralValue(child);
+            stackChange(-1);
             child = child.getNext();
-            i++;
         }
 
-        addToken(Token.OBJECTLIT);
-
-        stackChange(-1);
+        addIndexOp(Icode.MAKE_OBJECT, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
     }
 
     private void visitArrayLiteral(Node node, Node child) {

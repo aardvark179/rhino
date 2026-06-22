@@ -997,6 +997,7 @@ public final class IRFactory {
         Node object = new Node(Token.OBJECTLIT);
         object.setLineColumnNumber(node.getLineno(), node.getColumn());
         Object[] properties;
+        var builder = new ObjectLiteralDescriptor.Builder();
         if (elems.isEmpty()) {
             properties = ScriptRuntime.emptyArgs;
         } else {
@@ -1004,6 +1005,7 @@ public final class IRFactory {
             properties = new Object[size];
             for (AbstractObjectProperty abstractProp : elems) {
                 if (abstractProp instanceof SpreadObjectProperty) {
+                    builder.addSpread();
                     SpreadObjectProperty spreadObjectProperty = (SpreadObjectProperty) abstractProp;
                     var transformedSpreadNode = transform(spreadObjectProperty.getSpreadNode());
                     properties[i++] = transformedSpreadNode;
@@ -1014,15 +1016,20 @@ public final class IRFactory {
                     ObjectProperty prop = (ObjectProperty) abstractProp;
                     Object propKey = Parser.getPropKey(prop.getKey());
                     Node inferrableName = null;
+                    boolean computed = false;
+                    Object literalKey = null;
                     if (propKey == null) {
                         Node theId = transform(prop.getKey());
                         properties[i++] = theId;
+                        computed = true;
+                        object.addChildToBack(theId.getFirstChild());
                     } else {
                         properties[i++] = propKey;
                         assert propKey instanceof String || propKey instanceof Integer;
                         inferrableName = parser.createName(Objects.toString(propKey));
                         inferrableName.setLineColumnNumber(
                                 prop.getKey().getLineno(), prop.getKey().getColumn());
+                        literalKey = propKey;
                     }
 
                     Node right = transform(prop.getValue());
@@ -1036,16 +1043,44 @@ public final class IRFactory {
                     }
 
                     if (prop.isGetterMethod()) {
+                        if (computed) {
+                            builder.addComputedGetter();
+                        } else {
+                            builder.addGetter(literalKey);
+                        }
                         right = createUnary(Token.GET, right);
                     } else if (prop.isSetterMethod()) {
+                        if (computed) {
+                            builder.addComputedSetter();
+                        } else {
+                            builder.addSetter(literalKey);
+                        }
                         right = createUnary(Token.SET, right);
+                        if (computed) {
+                            builder.addComputedKey();
+                        } else {
+                            builder.addLiteralKey(literalKey);
+                        }
                     } else if (prop.isNormalMethod()) {
+                        if (computed) {
+                            builder.addComputedKey();
+                        } else {
+                            builder.addLiteralKey(literalKey);
+                        }
                         right = createUnary(Token.METHOD, right);
+                    } else {
+                        if (computed) {
+                            builder.addComputedKey();
+                        } else {
+                            builder.addLiteralKey(literalKey);
+                        }
                     }
                     object.addChildToBack(right);
                 }
             }
         }
+        object.putIntProp(
+                Node.LITERAL_INDEX_PROP, parser.currentScriptOrFn.addLiteral(builder.build()));
         object.putProp(Node.OBJECT_IDS_PROP, properties);
         return object;
     }

@@ -2730,6 +2730,7 @@ public class ScriptRuntime {
                 results.addResult(value);
             }
         }
+        results.addResult(ObjectLiteralDescriptor.SPREAD_END);
     }
 
     private static Object getPropertyById(Scriptable src, Object id) {
