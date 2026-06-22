@@ -3372,7 +3372,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
             frame.scope = new LocalScope(frame.scope);
-            frame.stack[++state.stackTop] = frame.scope;
+            frame.stack[++frame.stackTop] = frame.scope;
             return null;
         }
     }
