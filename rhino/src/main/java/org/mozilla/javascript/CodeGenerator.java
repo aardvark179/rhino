@@ -573,16 +573,16 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
         Object[] names = (Object[]) node.getProp(Node.OBJECT_IDS_PROP);
         int i = 0;
         while (child != null) {
-            addIcode(Icode_DUP);
+            addIcode(Icode.DUP);
             stackChange(1);
             visitExpression(child, 0);
             addStringOp(Token.SETNAME, (String) names[i]);
-            addIcode(Icode_POP);
+            addIcode(Icode.POP);
             stackChange(-2);
             child = child.getNext();
             i++;
         }
-        addIcode(Icode_POP);
+        addIcode(Icode.POP);
         stackChange(-1);
     }
 
