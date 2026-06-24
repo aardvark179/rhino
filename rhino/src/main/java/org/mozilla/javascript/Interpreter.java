@@ -787,6 +787,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Token.OBJECTLIT] = new DoObjectLit();
         instructionObjs[base + Token.ARRAYLIT] = new DoArrayLiteral();
         instructionObjs[base + Icode.SPARE_ARRAYLIT] = new DoArrayLiteral();
+        instructionObjs[base + Icode.EMPTY_OBJECT] = new DoEmptyObject();
         instructionObjs[base + Icode.RESULT_ACCUMULATOR] = new DoResultAccumulattor();
         instructionObjs[base + Icode.ACCUMULATE_RESULT] = new DoAccumulateResult();
         instructionObjs[base + Icode.ACCUMULATE_ITERATOR] = new DoAccumulateIterator();
@@ -3847,6 +3848,15 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         }
     }
 
+    private static class DoEmptyObject extends InstructionClass {
+
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            frame.stack[++frame.stackTop] = cx.newObject(frame.scope);
+            return null;
+        }
+    }
+
     private static class DoResultAccumulattor extends InstructionClass {
 
         @Override
@@ -3901,8 +3911,9 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             var desc =
                     (ObjectLiteralDescriptor)
                             frame.fnOrScript.getDescriptor().getLiteral(state.indexReg);
-            var results = (ResultAccumulator) frame.stack[frame.stackTop];
-            frame.stack[frame.stackTop] = desc.createObject(cx, frame.scope, results.getResults());
+            var results = (ResultAccumulator) frame.stack[frame.stackTop--];
+            var obj = (Scriptable) frame.stack[frame.stackTop];
+            frame.stack[frame.stackTop] = desc.createObject(cx, frame.scope, obj, results.getResults());
             return null;
         }
     }

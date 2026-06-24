@@ -1048,18 +1048,11 @@ public final class IRFactory {
                         } else {
                             builder.addGetter(literalKey);
                         }
-                        right = createUnary(Token.GET, right);
                     } else if (prop.isSetterMethod()) {
                         if (computed) {
                             builder.addComputedSetter();
                         } else {
                             builder.addSetter(literalKey);
-                        }
-                        right = createUnary(Token.SET, right);
-                        if (computed) {
-                            builder.addComputedKey();
-                        } else {
-                            builder.addLiteralKey(literalKey);
                         }
                     } else if (prop.isNormalMethod()) {
                         if (computed) {
@@ -1067,7 +1060,6 @@ public final class IRFactory {
                         } else {
                             builder.addLiteralKey(literalKey);
                         }
-                        right = createUnary(Token.METHOD, right);
                     } else {
                         if (computed) {
                             builder.addComputedKey();

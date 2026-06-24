@@ -1591,6 +1591,8 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
             ++count;
         }
 
+        addIcode(Icode.EMPTY_OBJECT);
+        stackChange(1);
         addIndexOp(Icode.RESULT_ACCUMULATOR, count);
         stackChange(1);
 
@@ -1607,6 +1609,7 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
         }
 
         addIndexOp(Icode.MAKE_OBJECT, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
+        stackChange(-1);
     }
 
     private void visitArrayLiteral(Node node, Node child) {
