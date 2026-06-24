@@ -10,6 +10,9 @@ import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+
+import javax.print.DocFlavor.BYTE_ARRAY;
+
 import org.mozilla.classfile.ByteCode;
 import org.mozilla.classfile.ClassFileWriter;
 import org.mozilla.javascript.CompilerEnvirons;
@@ -2277,12 +2280,6 @@ class BodyCodegen {
     }
 
     private void visitArrayLiteral(Node node, Node child, boolean topLevel) {
-        int numberOfSpread = node.getIntProp(Node.NUMBER_OF_SPREAD, 0);
-        if (numberOfSpread > 0) {
-            visitArrayLiteralWithSpread(node, child, numberOfSpread);
-            return;
-        }
-
         int count = countArguments(child);
 
         // If code budget is tight swap out literals into separate method
@@ -2295,8 +2292,7 @@ class BodyCodegen {
                 literals = new ArrayList<>();
             }
             literals.add(node);
-            String methodName =
-                    codegen.getBodyMethodName(scriptOrFn) + "_literal" + literals.size();
+            String methodName = codegen.getBodyMethodName(scriptOrFn) + "_literal" + literals.size();
             cfw.addALoad(contextLocal);
             cfw.addALoad(funObjLocal);
             cfw.addALoad(newTargetLocal);
@@ -2316,171 +2312,67 @@ class BodyCodegen {
                             + ")Lorg/mozilla/javascript/Scriptable;");
             return;
         }
+        // make a new result accumlator
+        cfw.add(ByteCode.NEW, "org/mozilla/javascript/ResultAccumulator");
+        cfw.add(ByteCode.DUP);
+        cfw.addLoadConstant(count);
+        cfw.addInvoke(ByteCode.INVOKESPECIAL,
+            "org/mozilla/javascript/ResultAccumulator",
+            "<init>",
+            "(I)V");
 
-        // load array to store array literal objects
-        if (isGenerator) {
-            // TODO: this is actually only necessary if the yield operation is
-            // a child of this array or its children (bug 757410)
-            for (int i = 0; i != count; ++i) {
-                generateExpression(child, node);
-                child = child.getNext();
-            }
-            addNewObjectArray(count);
-            for (int i = 0; i != count; ++i) {
-                cfw.add(ByteCode.DUP_X1);
-                cfw.add(ByteCode.SWAP);
-                cfw.addPush(count - i - 1);
-                cfw.add(ByteCode.SWAP);
-                cfw.add(ByteCode.AASTORE);
-            }
-        } else {
-            addNewObjectArray(count);
-            for (int i = 0; i != count; ++i) {
-                cfw.add(ByteCode.DUP);
-                cfw.addPush(i);
-                generateExpression(child, node);
-                cfw.add(ByteCode.AASTORE);
-                child = child.getNext();
-            }
-        }
-        int[] skipIndexes = (int[]) node.getProp(Node.SKIP_INDEXES_PROP);
-        if (skipIndexes == null) {
-            cfw.add(ByteCode.ACONST_NULL);
-            cfw.add(ByteCode.ICONST_0);
-        } else {
-            cfw.addPush(OptRuntime.encodeIntArray(skipIndexes));
-            cfw.addPush(skipIndexes.length);
-        }
-        cfw.addALoad(contextLocal);
-        cfw.addALoad(variableObjectLocal);
-        addOptRuntimeInvoke(
-                "newArrayLiteral",
-                "([Ljava/lang/Object;"
-                        + "Ljava/lang/String;"
-                        + "I"
-                        + "Lorg/mozilla/javascript/Context;"
-                        + "Lorg/mozilla/javascript/VarScope;"
-                        + ")Lorg/mozilla/javascript/Scriptable;");
-    }
-
-    private void visitArrayLiteralWithSpread(Node node, Node child, int numberOfSpread) {
-        int count = countArguments(child);
-        int[] skipIndexes = (int[]) node.getProp(Node.SKIP_INDEXES_PROP);
-
-        // compute source positions if we have skip indexes
-        int[] sourcePositions = null;
-        if (skipIndexes != null) {
-            sourcePositions = new int[count];
-            int sourcePos = 0;
-            int skipIdx = 0;
-            for (int i = 0; i < count; i++) {
-                while (skipIdx < skipIndexes.length && skipIndexes[skipIdx] == sourcePos) {
-                    sourcePos++;
-                    skipIdx++;
-                }
-                sourcePositions[i] = sourcePos;
-                sourcePos++;
-            }
-        }
-
-        // Create NewLiteralStorage for the array
-        cfw.addALoad(contextLocal);
-        cfw.addLoadConstant(count - numberOfSpread);
-        cfw.addLoadConstant(0); // createKeys = false for arrays
-        cfw.addInvoke(
-                ByteCode.INVOKESTATIC,
-                "org/mozilla/javascript/NewLiteralStorage",
-                "create",
-                "(Lorg/mozilla/javascript/Context;IZ)Lorg/mozilla/javascript/NewLiteralStorage;");
-
-        // Set skip indexes if present
-        if (skipIndexes != null) {
-            cfw.add(ByteCode.DUP);
-            cfw.addLoadConstant(skipIndexes.length);
-            cfw.add(ByteCode.NEWARRAY, ByteCode.T_INT);
-            for (int i = 0; i < skipIndexes.length; i++) {
-                cfw.add(ByteCode.DUP);
-                cfw.addLoadConstant(i);
-                cfw.addLoadConstant(skipIndexes[i]);
-                cfw.add(ByteCode.IASTORE);
-            }
-            cfw.addInvoke(
-                    ByteCode.INVOKEVIRTUAL,
-                    "org/mozilla/javascript/NewLiteralStorage",
-                    "setSkipIndexes",
-                    "([I)V");
-        }
-
-        // Process each element
-        int childIdx = 0;
         while (child != null) {
             if (child.getType() == Token.DOTDOTDOT) {
-                // Handle spread element: push the expression and call spread
                 cfw.add(ByteCode.DUP);
+                generateExpression(child.getFirstChild(), child);
+                cfw.add(ByteCode.SWAP);
+                cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
                 cfw.addALoad(contextLocal);
                 cfw.addALoad(variableObjectLocal);
-                generateExpression(child.getFirstChild(), node);
-                // Push source position (0 if no skip indexes)
-                if (skipIndexes != null) {
-                    cfw.addLoadConstant(sourcePositions[childIdx]);
-                } else {
-                    cfw.addLoadConstant(0);
-                }
-                cfw.addInvoke(
-                        ByteCode.INVOKEVIRTUAL,
-                        "org/mozilla/javascript/NewLiteralStorage",
-                        "spread",
-                        "(Lorg/mozilla/javascript/Context;"
-                                + "Lorg/mozilla/javascript/VarScope;"
-                                + "Ljava/lang/Object;"
-                                + "I"
-                                + ")V");
-            } else {
-                // Handle regular element: push the value
-                cfw.add(ByteCode.DUP);
-                generateExpression(child, node);
-                cfw.addInvoke(
-                        ByteCode.INVOKEVIRTUAL,
-                        "org/mozilla/javascript/NewLiteralStorage",
-                        "pushValue",
-                        "(Ljava/lang/Object;)V");
-            }
-            child = child.getNext();
-            childIdx++;
-        }
-
-        // Convert NewLiteralStorage to array
-        int storageLocal = getNewWordLocal();
-        cfw.addAStore(storageLocal);
-        cfw.addALoad(storageLocal);
-        cfw.addInvoke(
-                ByteCode.INVOKEVIRTUAL,
-                "org/mozilla/javascript/NewLiteralStorage",
-                "getValues",
-                "()[Ljava/lang/Object;");
-
-        // Get adjusted skip indexes
-        if (skipIndexes != null) {
-            cfw.addALoad(storageLocal);
-            cfw.addInvoke(
-                    ByteCode.INVOKEVIRTUAL,
-                    "org/mozilla/javascript/NewLiteralStorage",
-                    "getAdjustedSkipIndexes",
-                    "()[I");
-        } else {
-            cfw.add(ByteCode.ACONST_NULL); // skipIndexes
-        }
-        releaseWordLocal((short) storageLocal);
-
-        cfw.addALoad(contextLocal);
-        cfw.addALoad(variableObjectLocal);
-        addOptRuntimeInvoke(
-                "newArrayLiteral",
-                "([Ljava/lang/Object;"
-                        + "[I"
+                addOptRuntimeInvoke("accumulateIterator",
+                        "("
+                        + "Ljava/lang/Object;"
+                        + "Lorg/mozilla/javascript/ResultAccumulator;"
                         + "Lorg/mozilla/javascript/Context;"
                         + "Lorg/mozilla/javascript/VarScope;"
-                        + ")Lorg/mozilla/javascript/Scriptable;");
+                        + ")V");
+            } else {
+                cfw.add(ByteCode.DUP);
+                generateExpression(child, node);
+                cfw.add(ByteCode.SWAP);
+                cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
+                cfw.add(ByteCode.SWAP);
+                cfw.addInvoke(ByteCode.INVOKEVIRTUAL,
+                    "org/mozilla/javascript/ResultAccumulator",
+                    "addResult",
+                    "(Ljava/lang/Object;)V");
+            }
+            child = child.getNext();
+        }
+        var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
+        pushDescriptor();
+        cfw.addPush(index);
+        cfw.addInvoke(
+            ByteCode.INVOKEVIRTUAL,
+            "org/mozilla/javascript/JSDescriptor",
+            "getLiteral",
+            "(I)Ljava/lang/Object;");
+        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ArrayLiteralDescriptor");
+        cfw.add(ByteCode.SWAP);
+        cfw.addALoad(contextLocal);
+        cfw.add(ByteCode.SWAP);
+        cfw.addALoad(variableObjectLocal);
+        cfw.add(ByteCode.SWAP);
+        cfw.addInvoke(
+            ByteCode.INVOKEVIRTUAL,
+                "org/mozilla/javascript/ArrayLiteralDescriptor",
+            "createArray",
+            "("
+            + "Lorg/mozilla/javascript/Context;"
+            + "Lorg/mozilla/javascript/VarScope;"
+            + "Lorg/mozilla/javascript/ResultAccumulator;"
+            + ")Lorg/mozilla/javascript/Scriptable;");
+
     }
 
     /** load two arrays with property ids and values */

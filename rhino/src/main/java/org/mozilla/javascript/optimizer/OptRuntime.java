@@ -14,6 +14,7 @@ import org.mozilla.javascript.JavaScriptException;
 import org.mozilla.javascript.NativeGenerator;
 import org.mozilla.javascript.NativeIterator;
 import org.mozilla.javascript.NewLiteralStorage;
+import org.mozilla.javascript.ResultAccumulator;
 import org.mozilla.javascript.Script;
 import org.mozilla.javascript.ScriptRuntime;
 import org.mozilla.javascript.Scriptable;
@@ -324,6 +325,11 @@ public final class OptRuntime extends ScriptRuntime {
             Object source,
             int sourcePosition) {
         store.spread(cx, scope, source, sourcePosition);
+    }
+
+    public static void accumulateIterator(
+            Object source, ResultAccumulator results, Context cx, VarScope scope) {
+        ScriptRuntime.accumulateIteratorValues(cx, scope, results, source);
     }
 
     public static class GeneratorState {
