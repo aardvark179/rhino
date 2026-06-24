@@ -84,7 +84,7 @@ abstract class Icode {
             SPARE_ARRAYLIT = LITERAL_SET - 1,
 
             // New object literal bytecodes.
-            EMPTY_OBJECT = SPARE_ARRAYLIT -1,
+            EMPTY_OBJECT = SPARE_ARRAYLIT - 1,
             RESULT_ACCUMULATOR = EMPTY_OBJECT - 1,
             ACCUMULATE_RESULT = RESULT_ACCUMULATOR - 1,
             ACCUMULATE_ITERATOR = ACCUMULATE_RESULT - 1,

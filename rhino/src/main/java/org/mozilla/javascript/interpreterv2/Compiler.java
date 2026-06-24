@@ -1,7 +1,6 @@
 package org.mozilla.javascript.interpreterv2;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -25,9 +24,10 @@ import org.mozilla.javascript.ast.RegExpLiteral;
 import org.mozilla.javascript.ast.ScriptNode;
 import org.mozilla.javascript.ast.TemplateCharacters;
 import org.mozilla.javascript.ast.TemplateLiteral;
+import org.mozilla.javascript.interpreterv2.instruction.AccumulateIterator;
+import org.mozilla.javascript.interpreterv2.instruction.AccumulateKeyValues;
+import org.mozilla.javascript.interpreterv2.instruction.AccumulateResult;
 import org.mozilla.javascript.interpreterv2.instruction.Add;
-import org.mozilla.javascript.interpreterv2.instruction.ArrayLit;
-import org.mozilla.javascript.interpreterv2.instruction.ArrayLitWithSpread;
 import org.mozilla.javascript.interpreterv2.instruction.BigInt;
 import org.mozilla.javascript.interpreterv2.instruction.BindName;
 import org.mozilla.javascript.interpreterv2.instruction.BitAnd;
@@ -50,6 +50,7 @@ import org.mozilla.javascript.interpreterv2.instruction.Dup;
 import org.mozilla.javascript.interpreterv2.instruction.ElemAndThis;
 import org.mozilla.javascript.interpreterv2.instruction.ElemAndThisOptional;
 import org.mozilla.javascript.interpreterv2.instruction.ElemIncDec;
+import org.mozilla.javascript.interpreterv2.instruction.EmptyObject;
 import org.mozilla.javascript.interpreterv2.instruction.EndFinally;
 import org.mozilla.javascript.interpreterv2.instruction.EnterDotQuery;
 import org.mozilla.javascript.interpreterv2.instruction.EnterScope;
@@ -93,6 +94,8 @@ import org.mozilla.javascript.interpreterv2.instruction.LitSpread;
 import org.mozilla.javascript.interpreterv2.instruction.Literal;
 import org.mozilla.javascript.interpreterv2.instruction.LocalClear;
 import org.mozilla.javascript.interpreterv2.instruction.LocalLoad;
+import org.mozilla.javascript.interpreterv2.instruction.MakeArray;
+import org.mozilla.javascript.interpreterv2.instruction.MakeObject;
 import org.mozilla.javascript.interpreterv2.instruction.Mod;
 import org.mozilla.javascript.interpreterv2.instruction.Multiply;
 import org.mozilla.javascript.interpreterv2.instruction.Name;
@@ -124,6 +127,7 @@ import org.mozilla.javascript.interpreterv2.instruction.RefNsMember;
 import org.mozilla.javascript.interpreterv2.instruction.RefNsName;
 import org.mozilla.javascript.interpreterv2.instruction.RefSpecial;
 import org.mozilla.javascript.interpreterv2.instruction.Regexp;
+import org.mozilla.javascript.interpreterv2.instruction.ResultAccumulatorInstruction;
 import org.mozilla.javascript.interpreterv2.instruction.Rethrow;
 import org.mozilla.javascript.interpreterv2.instruction.Return;
 import org.mozilla.javascript.interpreterv2.instruction.ReturnResult;
@@ -758,7 +762,11 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     Operand lexThisOp;
                     Operand homeObjOp;
                     Operand newTargetOp;
-                    if (isArrow) {
+                    if (fn.isMethodDefinition()) {
+                        lexThisOp = NullOperand.instance;
+                        homeObjOp = new PeekOperand(-1);
+                        newTargetOp = UndefinedOperand.instance;
+                    } else if (isArrow) {
                         lexThisOp = ThisOperand.instance;
                         homeObjOp = HomeObjectOperand.instance;
                         newTargetOp = NewTargetOperand.instance;
@@ -770,9 +778,6 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     addInstruction(
                             ClosureExpression.createInstruction(
                                     fnIndex, lexThisOp, homeObjOp, newTargetOp));
-                    if (fn.isMethodDefinition()) {
-                        throw Kit.codeBug();
-                    }
                     return;
                 }
             case Token.LOCAL_LOAD:
@@ -1383,99 +1388,56 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 }
             case Token.ARRAYLIT:
                 {
-                    updateLineNumber(node);
-
-                    int[] skipIndices = (int[]) node.getProp(Node.SKIP_INDEXES_PROP);
-                    int numberOfSpread = node.getIntProp(Node.NUMBER_OF_SPREAD, 0);
-
-                    if (numberOfSpread > 0) {
-                        var elements = new ArrayList<Operand>();
-                        var spreadFlags = new ArrayList<Boolean>();
-                        var lines = new ArrayList<Integer>();
-                        while (child != null) {
-                            updateLineNumber(child);
-                            if (child.getType() == Token.DOTDOTDOT) {
-                                elements.add(getOperand(child.getFirstChild(), 0, false, lines));
-                                spreadFlags.add(Boolean.TRUE);
-                            } else {
-                                elements.add(getOperand(child, 0, false, lines));
-                                spreadFlags.add(Boolean.FALSE);
-                            }
-                            child = child.getNext();
-                        }
-
-                        int count = elements.size();
-                        boolean[] isSpread = new boolean[count];
-                        for (int i = 0; i < count; i++) {
-                            isSpread[i] = spreadFlags.get(i);
-                        }
-
-                        int[] sourcePositions = null;
-                        if (skipIndices != null) {
-                            sourcePositions = new int[count];
-                            int sourcePos = 0;
-                            int skipIdx = 0;
-                            for (int i = 0; i < count; i++) {
-                                while (skipIdx < skipIndices.length
-                                        && skipIndices[skipIdx] == sourcePos) {
-                                    sourcePos++;
-                                    skipIdx++;
-                                }
-                                sourcePositions[i] = sourcePos;
-                                sourcePos++;
-                            }
-                        }
-
-                        int nonSpreadCount = count - numberOfSpread;
-                        updateLineNumbers(lines);
-                        addInstruction(
-                                new ArrayLitWithSpread(
-                                        elements.toArray(Operand.EMPTY_ARRAY),
-                                        isSpread,
-                                        skipIndices,
-                                        sourcePositions,
-                                        nonSpreadCount));
-                        return;
+                    int count = 0;
+                    for (Node n = child; n != null; n = n.getNext()) {
+                        ++count;
                     }
+                    addInstruction(new ResultAccumulatorInstruction(count));
 
-                    var elements = new ArrayList<Operand>();
-                    var lines = new ArrayList<Integer>();
                     while (child != null) {
-                        elements.add(getOperand(child, 0, false, lines));
+                        if (child.getType() == Token.DOTDOTDOT) {
+                            visitExpression(child.getFirstChild(), 0);
+                            addInstruction(AccumulateIterator.instance);
+                        } else {
+                            visitExpression(child, 0);
+                            addInstruction(AccumulateResult.instance);
+                        }
                         child = child.getNext();
                     }
-
-                    updateLineNumbers(lines);
-                    updateLineNumber(node);
+                    var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
                     addInstruction(
-                            new ArrayLit(elements.toArray(Operand.EMPTY_ARRAY), skipIndices));
+                            new MakeArray(
+                                    new LiteralOperand(generateLiteral(index)),
+                                    PopOperand.instance));
                     return;
                 }
             case Token.OBJECTLIT:
                 {
-                    Object[] propertyIds = (Object[]) node.getProp(Node.OBJECT_IDS_PROP);
-                    int count = propertyIds == null ? 0 : propertyIds.length;
-                    int numberOfSpread = node.getIntProp(Node.NUMBER_OF_SPREAD, 0);
-                    int nonSpreadCount = count - numberOfSpread;
-                    boolean hasSpread = numberOfSpread > 0;
-                    boolean hasAnyComputedProperty =
-                            propertyIds != null
-                                    && Arrays.stream(propertyIds)
-                                            .anyMatch(
-                                                    id ->
-                                                            id instanceof Node
-                                                                    && ((Node) id).getType()
-                                                                            != Token.DOTDOTDOT);
-
-                    updateLineNumber(node);
-
-                    if (hasSpread) {
-                        emitObjectLiteralWithSpread(
-                                node, child, propertyIds, count, nonSpreadCount);
-                    } else {
-                        emitObjectLiteralNoSpread(
-                                node, child, propertyIds, count, hasAnyComputedProperty);
+                    int count = 0;
+                    for (Node n = child; n != null; n = n.getNext()) {
+                        ++count;
                     }
+
+                    addInstruction(EmptyObject.instance);
+                    addInstruction(new ResultAccumulatorInstruction(count));
+
+                    while (child != null) {
+                        if (child.getType() == Token.DOTDOTDOT) {
+                            visitExpression(child.getFirstChild(), 0);
+                            addInstruction(AccumulateKeyValues.instance);
+                        } else {
+                            visitExpression(child, 0);
+                            addInstruction(AccumulateResult.instance);
+                        }
+                        child = child.getNext();
+                    }
+
+                    var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
+                    addInstruction(
+                            new MakeObject(
+                                    new LiteralOperand(generateLiteral(index)),
+                                    PopOperand.instance,
+                                    PopOperand.instance));
                     return;
                 }
             case Token.ARRAYCOMP:

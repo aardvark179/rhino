@@ -3913,7 +3913,8 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                             frame.fnOrScript.getDescriptor().getLiteral(state.indexReg);
             var results = (ResultAccumulator) frame.stack[frame.stackTop--];
             var obj = (Scriptable) frame.stack[frame.stackTop];
-            frame.stack[frame.stackTop] = desc.createObject(cx, frame.scope, obj, results.getResults());
+            frame.stack[frame.stackTop] =
+                    desc.createObject(cx, frame.scope, obj, results.getResults());
             return null;
         }
     }

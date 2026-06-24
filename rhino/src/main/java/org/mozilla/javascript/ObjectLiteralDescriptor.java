@@ -28,7 +28,8 @@ public abstract class ObjectLiteralDescriptor {
     // SKIPPED indices need to be indicated in the list of ops, but
     // shouldn't be anything the interpreters need to worry about.
 
-    public abstract Scriptable createObject(Context cx, VarScope scope, Scriptable obj, Object[] values);
+    public abstract Scriptable createObject(
+            Context cx, VarScope scope, Scriptable obj, Object[] values);
 
     public void put(Scriptable obj, Object key, Object value) {
         if (key instanceof Symbol s) {
@@ -48,7 +49,8 @@ public abstract class ObjectLiteralDescriptor {
         }
 
         @Override
-        public Scriptable createObject(Context cx, VarScope scope, Scriptable obj, Object[] values) {
+        public Scriptable createObject(
+                Context cx, VarScope scope, Scriptable obj, Object[] values) {
             for (int i = 0; i < values.length; i++) {
                 put(obj, keys[i], values[i]);
             }
@@ -66,7 +68,8 @@ public abstract class ObjectLiteralDescriptor {
         }
 
         @Override
-        public Scriptable createObject(Context cx, VarScope scope, Scriptable obj, Object[] values) {
+        public Scriptable createObject(
+                Context cx, VarScope scope, Scriptable obj, Object[] values) {
             int v = 0;
             for (int k = 0; k < ops.length; k++) {
                 var key = ops[k] == COMPUTED_KEY ? values[v++] : ops[k];
@@ -109,12 +112,13 @@ public abstract class ObjectLiteralDescriptor {
         }
 
         @Override
-        public Scriptable createObject(Context cx, VarScope scope, Scriptable obj, Object[] values) {
+        public Scriptable createObject(
+                Context cx, VarScope scope, Scriptable obj, Object[] values) {
             int v = 0;
             for (int k = 0; k < ops.length; k++) {
                 var key = ops[k] == COMPUTED_KEY ? values[v++] : ops[k];
                 if (key instanceof AccessorEntry e) {
-                    v = processAccessor((ScriptableObject)obj, e, values, v);
+                    v = processAccessor((ScriptableObject) obj, e, values, v);
                 } else if (key instanceof SpreadEntry) {
                     while (values[v] != SPREAD_END) {
                         key = values[v++];
