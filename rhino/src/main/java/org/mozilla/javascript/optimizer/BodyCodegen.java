@@ -10,9 +10,6 @@ import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-
-import javax.print.DocFlavor.BYTE_ARRAY;
-
 import org.mozilla.classfile.ByteCode;
 import org.mozilla.classfile.ClassFileWriter;
 import org.mozilla.javascript.CompilerEnvirons;
@@ -2292,7 +2289,8 @@ class BodyCodegen {
                 literals = new ArrayList<>();
             }
             literals.add(node);
-            String methodName = codegen.getBodyMethodName(scriptOrFn) + "_literal" + literals.size();
+            String methodName =
+                    codegen.getBodyMethodName(scriptOrFn) + "_literal" + literals.size();
             cfw.addALoad(contextLocal);
             cfw.addALoad(funObjLocal);
             cfw.addALoad(newTargetLocal);
@@ -2316,10 +2314,11 @@ class BodyCodegen {
         cfw.add(ByteCode.NEW, "org/mozilla/javascript/ResultAccumulator");
         cfw.add(ByteCode.DUP);
         cfw.addLoadConstant(count);
-        cfw.addInvoke(ByteCode.INVOKESPECIAL,
-            "org/mozilla/javascript/ResultAccumulator",
-            "<init>",
-            "(I)V");
+        cfw.addInvoke(
+                ByteCode.INVOKESPECIAL,
+                "org/mozilla/javascript/ResultAccumulator",
+                "<init>",
+                "(I)V");
 
         while (child != null) {
             if (child.getType() == Token.DOTDOTDOT) {
@@ -2329,23 +2328,25 @@ class BodyCodegen {
                 cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
                 cfw.addALoad(contextLocal);
                 cfw.addALoad(variableObjectLocal);
-                addOptRuntimeInvoke("accumulateIterator",
+                addOptRuntimeInvoke(
+                        "accumulateIterator",
                         "("
-                        + "Ljava/lang/Object;"
-                        + "Lorg/mozilla/javascript/ResultAccumulator;"
-                        + "Lorg/mozilla/javascript/Context;"
-                        + "Lorg/mozilla/javascript/VarScope;"
-                        + ")V");
+                                + "Ljava/lang/Object;"
+                                + "Lorg/mozilla/javascript/ResultAccumulator;"
+                                + "Lorg/mozilla/javascript/Context;"
+                                + "Lorg/mozilla/javascript/VarScope;"
+                                + ")V");
             } else {
                 cfw.add(ByteCode.DUP);
                 generateExpression(child, node);
                 cfw.add(ByteCode.SWAP);
                 cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
                 cfw.add(ByteCode.SWAP);
-                cfw.addInvoke(ByteCode.INVOKEVIRTUAL,
-                    "org/mozilla/javascript/ResultAccumulator",
-                    "addResult",
-                    "(Ljava/lang/Object;)V");
+                cfw.addInvoke(
+                        ByteCode.INVOKEVIRTUAL,
+                        "org/mozilla/javascript/ResultAccumulator",
+                        "addResult",
+                        "(Ljava/lang/Object;)V");
             }
             child = child.getNext();
         }
@@ -2353,10 +2354,10 @@ class BodyCodegen {
         pushDescriptor();
         cfw.addPush(index);
         cfw.addInvoke(
-            ByteCode.INVOKEVIRTUAL,
-            "org/mozilla/javascript/JSDescriptor",
-            "getLiteral",
-            "(I)Ljava/lang/Object;");
+                ByteCode.INVOKEVIRTUAL,
+                "org/mozilla/javascript/JSDescriptor",
+                "getLiteral",
+                "(I)Ljava/lang/Object;");
         cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ArrayLiteralDescriptor");
         cfw.add(ByteCode.SWAP);
         cfw.addALoad(contextLocal);
@@ -2364,15 +2365,14 @@ class BodyCodegen {
         cfw.addALoad(variableObjectLocal);
         cfw.add(ByteCode.SWAP);
         cfw.addInvoke(
-            ByteCode.INVOKEVIRTUAL,
+                ByteCode.INVOKEVIRTUAL,
                 "org/mozilla/javascript/ArrayLiteralDescriptor",
-            "createArray",
-            "("
-            + "Lorg/mozilla/javascript/Context;"
-            + "Lorg/mozilla/javascript/VarScope;"
-            + "Lorg/mozilla/javascript/ResultAccumulator;"
-            + ")Lorg/mozilla/javascript/Scriptable;");
-
+                "createArray",
+                "("
+                        + "Lorg/mozilla/javascript/Context;"
+                        + "Lorg/mozilla/javascript/VarScope;"
+                        + "Lorg/mozilla/javascript/ResultAccumulator;"
+                        + ")Lorg/mozilla/javascript/Scriptable;");
     }
 
     /** load two arrays with property ids and values */
@@ -2580,47 +2580,79 @@ class BodyCodegen {
                 "newObject",
                 "(Lorg/mozilla/javascript/VarScope;)Lorg/mozilla/javascript/Scriptable;");
         cfw.add(ByteCode.DUP);
-        if (savedHomeObjectLocal == -1) {
-            savedHomeObjectLocal = getNewWordLocal();
-        }
         cfw.addAStore(savedHomeObjectLocal);
+        // make a new result accumlator
+        cfw.add(ByteCode.NEW, "org/mozilla/javascript/ResultAccumulator");
         cfw.add(ByteCode.DUP);
+        cfw.addLoadConstant(count);
+        cfw.addInvoke(
+                ByteCode.INVOKESPECIAL,
+                "org/mozilla/javascript/ResultAccumulator",
+                "<init>",
+                "(I)V");
 
-        addLoadProperties(node, child, properties, count);
-
-        // stack: [store]
-        cfw.add(ByteCode.DUP); // stack: [store, store]
+        while (child != null) {
+            if (child.getType() == Token.DOTDOTDOT) {
+                cfw.add(ByteCode.DUP);
+                generateExpression(child.getFirstChild(), child);
+                cfw.add(ByteCode.SWAP);
+                cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
+                cfw.addALoad(contextLocal);
+                cfw.addALoad(variableObjectLocal);
+                addOptRuntimeInvoke(
+                        "accumulatekeyvalues",
+                        "("
+                                + "Ljava/lang/Object;"
+                                + "Lorg/mozilla/javascript/ResultAccumulator;"
+                                + "Lorg/mozilla/javascript/Context;"
+                                + "Lorg/mozilla/javascript/VarScope;"
+                                + ")V");
+            } else {
+                cfw.add(ByteCode.DUP);
+                generateExpression(child, node);
+                cfw.add(ByteCode.SWAP);
+                cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
+                cfw.add(ByteCode.SWAP);
+                cfw.addInvoke(
+                        ByteCode.INVOKEVIRTUAL,
+                        "org/mozilla/javascript/ResultAccumulator",
+                        "addResult",
+                        "(Ljava/lang/Object;)V");
+            }
+            child = child.getNext();
+        }
+        var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
+        pushDescriptor();
+        cfw.addPush(index);
         cfw.addInvoke(
                 ByteCode.INVOKEVIRTUAL,
-                "org/mozilla/javascript/NewLiteralStorage",
-                "getKeys",
-                "()[Ljava/lang/Object;"); // stack: [store, keys]
-        cfw.add(ByteCode.SWAP); // stack: [keys, store]
-        cfw.add(ByteCode.DUP); // stack: [keys, store, store]
-        cfw.addInvoke(
-                ByteCode.INVOKEVIRTUAL,
-                "org/mozilla/javascript/NewLiteralStorage",
-                "getValues",
-                "()[Ljava/lang/Object;"); // stack: [keys, store, values]
-        cfw.add(ByteCode.SWAP); // stack: [keys, values, store]
-        cfw.addInvoke(
-                ByteCode.INVOKEVIRTUAL,
-                "org/mozilla/javascript/NewLiteralStorage",
-                "getGetterSetters",
-                "()[I"); // stack: [keys, values, getterSetters]
-
+                "org/mozilla/javascript/JSDescriptor",
+                "getLiteral",
+                "(I)Ljava/lang/Object;");
+        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ObjectLiteralDescriptor");
+        cfw.add(ByteCode.DUP_X2);
+        cfw.add(ByteCode.POP);
         cfw.addALoad(contextLocal);
+        cfw.add(ByteCode.DUP_X2);
+        cfw.add(ByteCode.POP);
         cfw.addALoad(variableObjectLocal);
-        addScriptRuntimeInvoke(
-                "fillObjectLiteral",
+        cfw.add(ByteCode.DUP_X2);
+        cfw.add(ByteCode.POP);
+        cfw.addInvoke(
+                ByteCode.INVOKEVIRTUAL,
+                "org/mozilla/javascript/ResultAccumulator",
+                "getResults",
+                "()[Ljava/lang/Object;");
+        cfw.addInvoke(
+                ByteCode.INVOKEVIRTUAL,
+                "org/mozilla/javascript/ObjectLiteralDescriptor",
+                "createObject",
                 "("
-                        + "Lorg/mozilla/javascript/Scriptable;"
-                        + "[Ljava/lang/Object;"
-                        + "[Ljava/lang/Object;"
-                        + "[I"
                         + "Lorg/mozilla/javascript/Context;"
                         + "Lorg/mozilla/javascript/VarScope;"
-                        + ")V");
+                        + "Lorg/mozilla/javascript/Scriptable;"
+                        + "[Ljava/lang/Object;"
+                        + ")Lorg/mozilla/javascript/Scriptable;");
     }
 
     private void visitSpecialCall(Node node, int type, int specialType, Node child) {

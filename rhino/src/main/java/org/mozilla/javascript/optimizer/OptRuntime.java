@@ -332,6 +332,11 @@ public final class OptRuntime extends ScriptRuntime {
         ScriptRuntime.accumulateIteratorValues(cx, scope, results, source);
     }
 
+    public static void accumulatekeyvalues(
+            Object source, ResultAccumulator results, Context cx, VarScope scope) {
+        ScriptRuntime.accumulateObjectKeyValues(cx, scope, results, source);
+    }
+
     public static class GeneratorState {
         static final String CLASS_NAME =
                 "org/mozilla/javascript/optimizer/OptRuntime$GeneratorState";
