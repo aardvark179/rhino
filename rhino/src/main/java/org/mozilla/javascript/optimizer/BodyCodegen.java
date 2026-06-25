@@ -2580,6 +2580,9 @@ class BodyCodegen {
                 "newObject",
                 "(Lorg/mozilla/javascript/VarScope;)Lorg/mozilla/javascript/Scriptable;");
         cfw.add(ByteCode.DUP);
+        if (savedHomeObjectLocal == -1) {
+            savedHomeObjectLocal = getNewWordLocal();
+        }
         cfw.addAStore(savedHomeObjectLocal);
         // make a new result accumlator
         cfw.add(ByteCode.NEW, "org/mozilla/javascript/ResultAccumulator");

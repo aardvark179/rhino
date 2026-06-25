@@ -31,13 +31,36 @@ public abstract class ObjectLiteralDescriptor {
     public abstract Scriptable createObject(
             Context cx, VarScope scope, Scriptable obj, Object[] values);
 
-    public void put(Scriptable obj, Object key, Object value) {
+    public void put(Context cx, VarScope scope, Scriptable obj, Object key, Object value) {
         if (key instanceof Symbol s) {
             obj.put(s, obj, value);
-        } else if (key instanceof Integer i && i >= 0) {
-            obj.put((int) i, obj, value);
         } else {
-            obj.put(key.toString(), obj, value);
+            var idOrIndex = ScriptRuntime.toStringIdOrIndex(key);
+            if (idOrIndex.stringId == null) {
+                obj.put(idOrIndex.index, obj, value);
+            } else {
+                var stringId = idOrIndex.stringId;
+                if (cx.getLanguageVersion() < Context.VERSION_ES6
+                        && ScriptRuntime.isSpecialProperty(stringId)) {
+                    Ref ref = ScriptRuntime.specialRef(obj, stringId, cx, scope);
+                    ref.set(cx, scope, value);
+                } else if (cx.getLanguageVersion() >= Context.VERSION_ES6
+                        && NativeObject.PROTO_PROPERTY.equals(stringId)) {
+                    if (value == null) {
+                        obj.setPrototype(null);
+                    } else if (value instanceof JSFunction) {
+                        if (((JSFunction) value).isShorthand()) {
+                            obj.put(stringId, obj, value);
+                        } else {
+                            NativeObject.js_protoSetter(obj, value);
+                        }
+                    } else if (value instanceof Scriptable) {
+                        NativeObject.js_protoSetter(obj, value);
+                    }
+                } else {
+                    obj.put(stringId, obj, value);
+                }
+            }
         }
     }
 
@@ -52,7 +75,7 @@ public abstract class ObjectLiteralDescriptor {
         public Scriptable createObject(
                 Context cx, VarScope scope, Scriptable obj, Object[] values) {
             for (int i = 0; i < values.length; i++) {
-                put(obj, keys[i], values[i]);
+                put(cx, scope, obj, keys[i], values[i]);
             }
             return obj;
         }
@@ -74,7 +97,7 @@ public abstract class ObjectLiteralDescriptor {
             for (int k = 0; k < ops.length; k++) {
                 var key = ops[k] == COMPUTED_KEY ? values[v++] : ops[k];
                 var value = values[v++];
-                put(obj, key, value);
+                put(cx, scope, obj, key, value);
             }
             return obj;
         }
@@ -123,20 +146,40 @@ public abstract class ObjectLiteralDescriptor {
                     while (values[v] != SPREAD_END) {
                         key = values[v++];
                         var value = values[v++];
-                        put(obj, key, value);
+                        put(cx, scope, obj, key, value);
                     }
+                    v++;
                 } else {
                     var value = values[v++];
-                    put(obj, key, value);
+                    put(cx, scope, obj, key, value);
                 }
             }
             return obj;
         }
 
         private int processAccessor(ScriptableObject obj, AccessorEntry e, Object[] values, int v) {
-            var key = e.key == COMPUTED_KEY ? values[v++] : e.key;
-            var value = (Callable) values[v++];
+            boolean computed = e.key == COMPUTED_KEY;
+            var key = computed ? values[v++] : e.key;
+            var value = (JSFunction) values[v++];
             boolean isSetter = e instanceof SetterEntry;
+            if (computed) {
+                String name;
+                if (key instanceof Symbol s) {
+                    var sname = s.getName();
+                    if (!sname.isEmpty()) {
+                        sname = "[" + sname + "]";
+                    }
+                    name = String.format("%s %s", isSetter ? "set" : "get", sname);
+                } else {
+                    var sid = ScriptRuntime.toStringIdOrIndex(key);
+                    if (sid.stringId == null) {
+                        name = String.format("%s %d", isSetter ? "set" : "get", sid.index);
+                    } else {
+                        name = String.format("%s %s", isSetter ? "set" : "get", sid.stringId);
+                    }
+                }
+                value.setFunctionName(name);
+            }
             if (ScriptRuntime.isSymbol(key)) {
                 obj.setGetterOrSetter(key, 0, value, isSetter);
             } else if (key instanceof Integer && ((Integer) key) >= 0) {
