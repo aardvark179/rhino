@@ -135,10 +135,20 @@ public class Token {
             REF_NS_NAME = REF_NAME + 1, // Reference for ns::y, @ns::y@[y] etc.
             BIGINT = REF_NS_NAME + 1, // ES2020 BigInt
             NEW_TARGET = BIGINT + 1, // new.target meta-property
-            LOAD_LITERAL = NEW_TARGET + 1;
+            LOAD_LITERAL = NEW_TARGET + 1,
+
+            // New object literal bytecodes.
+            EMPTY_OBJECT = LOAD_LITERAL + 1,
+            TO_PROPKEY = EMPTY_OBJECT + 1,
+            RESULT_ACCUMULATOR = TO_PROPKEY + 1,
+            ACCUMULATE_RESULT = RESULT_ACCUMULATOR + 1,
+            ACCUMULATE_ITERATOR = ACCUMULATE_RESULT + 1,
+            ACCUMULATE_KEYVALUES = ACCUMULATE_ITERATOR + 1,
+            MAKE_OBJECT = ACCUMULATE_KEYVALUES + 1,
+            MAKE_ARRAAY = MAKE_OBJECT + 1;
 
     // End of interpreter bytecodes
-    public static final int LAST_BYTECODE_TOKEN = LOAD_LITERAL,
+    public static final int LAST_BYTECODE_TOKEN = MAKE_ARRAAY,
             TRY = LAST_BYTECODE_TOKEN + 1,
             SEMI = TRY + 1, // semicolon
             LB = SEMI + 1, // left and right brackets
@@ -391,6 +401,22 @@ public class Token {
                 return "REGEXP";
             case LOAD_LITERAL:
                 return "LOAD_LITERAL";
+            case EMPTY_OBJECT:
+                return "EMPTY_OBJECT";
+            case TO_PROPKEY:
+                return "TO_PROPKEY";
+            case RESULT_ACCUMULATOR:
+                return "RESULT_ACCUMULATOR";
+            case ACCUMULATE_RESULT:
+                return "ACCUMULATE_RESULT";
+            case ACCUMULATE_ITERATOR:
+                return "ACCUMULATE_ITERATOR";
+            case ACCUMULATE_KEYVALUES:
+                return "ACCUMULATE_KEYVALUES";
+            case MAKE_OBJECT:
+                return "MAKE_OBJECT";
+            case MAKE_ARRAAY:
+                return "MAKE_ARRAAY";
             case BINDNAME:
                 return "BINDNAME";
             case THROW:

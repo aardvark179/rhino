@@ -1317,6 +1317,12 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                     break;
                 }
 
+            case Token.TO_PROPKEY:
+                {
+                    visitExpression(child, 0);
+                    addToken(Token.TO_PROPKEY);
+                    break;
+                }
             default:
                 throw badTree(node);
         }
@@ -1591,24 +1597,24 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
             ++count;
         }
 
-        addIcode(Icode.EMPTY_OBJECT);
+        addToken(Token.EMPTY_OBJECT);
         stackChange(1);
-        addIndexOp(Icode.RESULT_ACCUMULATOR, count);
+        addIndexOp(Token.RESULT_ACCUMULATOR, count);
         stackChange(1);
 
         while (child != null) {
             if (child.getType() == Token.DOTDOTDOT) {
                 visitExpression(child.getFirstChild(), 0);
-                addIcode(Icode.ACCUMULATE_KEYVALUES);
+                addToken(Token.ACCUMULATE_KEYVALUES);
             } else {
                 visitExpression(child, 0);
-                addIcode(Icode.ACCUMULATE_RESULT);
+                addToken(Token.ACCUMULATE_RESULT);
             }
             stackChange(-1);
             child = child.getNext();
         }
 
-        addIndexOp(Icode.MAKE_OBJECT, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
+        addIndexOp(Token.MAKE_OBJECT, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
         stackChange(-1);
     }
 
@@ -1618,22 +1624,22 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
             ++count;
         }
 
-        addIndexOp(Icode.RESULT_ACCUMULATOR, count);
+        addIndexOp(Token.RESULT_ACCUMULATOR, count);
         stackChange(1);
 
         while (child != null) {
             if (child.getType() == Token.DOTDOTDOT) {
                 visitExpression(child.getFirstChild(), 0);
-                addIcode(Icode.ACCUMULATE_ITERATOR);
+                addToken(Token.ACCUMULATE_ITERATOR);
             } else {
                 visitExpression(child, 0);
-                addIcode(Icode.ACCUMULATE_RESULT);
+                addToken(Token.ACCUMULATE_RESULT);
             }
             stackChange(-1);
             child = child.getNext();
         }
 
-        addIndexOp(Icode.MAKE_ARRAAY, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
+        addIndexOp(Token.MAKE_ARRAAY, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
     }
 
     private void visitTemplateLiteral(Node node) {

@@ -152,6 +152,7 @@ import org.mozilla.javascript.interpreterv2.instruction.ThawFrame;
 import org.mozilla.javascript.interpreterv2.instruction.This;
 import org.mozilla.javascript.interpreterv2.instruction.ThisFunction;
 import org.mozilla.javascript.interpreterv2.instruction.Throw;
+import org.mozilla.javascript.interpreterv2.instruction.ToPropertyKey;
 import org.mozilla.javascript.interpreterv2.instruction.Typeof;
 import org.mozilla.javascript.interpreterv2.instruction.TypeofName;
 import org.mozilla.javascript.interpreterv2.instruction.UnsignedRightShift;
@@ -1570,6 +1571,12 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 {
                     visitExpression(child, 0);
                     addInstruction(getE4xInstruction(op));
+                    return;
+                }
+            case Token.TO_PROPKEY:
+                {
+                    visitExpression(child, 0);
+                    addInstruction(ToPropertyKey.instance);
                     return;
                 }
             default:

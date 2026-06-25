@@ -1813,7 +1813,12 @@ class BodyCodegen {
                     cfw.markLabel(end);
                     break;
                 }
-
+            case Token.TO_PROPKEY:
+                {
+                    generateExpression(child, node);
+                    addOptRuntimeInvoke("toPropKey", "(Ljava/lang/Object;)Ljava/lang/Object;");
+                    break;
+                }
             default:
                 throw new RuntimeException("Unexpected node type " + type);
         }

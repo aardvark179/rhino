@@ -19,6 +19,7 @@ import org.mozilla.javascript.Script;
 import org.mozilla.javascript.ScriptRuntime;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
+import org.mozilla.javascript.Symbol;
 import org.mozilla.javascript.TopLevel;
 import org.mozilla.javascript.Undefined;
 import org.mozilla.javascript.VarScope;
@@ -325,6 +326,10 @@ public final class OptRuntime extends ScriptRuntime {
             Object source,
             int sourcePosition) {
         store.spread(cx, scope, source, sourcePosition);
+    }
+
+    public static Object toPropKey(Object value) {
+        return value instanceof Symbol ? value : ScriptRuntime.toString(value);
     }
 
     public static void accumulateIterator(

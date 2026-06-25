@@ -75,17 +75,8 @@ abstract class Icode {
             SHORTNUMBER = LINE - 1,
             INTNUMBER = SHORTNUMBER - 1,
 
-            // New object literal bytecodes.
-            EMPTY_OBJECT = INTNUMBER - 1,
-            RESULT_ACCUMULATOR = EMPTY_OBJECT - 1,
-            ACCUMULATE_RESULT = RESULT_ACCUMULATOR - 1,
-            ACCUMULATE_ITERATOR = ACCUMULATE_RESULT - 1,
-            ACCUMULATE_KEYVALUES = ACCUMULATE_ITERATOR - 1,
-            MAKE_OBJECT = ACCUMULATE_KEYVALUES - 1,
-            MAKE_ARRAAY = MAKE_OBJECT - 1,
-
             // Load index register to prepare for the following index operation
-            REG_IND_C0 = MAKE_ARRAAY - 1,
+            REG_IND_C0 = INTNUMBER - 1,
             REG_IND_C1 = REG_IND_C0 - 1,
             REG_IND_C2 = REG_IND_C1 - 1,
             REG_IND_C3 = REG_IND_C2 - 1,
@@ -244,20 +235,6 @@ abstract class Icode {
                 return "SHORTNUMBER";
             case INTNUMBER:
                 return "INTNUMBER";
-            case EMPTY_OBJECT:
-                return "EMPTY_OBJECT";
-            case RESULT_ACCUMULATOR:
-                return "RESULT_ACCUMULATOR";
-            case ACCUMULATE_RESULT:
-                return "ACCUMULATE_RESULT";
-            case ACCUMULATE_ITERATOR:
-                return "ACCUMULATE_ITERATOR";
-            case ACCUMULATE_KEYVALUES:
-                return "ACCUMULATE_KEYVALUES";
-            case MAKE_OBJECT:
-                return "MAKE_OBJECT";
-            case MAKE_ARRAAY:
-                return "MAKE_ARRAAY";
             case REG_IND_C0:
                 return "REG_IND_C0";
             case REG_IND_C1:

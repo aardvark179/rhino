@@ -770,13 +770,14 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Token.REGEXP] = new DoRegExp();
         instructionObjs[base + Token.LOAD_LITERAL] = new DoLoadLiteral();
         instructionObjs[base + Icode.TEMPLATE_LITERAL_CALLSITE] = new DoTemplateLiteralCallSite();
-        instructionObjs[base + Icode.EMPTY_OBJECT] = new DoEmptyObject();
-        instructionObjs[base + Icode.RESULT_ACCUMULATOR] = new DoResultAccumulattor();
-        instructionObjs[base + Icode.ACCUMULATE_RESULT] = new DoAccumulateResult();
-        instructionObjs[base + Icode.ACCUMULATE_ITERATOR] = new DoAccumulateIterator();
-        instructionObjs[base + Icode.ACCUMULATE_KEYVALUES] = new DoAccumulateKeyValues();
-        instructionObjs[base + Icode.MAKE_OBJECT] = new DoMakeObject();
-        instructionObjs[base + Icode.MAKE_ARRAAY] = new DoMakeArray();
+        instructionObjs[base + Token.EMPTY_OBJECT] = new DoEmptyObject();
+        instructionObjs[base + Token.RESULT_ACCUMULATOR] = new DoResultAccumulattor();
+        instructionObjs[base + Token.ACCUMULATE_RESULT] = new DoAccumulateResult();
+        instructionObjs[base + Token.ACCUMULATE_ITERATOR] = new DoAccumulateIterator();
+        instructionObjs[base + Token.ACCUMULATE_KEYVALUES] = new DoAccumulateKeyValues();
+        instructionObjs[base + Token.MAKE_OBJECT] = new DoMakeObject();
+        instructionObjs[base + Token.MAKE_ARRAAY] = new DoMakeArray();
+        instructionObjs[base + Token.TO_PROPKEY] = new DoToPropKey();
         instructionObjs[base + Icode.ENTERDQ] = new DoEnterDotQuery();
         instructionObjs[base + Icode.LEAVEDQ] = new DoLeaveDotQuery();
         instructionObjs[base + Token.DEFAULTNAMESPACE] = new DoDefaultNamespace();
@@ -3846,6 +3847,18 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             frame.stackTop--;
             var results = ((ResultAccumulator) frame.stack[frame.stackTop]);
             ScriptRuntime.accumulateIteratorValues(cx, frame.scope, results, iter);
+            return null;
+        }
+    }
+
+    private static class DoToPropKey extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            var obj = frame.stack[frame.stackTop];
+            if (obj == DOUBLE_MARK) {
+                obj = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
+            }
+            frame.stack[frame.stackTop] = obj instanceof Symbol ? obj : ScriptRuntime.toString(obj);
             return null;
         }
     }

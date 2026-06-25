@@ -1022,7 +1022,7 @@ public final class IRFactory {
                         Node theId = transform(prop.getKey());
                         properties[i++] = theId;
                         computed = true;
-                        object.addChildToBack(theId.getFirstChild());
+                        object.addChildToBack(new Node(Token.TO_PROPKEY, theId.getFirstChild()));
                     } else {
                         properties[i++] = propKey;
                         assert propKey instanceof String || propKey instanceof Integer;
