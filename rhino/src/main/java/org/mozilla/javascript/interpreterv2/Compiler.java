@@ -88,9 +88,6 @@ import org.mozilla.javascript.interpreterv2.instruction.JumpInstruction;
 import org.mozilla.javascript.interpreterv2.instruction.LeaveDotQuery;
 import org.mozilla.javascript.interpreterv2.instruction.LeaveScope;
 import org.mozilla.javascript.interpreterv2.instruction.LeftShift;
-import org.mozilla.javascript.interpreterv2.instruction.LitPush;
-import org.mozilla.javascript.interpreterv2.instruction.LitSetAt;
-import org.mozilla.javascript.interpreterv2.instruction.LitSpread;
 import org.mozilla.javascript.interpreterv2.instruction.Literal;
 import org.mozilla.javascript.interpreterv2.instruction.LocalClear;
 import org.mozilla.javascript.interpreterv2.instruction.LocalLoad;
@@ -104,14 +101,11 @@ import org.mozilla.javascript.interpreterv2.instruction.NameAndThisOptional;
 import org.mozilla.javascript.interpreterv2.instruction.NameIncDec;
 import org.mozilla.javascript.interpreterv2.instruction.Neg;
 import org.mozilla.javascript.interpreterv2.instruction.New;
-import org.mozilla.javascript.interpreterv2.instruction.NewObjectLiteral;
-import org.mozilla.javascript.interpreterv2.instruction.NewObjectLiteralWithSpread;
 import org.mozilla.javascript.interpreterv2.instruction.NewTarget;
 import org.mozilla.javascript.interpreterv2.instruction.Nop;
 import org.mozilla.javascript.interpreterv2.instruction.Not;
 import org.mozilla.javascript.interpreterv2.instruction.NotEqual;
 import org.mozilla.javascript.interpreterv2.instruction.Num;
-import org.mozilla.javascript.interpreterv2.instruction.ObjectLit;
 import org.mozilla.javascript.interpreterv2.instruction.ObjectRest;
 import org.mozilla.javascript.interpreterv2.instruction.Pop;
 import org.mozilla.javascript.interpreterv2.instruction.PopResult;
@@ -158,7 +152,6 @@ import org.mozilla.javascript.interpreterv2.instruction.ThawFrame;
 import org.mozilla.javascript.interpreterv2.instruction.This;
 import org.mozilla.javascript.interpreterv2.instruction.ThisFunction;
 import org.mozilla.javascript.interpreterv2.instruction.Throw;
-import org.mozilla.javascript.interpreterv2.instruction.ToPropertyKey;
 import org.mozilla.javascript.interpreterv2.instruction.Typeof;
 import org.mozilla.javascript.interpreterv2.instruction.TypeofName;
 import org.mozilla.javascript.interpreterv2.instruction.UnsignedRightShift;
@@ -1847,236 +1840,6 @@ public class Compiler<T extends ScriptOrFn<T>> {
     private static RuntimeException badTree(Node node) {
         throw new UnknownInstructionException(
                 "Compiler.badTree Unknown op: " + Token.typeToName(node.getType()), node.getType());
-    }
-
-    /**
-     * No-spread object literal. Pre-populates {@link NewObjectLiteral} with the static keys and
-     * with all literal-token property values (anywhere they appear, not just a leading prefix —
-     * literals are stack-neutral and side-effect-free, so out-of-order evaluation is safe). The
-     * remaining slots are filled in source order by {@link LitSetAt}, which writes to a known slot
-     * index without touching the storage's sequential write pointer.
-     */
-    private void emitObjectLiteralNoSpread(
-            Node node,
-            Node child,
-            Object[] propertyIds,
-            int count,
-            boolean hasAnyComputedProperty) {
-        Object[] keys = new Object[count];
-        Operand[] literalValues = new Operand[count];
-        boolean[] needsPass2 = new boolean[count];
-        var lines = new ArrayList<Integer>();
-
-        // Pass 1: walk children once, capture static keys and literal-value operands.
-        // Literal operands are stack-neutral and emit no instructions, so their value slot can
-        // be pre-populated regardless of position — including when the key is computed (Pass 2
-        // still emits a key-only LitSetAt for those slots). Pass 2 fills the rest in source
-        // order.
-        Node c = child;
-        for (int i = 0; i < count; i++, c = c.getNext()) {
-            Object pid = propertyIds[i];
-            keys[i] = (pid instanceof Node) ? null : pid;
-
-            int ct = c.getType();
-            boolean valueIsLiteral =
-                    ct != Token.GET && ct != Token.SET && ct != Token.METHOD && isLiteralToken(ct);
-            if (valueIsLiteral) {
-                literalValues[i] = getOperand(c, 0, false, lines);
-            }
-            // Need Pass 2 for: any computed key (must run the key expression), or any
-            // non-literal value (getter/setter/method/expression).
-            needsPass2[i] = (pid instanceof Node) || !valueIsLiteral;
-        }
-
-        // If we do not have any computed properties, we can simply reuse the keys
-        // array as it won't be modified. If we do have computed properties, though,
-        // we'll fill some of the `null` holes, so we need to copy it.
-        updateLineNumber(node);
-        updateLineNumbers(lines);
-        addInstruction(NewObjectLiteral.create(keys, literalValues, hasAnyComputedProperty));
-
-        // Pass 2: emit slots needing runtime work in source order with explicit slot indices.
-        c = child;
-        for (int i = 0; i < count; i++, c = c.getNext()) {
-            if (!needsPass2[i]) {
-                continue;
-            }
-            updateLineNumber(c);
-            Object pid = propertyIds[i];
-
-            Operand keyOp;
-            boolean keyExprEmitted;
-            if (pid instanceof Node) {
-                visitExpression(((Node) pid).getFirstChild(), 0);
-                // ToPropertyKey must happen before the value expression is evaluated
-                // (ECMA 13.2.5.5 step 1 before step 6).
-                addInstruction(ToPropertyKey.instance);
-                keyOp = PopOperand.instance;
-                keyExprEmitted = true;
-            } else {
-                // Static key already at storage.keys[i].
-                keyOp = null;
-                keyExprEmitted = false;
-            }
-
-            Operand valueOp;
-            int kind;
-            int childType = c.getType();
-            if (literalValues[i] != null) {
-                // Computed key + literal value: value already pre-populated by NewObjectLiteral;
-                // LitSetAt only needs to write the runtime-computed key.
-                kind = 0;
-                valueOp = null;
-            } else if (childType == Token.GET
-                    || childType == Token.SET
-                    || childType == Token.METHOD) {
-                kind = (childType == Token.GET) ? -1 : (childType == Token.SET) ? 1 : 0;
-                var func = c.getFirstChild();
-                assert (func.getType() == Token.FUNCTION);
-                int fnIndex = func.getExistingIntProp(Node.FUNCTION_PROP);
-                FunctionNode fn = scriptOrFn.getFunctionNode(fnIndex);
-                if (fn.getFunctionType() != FunctionNode.FUNCTION_EXPRESSION
-                        && fn.getFunctionType() != FunctionNode.ARROW_FUNCTION) {
-                    throw Kit.codeBug();
-                }
-                boolean isArrow = fn.getFunctionType() == FunctionNode.ARROW_FUNCTION;
-                Operand lexThisOp;
-                Operand homeObjOp;
-                Operand newTargetOp;
-                if (fn.isMethodDefinition()) {
-                    lexThisOp = NullOperand.instance;
-                    homeObjOp = new PeekOperand(keyExprEmitted ? -2 : -1);
-                    newTargetOp = UndefinedOperand.instance;
-                } else if (isArrow) {
-                    lexThisOp = ThisOperand.instance;
-                    homeObjOp = HomeObjectOperand.instance;
-                    newTargetOp = NewTargetOperand.instance;
-                } else {
-                    lexThisOp = NullOperand.instance;
-                    homeObjOp = NullOperand.instance;
-                    newTargetOp = UndefinedOperand.instance;
-                }
-                addInstruction(
-                        ClosureExpression.createInstruction(
-                                fnIndex, lexThisOp, homeObjOp, newTargetOp));
-                valueOp = PopOperand.instance;
-            } else {
-                kind = 0;
-                valueOp = getOperand(c, 0);
-            }
-
-            addInstruction(LitSetAt.create(i, keyOp, valueOp, kind));
-        }
-
-        addInstruction(ObjectLit.ofPeekOperand);
-    }
-
-    /**
-     * With-spread object literal. Pre-populates {@link NewObjectLiteralWithSpread} with the
-     * contiguous leading literal-value prefix (slot indices after the first spread aren't
-     * compile-time knowable, so we keep the conservative prefix-only optimization here). Subsequent
-     * {@link LitPush} / {@link LitSpread} instructions fill the rest sequentially.
-     */
-    private void emitObjectLiteralWithSpread(
-            Node node, Node child, Object[] propertyIds, int count, int nonSpreadCount) {
-        var prefixValues = new ArrayList<Operand>();
-        var prefixKeys = new ArrayList<Object>();
-        var lines = new ArrayList<Integer>();
-        int prefixLen = 0;
-        Node c = child;
-        while (prefixLen < count) {
-            Object pid = propertyIds[prefixLen];
-            if (pid instanceof Node) {
-                break; // computed key or spread
-            }
-            int ct = c.getType();
-            if (ct == Token.GET || ct == Token.SET || ct == Token.METHOD) {
-                break;
-            }
-            if (!isLiteralToken(ct)) {
-                break;
-            }
-            prefixValues.add(getOperand(c, 0, false, lines));
-            prefixKeys.add(pid);
-            prefixLen++;
-            c = c.getNext();
-        }
-
-        updateLineNumber(child);
-        updateLineNumbers(lines);
-        addInstruction(
-                new NewObjectLiteralWithSpread(
-                        prefixKeys.toArray(),
-                        prefixValues.toArray(Operand.EMPTY_ARRAY),
-                        nonSpreadCount));
-
-        for (int i = prefixLen; i < count; i++, c = c.getNext()) {
-            updateLineNumber(c);
-            Object pid = propertyIds[i];
-
-            // Spread?
-            if (pid instanceof Node && ((Node) pid).getType() == Token.DOTDOTDOT) {
-                visitExpression(((Node) pid).getFirstChild(), 0);
-                addInstruction(new LitSpread(PopOperand.instance));
-                continue;
-            }
-
-            Operand keyOp;
-            boolean keyExprEmitted;
-            if (pid instanceof Node) {
-                visitExpression(((Node) pid).getFirstChild(), 0);
-                keyOp = PopOperand.instance;
-                keyExprEmitted = true;
-            } else {
-                keyOp = makeStaticKeyOperand(pid);
-                keyExprEmitted = false;
-            }
-
-            Operand valueOp;
-            int kind;
-            int childType = c.getType();
-            if (childType == Token.GET || childType == Token.SET || childType == Token.METHOD) {
-                kind = (childType == Token.GET) ? -1 : (childType == Token.SET) ? 1 : 0;
-                var func = c.getFirstChild();
-                assert (func.getType() == Token.FUNCTION);
-                int fnIndex = func.getExistingIntProp(Node.FUNCTION_PROP);
-                FunctionNode fn = scriptOrFn.getFunctionNode(fnIndex);
-                if (fn.getFunctionType() != FunctionNode.FUNCTION_EXPRESSION
-                        && fn.getFunctionType() != FunctionNode.ARROW_FUNCTION) {
-                    throw Kit.codeBug();
-                }
-                boolean isArrow = fn.getFunctionType() == FunctionNode.ARROW_FUNCTION;
-                Operand lexThisOp;
-                Operand homeObjOp;
-                Operand newTargetOp;
-                if (fn.isMethodDefinition()) {
-                    lexThisOp = NullOperand.instance;
-                    homeObjOp = new PeekOperand(keyExprEmitted ? -2 : -1);
-                    newTargetOp = UndefinedOperand.instance;
-                } else if (isArrow) {
-                    lexThisOp = ThisOperand.instance;
-                    homeObjOp = HomeObjectOperand.instance;
-                    newTargetOp = NewTargetOperand.instance;
-                } else {
-                    lexThisOp = NullOperand.instance;
-                    homeObjOp = NullOperand.instance;
-                    newTargetOp = UndefinedOperand.instance;
-                }
-
-                addInstruction(
-                        ClosureExpression.createInstruction(
-                                fnIndex, lexThisOp, homeObjOp, newTargetOp));
-                valueOp = PopOperand.instance;
-            } else {
-                kind = 0;
-                valueOp = getOperand(c, 0, false, lines);
-            }
-
-            addInstruction(new LitPush(keyOp, valueOp, kind));
-        }
-
-        updateLineNumber(node);
-        addInstruction(ObjectLit.ofPeekOperand);
     }
 
     /**

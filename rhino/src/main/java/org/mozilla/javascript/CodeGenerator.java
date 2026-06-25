@@ -1636,24 +1636,6 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
         addIndexOp(Icode.MAKE_ARRAAY, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
     }
 
-    private void visitLiteralValue(Node child) {
-        int childType = child.getType();
-        if (childType == Token.GET) {
-            visitExpression(child.getFirstChild(), 0);
-            addIcode(Icode.LITERAL_GETTER);
-        } else if (childType == Token.SET) {
-            visitExpression(child.getFirstChild(), 0);
-            addIcode(Icode.LITERAL_SETTER);
-        } else if (childType == Token.METHOD) {
-            visitExpression(child.getFirstChild(), 0);
-            addIcode(Icode.LITERAL_SET);
-        } else {
-            visitExpression(child, 0);
-            addIcode(Icode.LITERAL_SET);
-        }
-        stackChange(-1);
-    }
-
     private void visitTemplateLiteral(Node node) {
         int index = node.getExistingIntProp(Node.TEMPLATE_LITERAL_PROP);
         addIndexOp(Icode.TEMPLATE_LITERAL_CALLSITE, index);

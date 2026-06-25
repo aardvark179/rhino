@@ -302,14 +302,6 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                 // line number
                 return 1 + 2;
 
-            case Icode.LITERAL_NEW_OBJECT:
-                // make a copy or not flag
-                return 1 + 1;
-
-            case Icode.LITERAL_NEW_ARRAY:
-                // skip indexes ID (uint16)
-                return 1 + 2;
-
             case Icode.SPREAD:
                 // 2-byte source position operand (always emitted, even when unused)
                 return 1 + 2;
@@ -778,15 +770,6 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Token.REGEXP] = new DoRegExp();
         instructionObjs[base + Token.LOAD_LITERAL] = new DoLoadLiteral();
         instructionObjs[base + Icode.TEMPLATE_LITERAL_CALLSITE] = new DoTemplateLiteralCallSite();
-        instructionObjs[base + Icode.LITERAL_NEW_OBJECT] = new DoLiteralNewObject();
-        instructionObjs[base + Icode.LITERAL_NEW_ARRAY] = new DoLiteralNewArray();
-        instructionObjs[base + Icode.LITERAL_SET] = new DoLiteralSet();
-        instructionObjs[base + Icode.LITERAL_GETTER] = new DoLiteralGetter();
-        instructionObjs[base + Icode.LITERAL_SETTER] = new DoLiteralSetter();
-        instructionObjs[base + Icode.LITERAL_KEY_SET] = new DoLiteralKeySet();
-        instructionObjs[base + Token.OBJECTLIT] = new DoObjectLit();
-        instructionObjs[base + Token.ARRAYLIT] = new DoArrayLiteral();
-        instructionObjs[base + Icode.SPARE_ARRAYLIT] = new DoArrayLiteral();
         instructionObjs[base + Icode.EMPTY_OBJECT] = new DoEmptyObject();
         instructionObjs[base + Icode.RESULT_ACCUMULATOR] = new DoResultAccumulattor();
         instructionObjs[base + Icode.ACCUMULATE_RESULT] = new DoAccumulateResult();
@@ -3819,32 +3802,6 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                     cx,
                     frame.scope);
             return null;
-        }
-    }
-
-    private static class DoArrayLiteral extends InstructionClass {
-        @Override
-        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            var store = (NewLiteralStorage) frame.stack[frame.stackTop];
-            int[] skipIndexes = null;
-            if (op == Icode.SPARE_ARRAYLIT) {
-                skipIndexes = store.getAdjustedSkipIndexes();
-                if (skipIndexes == null) {
-                    skipIndexes = (int[]) frame.compilerData.literalIds[state.indexReg];
-                }
-            }
-            frame.stack[frame.stackTop] =
-                    ScriptRuntime.newArrayLiteral(store.getValues(), skipIndexes, cx, frame.scope);
-            return null;
-        }
-
-        @Override
-        void dumpICode(int op, String tname, ICodeDumpContext ctx) {
-            if (op == Icode.SPARE_ARRAYLIT) {
-                ctx.out.println(tname + " " + ctx.compilerData.literalIds[ctx.indexReg]);
-            } else {
-                ctx.out.println(tname);
-            }
         }
     }
 
