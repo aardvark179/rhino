@@ -1056,13 +1056,17 @@ public final class IRFactory {
                         }
                     } else if (prop.isNormalMethod()) {
                         if (computed) {
-                            builder.addComputedKey();
+                            builder.addComputedMethod();
                         } else {
                             builder.addLiteralKey(literalKey);
                         }
                     } else {
                         if (computed) {
-                            builder.addComputedKey();
+                            if (right.getType() == Token.FUNCTION) {
+                                builder.addComputedMethod();
+                            } else {
+                                builder.addComputedKey();
+                            }
                         } else {
                             builder.addLiteralKey(literalKey);
                         }

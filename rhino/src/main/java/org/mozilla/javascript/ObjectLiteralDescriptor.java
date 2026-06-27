@@ -31,7 +31,7 @@ public abstract class ObjectLiteralDescriptor {
     public abstract Scriptable createObject(
             Context cx, VarScope scope, Scriptable obj, Object[] values);
 
-    public void put(Context cx, VarScope scope, Scriptable obj, Object key, Object value) {
+    protected void put(Context cx, VarScope scope, Scriptable obj, Object key, Object value) {
         if (key instanceof Symbol s) {
             obj.put(s, obj, value);
         } else {
@@ -64,6 +64,16 @@ public abstract class ObjectLiteralDescriptor {
         }
     }
 
+    protected Object inferMethodName(Object key, Object value) {
+        if (key instanceof String s) {
+            ((JSFunction) value).setFunctionName(s);
+        } else if (key instanceof Symbol s) {
+            var name = s.getName().isEmpty() ? "" : "[" + s.getName() + "]";
+            ((JSFunction) value).setFunctionName(name);
+        }
+        return value;
+    }
+
     public static class SimpleClassLitDescriptor extends ObjectLiteralDescriptor {
         private final Object[] keys;
 
@@ -83,6 +93,8 @@ public abstract class ObjectLiteralDescriptor {
 
     public static final Object COMPUTED_KEY = new Object();
 
+    public static final Object COMPUTED_METHOD = new Object();
+
     public static class ComputedKeyObjectLiteral extends ObjectLiteralDescriptor {
         private final Object[] ops;
 
@@ -95,8 +107,14 @@ public abstract class ObjectLiteralDescriptor {
                 Context cx, VarScope scope, Scriptable obj, Object[] values) {
             int v = 0;
             for (int k = 0; k < ops.length; k++) {
-                var key = ops[k] == COMPUTED_KEY ? values[v++] : ops[k];
+                boolean computedMethod = ops[k] == COMPUTED_METHOD;
+                boolean computedKey = computedMethod || ops[k] == COMPUTED_KEY;
+
+                var key = computedKey ? values[v++] : ops[k];
                 var value = values[v++];
+                if (computedMethod) {
+                    value = inferMethodName(key, value);
+                }
                 put(cx, scope, obj, key, value);
             }
             return obj;
@@ -139,7 +157,10 @@ public abstract class ObjectLiteralDescriptor {
                 Context cx, VarScope scope, Scriptable obj, Object[] values) {
             int v = 0;
             for (int k = 0; k < ops.length; k++) {
-                var key = ops[k] == COMPUTED_KEY ? values[v++] : ops[k];
+                boolean computedMethod = ops[k] == COMPUTED_METHOD;
+                boolean computedKey = computedMethod || ops[k] == COMPUTED_KEY;
+
+                var key = computedKey ? values[v++] : ops[k];
                 if (key instanceof AccessorEntry e) {
                     v = processAccessor((ScriptableObject) obj, e, values, v);
                 } else if (key instanceof SpreadEntry) {
@@ -151,6 +172,9 @@ public abstract class ObjectLiteralDescriptor {
                     v++;
                 } else {
                     var value = values[v++];
+                    if (computedMethod) {
+                        value = inferMethodName(key, value);
+                    }
                     put(cx, scope, obj, key, value);
                 }
             }
@@ -210,6 +234,11 @@ public abstract class ObjectLiteralDescriptor {
 
         public void addComputedKey() {
             ops.add(COMPUTED_KEY);
+            hasComputed = true;
+        }
+
+        public void addComputedMethod() {
+            ops.add(COMPUTED_METHOD);
             hasComputed = true;
         }
 
