@@ -1,8 +1,9 @@
 package org.mozilla.javascript;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 
-public abstract class ArrayLiteralDescriptor {
+public abstract class ArrayLiteralDescriptor implements Serializable {
 
     public abstract Scriptable createArray(Context cx, VarScope scope, ResultAccumulator results);
 

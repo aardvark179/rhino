@@ -2369,6 +2369,7 @@ class BodyCodegen {
         cfw.add(ByteCode.SWAP);
         cfw.addALoad(variableObjectLocal);
         cfw.add(ByteCode.SWAP);
+        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
         cfw.addInvoke(
                 ByteCode.INVOKEVIRTUAL,
                 "org/mozilla/javascript/ArrayLiteralDescriptor",
@@ -2646,6 +2647,7 @@ class BodyCodegen {
         cfw.addALoad(variableObjectLocal);
         cfw.add(ByteCode.DUP_X2);
         cfw.add(ByteCode.POP);
+        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
         cfw.addInvoke(
                 ByteCode.INVOKEVIRTUAL,
                 "org/mozilla/javascript/ResultAccumulator",

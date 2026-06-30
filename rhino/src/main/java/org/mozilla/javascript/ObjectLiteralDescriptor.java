@@ -1,9 +1,10 @@
 package org.mozilla.javascript;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import org.mozilla.javascript.ScriptRuntime.StringIdOrIndex;
 
-public abstract class ObjectLiteralDescriptor {
+public abstract class ObjectLiteralDescriptor implements Serializable {
     // We expext the majority of object literals to be simple, only
     // associating values with keys. Method fall into this category
     // but may require some inference of function names. Any such
@@ -91,9 +92,9 @@ public abstract class ObjectLiteralDescriptor {
         }
     }
 
-    public static final Object COMPUTED_KEY = new Object();
+    public static final UniqueTag COMPUTED_KEY = UniqueTag.COMPUTED_KEY;
 
-    public static final Object COMPUTED_METHOD = new Object();
+    public static final UniqueTag COMPUTED_METHOD = UniqueTag.COMPUTED_METHOD;
 
     public static class ComputedKeyObjectLiteral extends ObjectLiteralDescriptor {
         private final Object[] ops;
@@ -121,7 +122,7 @@ public abstract class ObjectLiteralDescriptor {
         }
     }
 
-    private abstract static class AccessorEntry {
+    private abstract static class AccessorEntry implements Serializable {
         private final Object key;
 
         public AccessorEntry(Object key) {
