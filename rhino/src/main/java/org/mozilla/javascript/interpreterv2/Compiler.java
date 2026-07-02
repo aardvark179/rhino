@@ -913,7 +913,8 @@ public class Compiler<T extends ScriptOrFn<T>> {
                             addInstruction(
                                     New.create(
                                             lookupResultOrFunction,
-                                            args.toArray(Operand.EMPTY_ARRAY)));
+                                            args.toArray(Operand.EMPTY_ARRAY),
+                                            lastIsSpread));
                         } else {
                             addInstruction(
                                     Call.create(
