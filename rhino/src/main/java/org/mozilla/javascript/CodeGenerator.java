@@ -1581,65 +1581,65 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
     }
 
     private void visitLiteral(Node node, Node child) {
+        while (child != null) {
+            int type = child.getType();
+            switch (type) {
+                case Token.EMPTY_OBJECT:
+                    {
+                        addToken(Token.EMPTY_OBJECT);
+                        stackChange(1);
+                        break;
+                    }
+                case Token.TO_PROPKEY:
+                    {
+                        visitExpression(child, 0);
+                        addToken(Token.TO_PROPKEY);
+                        break;
+                    }
+                case Token.RESULT_ACCUMULATOR:
+                    {
+                        addIndexOp(
+                                Token.RESULT_ACCUMULATOR,
+                                child.getIntProp(Node.RESULTS_SIZE_PROP, 0));
+                        stackChange(1);
+                        break;
+                    }
+                case Token.ACCUMULATE_RESULT:
+                    {
+                        visitExpression(child.getFirstChild(), 0);
+                        addToken(Token.ACCUMULATE_RESULT);
+                        stackChange(-1);
+                        break;
+                    }
+                case Token.ACCUMULATE_KEYVALUES:
+                    {
+                        visitExpression(child.getFirstChild(), 0);
+                        addToken(Token.ACCUMULATE_KEYVALUES);
+                        stackChange(-1);
+                        break;
+                    }
+                case Token.ACCUMULATE_ITERATOR:
+                    {
+                        visitExpression(child.getFirstChild(), 0);
+                        addToken(Token.ACCUMULATE_ITERATOR);
+                        stackChange(-1);
+                        break;
+                    }
+                default:
+                    throw badTree(node);
+            }
+            child = child.getNext();
+        }
+
         int type = node.getType();
         if (type == Token.ARRAYLIT) {
-            visitArrayLiteral(node, child);
+            addIndexOp(Token.MAKE_ARRAAY, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
         } else if (type == Token.OBJECTLIT) {
-            visitObjectLiteral(node, child);
+            addIndexOp(Token.MAKE_OBJECT, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
+            stackChange(-1);
         } else {
             throw badTree(node);
         }
-    }
-
-    private void visitObjectLiteral(Node node, Node child) {
-        int count = 0;
-        for (Node n = child; n != null; n = n.getNext()) {
-            ++count;
-        }
-
-        addToken(Token.EMPTY_OBJECT);
-        stackChange(1);
-        addIndexOp(Token.RESULT_ACCUMULATOR, count);
-        stackChange(1);
-
-        while (child != null) {
-            if (child.getType() == Token.DOTDOTDOT) {
-                visitExpression(child.getFirstChild(), 0);
-                addToken(Token.ACCUMULATE_KEYVALUES);
-            } else {
-                visitExpression(child, 0);
-                addToken(Token.ACCUMULATE_RESULT);
-            }
-            stackChange(-1);
-            child = child.getNext();
-        }
-
-        addIndexOp(Token.MAKE_OBJECT, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
-        stackChange(-1);
-    }
-
-    private void visitArrayLiteral(Node node, Node child) {
-        int count = 0;
-        for (Node n = child; n != null; n = n.getNext()) {
-            ++count;
-        }
-
-        addIndexOp(Token.RESULT_ACCUMULATOR, count);
-        stackChange(1);
-
-        while (child != null) {
-            if (child.getType() == Token.DOTDOTDOT) {
-                visitExpression(child.getFirstChild(), 0);
-                addToken(Token.ACCUMULATE_ITERATOR);
-            } else {
-                visitExpression(child, 0);
-                addToken(Token.ACCUMULATE_RESULT);
-            }
-            stackChange(-1);
-            child = child.getNext();
-        }
-
-        addIndexOp(Token.MAKE_ARRAAY, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
     }
 
     private void visitTemplateLiteral(Node node) {

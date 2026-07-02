@@ -432,38 +432,28 @@ public final class IRFactory {
         if (node.isDestructuring()) {
             return node;
         }
-        var builder = new ArrayLiteralDescriptor.Builder();
         List<AstNode> elems = node.getElements();
         Node array = new Node(Token.ARRAYLIT);
-        List<Integer> skipIndexes = null;
+        Node accumulator = new Node(Token.RESULT_ACCUMULATOR);
+        array.addChildToBack(accumulator);
+        var builder = new ArrayLiteralDescriptor.Builder();
         for (int i = 0; i < elems.size(); ++i) {
             AstNode elem = elems.get(i);
             if (elem.getType() == Token.DOTDOTDOT) {
                 builder = builder.withSpread();
-                Spread spread = (Spread) elem;
-                Node transformedSpreadNode = transform(spread);
+                Node transformedSpreadNode =
+                        new Node(Token.ACCUMULATE_ITERATOR, transform(elem).getFirstChild());
                 array.addChildToBack(transformedSpreadNode);
-                array.putIntProp(
-                        Node.NUMBER_OF_SPREAD, array.getIntProp(Node.NUMBER_OF_SPREAD, 0) + 1);
             } else if (elem.getType() != Token.EMPTY) {
                 builder = builder.withElement();
-                array.addChildToBack(transform(elem));
+                array.addChildToBack(new Node(Token.ACCUMULATE_RESULT, transform(elem)));
             } else {
-                if (skipIndexes == null) {
-                    skipIndexes = new ArrayList<>();
-                }
                 builder = builder.withSkip();
-                skipIndexes.add(Integer.valueOf(i));
             }
         }
+        accumulator.putIntProp(Node.RESULTS_SIZE_PROP, builder.getSize());
         array.putIntProp(
                 Node.LITERAL_INDEX_PROP, parser.currentScriptOrFn.addLiteral(builder.build()));
-        array.putIntProp(Node.DESTRUCTURING_ARRAY_LENGTH, node.getDestructuringLength());
-        if (skipIndexes != null) {
-            int[] skips = new int[skipIndexes.size()];
-            for (int i = 0; i < skipIndexes.size(); i++) skips[i] = skipIndexes.get(i).intValue();
-            array.putProp(Node.SKIP_INDEXES_PROP, skips);
-        }
         return array;
     }
 
@@ -996,22 +986,21 @@ public final class IRFactory {
         List<AbstractObjectProperty> elems = node.getElements();
         Node object = new Node(Token.OBJECTLIT);
         object.setLineColumnNumber(node.getLineno(), node.getColumn());
-        Object[] properties;
+        object.addChildToBack(new Node(Token.EMPTY_OBJECT));
+        Node accumulator = new Node(Token.RESULT_ACCUMULATOR);
+        object.addChildToBack(accumulator);
         var builder = new ObjectLiteralDescriptor.Builder();
-        if (elems.isEmpty()) {
-            properties = ScriptRuntime.emptyArgs;
-        } else {
-            int size = elems.size(), i = 0;
-            properties = new Object[size];
+        if (!elems.isEmpty()) {
             for (AbstractObjectProperty abstractProp : elems) {
                 if (abstractProp instanceof SpreadObjectProperty) {
                     builder.addSpread();
                     SpreadObjectProperty spreadObjectProperty = (SpreadObjectProperty) abstractProp;
                     var transformedSpreadNode = transform(spreadObjectProperty.getSpreadNode());
-                    properties[i++] = transformedSpreadNode;
-                    object.putIntProp(
-                            Node.NUMBER_OF_SPREAD, object.getIntProp(Node.NUMBER_OF_SPREAD, 0) + 1);
-                    object.addChildToBack(transformedSpreadNode);
+                    var spreadAccumulator =
+                            new Node(
+                                    Token.ACCUMULATE_KEYVALUES,
+                                    transformedSpreadNode.getFirstChild());
+                    object.addChildToBack(spreadAccumulator);
                 } else {
                     ObjectProperty prop = (ObjectProperty) abstractProp;
                     Object propKey = Parser.getPropKey(prop.getKey());
@@ -1020,11 +1009,12 @@ public final class IRFactory {
                     Object literalKey = null;
                     if (propKey == null) {
                         Node theId = transform(prop.getKey());
-                        properties[i++] = theId;
                         computed = true;
-                        object.addChildToBack(new Node(Token.TO_PROPKEY, theId.getFirstChild()));
+                        object.addChildToBack(
+                                new Node(
+                                        Token.ACCUMULATE_RESULT,
+                                        new Node(Token.TO_PROPKEY, theId.getFirstChild())));
                     } else {
-                        properties[i++] = propKey;
                         assert propKey instanceof String || propKey instanceof Integer;
                         inferrableName = parser.createName(Objects.toString(propKey));
                         inferrableName.setLineColumnNumber(
@@ -1032,7 +1022,7 @@ public final class IRFactory {
                         literalKey = propKey;
                     }
 
-                    Node right = transform(prop.getValue());
+                    Node right = new Node(Token.ACCUMULATE_RESULT, transform(prop.getValue()));
                     if (inferrableName != null) {
                         inferNameIfMissing(
                                 inferrableName,
@@ -1075,9 +1065,9 @@ public final class IRFactory {
                 }
             }
         }
+        accumulator.putIntProp(Node.RESULTS_SIZE_PROP, builder.getSize());
         object.putIntProp(
                 Node.LITERAL_INDEX_PROP, parser.currentScriptOrFn.addLiteral(builder.build()));
-        object.putProp(Node.OBJECT_IDS_PROP, properties);
         return object;
     }
 

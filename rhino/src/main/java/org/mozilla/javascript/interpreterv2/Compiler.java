@@ -1381,58 +1381,10 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     return;
                 }
             case Token.ARRAYLIT:
-                {
-                    int count = 0;
-                    for (Node n = child; n != null; n = n.getNext()) {
-                        ++count;
-                    }
-                    addInstruction(new ResultAccumulatorInstruction(count));
-
-                    while (child != null) {
-                        if (child.getType() == Token.DOTDOTDOT) {
-                            visitExpression(child.getFirstChild(), 0);
-                            addInstruction(AccumulateIterator.instance);
-                        } else {
-                            visitExpression(child, 0);
-                            addInstruction(AccumulateResult.instance);
-                        }
-                        child = child.getNext();
-                    }
-                    var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
-                    addInstruction(
-                            new MakeArray(
-                                    new LiteralOperand(generateLiteral(index)),
-                                    PopOperand.instance));
-                    return;
-                }
             case Token.OBJECTLIT:
                 {
-                    int count = 0;
-                    for (Node n = child; n != null; n = n.getNext()) {
-                        ++count;
-                    }
-
-                    addInstruction(EmptyObject.instance);
-                    addInstruction(new ResultAccumulatorInstruction(count));
-
-                    while (child != null) {
-                        if (child.getType() == Token.DOTDOTDOT) {
-                            visitExpression(child.getFirstChild(), 0);
-                            addInstruction(AccumulateKeyValues.instance);
-                        } else {
-                            visitExpression(child, 0);
-                            addInstruction(AccumulateResult.instance);
-                        }
-                        child = child.getNext();
-                    }
-
-                    var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
-                    addInstruction(
-                            new MakeObject(
-                                    new LiteralOperand(generateLiteral(index)),
-                                    PopOperand.instance,
-                                    PopOperand.instance));
-                    return;
+                    visitLiteral(node, child);
+                    break;
                 }
             case Token.ARRAYCOMP:
                 {
@@ -1584,6 +1536,63 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     throw new UnknownInstructionException(
                             "Unknown op: " + Token.typeToName(op), op);
                 }
+        }
+    }
+
+    private void visitLiteral(Node node, Node child) {
+        while (child != null) {
+            int type = child.getType();
+            switch (type) {
+                case Token.EMPTY_OBJECT:
+                    {
+                        addInstruction(EmptyObject.instance);
+                        break;
+                    }
+                case Token.RESULT_ACCUMULATOR:
+                    {
+                        addInstruction(
+                                new ResultAccumulatorInstruction(
+                                        child.getIntProp(Node.RESULTS_SIZE_PROP, 0)));
+                        break;
+                    }
+                case Token.ACCUMULATE_RESULT:
+                    {
+                        visitExpression(child.getFirstChild(), 0);
+                        addInstruction(AccumulateResult.instance);
+                        break;
+                    }
+                case Token.ACCUMULATE_KEYVALUES:
+                    {
+                        visitExpression(child.getFirstChild(), 0);
+                        addInstruction(AccumulateKeyValues.instance);
+                        break;
+                    }
+                case Token.ACCUMULATE_ITERATOR:
+                    {
+                        visitExpression(child.getFirstChild(), 0);
+                        addInstruction(AccumulateIterator.instance);
+                        break;
+                    }
+                default:
+                    throw badTree(node);
+            }
+            child = child.getNext();
+        }
+
+        int type = node.getType();
+        if (type == Token.ARRAYLIT) {
+            var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
+            addInstruction(
+                    new MakeArray(new LiteralOperand(generateLiteral(index)), PopOperand.instance));
+        } else if (type == Token.OBJECTLIT) {
+            var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
+            addInstruction(
+                    new MakeObject(
+                            new LiteralOperand(generateLiteral(index)),
+                            PopOperand.instance,
+                            PopOperand.instance));
+        } else {
+            throw badTree(node);
         }
     }
 

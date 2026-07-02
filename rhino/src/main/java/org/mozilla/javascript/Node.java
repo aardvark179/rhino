@@ -72,7 +72,8 @@ public class Node implements Iterable<Node> {
             NUMBER_OF_SPREAD = 32,
             OBJECT_REST_PROP = 33, // marks a CALL node as object rest operation
             LITERAL_INDEX_PROP = 34, // int index into the shared literals table
-            LAST_PROP = LITERAL_INDEX_PROP,
+            RESULTS_SIZE_PROP = 35, // int index into the shared literals table
+            LAST_PROP = RESULTS_SIZE_PROP,
             FIRST_PROP = FUNCTION_PROP;
 
     // values of ISNUMBER_PROP to specify
@@ -463,6 +464,8 @@ public class Node implements Iterable<Node> {
                 return "object_rest_prop";
             case LITERAL_INDEX_PROP:
                 return "literal_index_prop";
+            case RESULTS_SIZE_PROP:
+                return "results_size_prop:";
 
             default:
                 Kit.codeBug();

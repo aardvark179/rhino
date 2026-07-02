@@ -70,21 +70,25 @@ public abstract class ArrayLiteralDescriptor implements Serializable {
     public static class Builder {
         private final ArrayList<Integer> skips = new ArrayList<>();
         private final ArrayList<Integer> spreads = new ArrayList<>();
-        private int elements = 0;
+        private int size = 0;
 
         public Builder withElement() {
-            elements++;
+            size++;
             return this;
         }
 
         public Builder withSkip() {
-            skips.add(elements++);
+            skips.add(size++);
             return this;
         }
 
         public Builder withSpread() {
-            spreads.add(elements++);
+            spreads.add(size++);
             return this;
+        }
+
+        public int getSize() {
+            return size;
         }
 
         public ArrayLiteralDescriptor build() {

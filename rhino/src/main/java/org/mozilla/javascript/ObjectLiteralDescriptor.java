@@ -227,45 +227,58 @@ public abstract class ObjectLiteralDescriptor implements Serializable {
         boolean hasComputed = false;
         boolean hasGetterSetter = false;
         boolean hasSpread = false;
+        int size = 0;
 
         public void addLiteralKey(Object k) {
             ops.add(k);
             hasKeys = true;
+            size++;
         }
 
         public void addComputedKey() {
             ops.add(COMPUTED_KEY);
             hasComputed = true;
+            size += 2;
         }
 
         public void addComputedMethod() {
             ops.add(COMPUTED_METHOD);
             hasComputed = true;
+            size += 2;
         }
 
         public void addGetter(Object s) {
             ops.add(new GetterEntry(s));
             hasGetterSetter = true;
+            size++;
         }
 
         public void addSetter(Object s) {
             ops.add(new SetterEntry(s));
             hasGetterSetter = true;
+            size++;
         }
 
         public void addComputedGetter() {
             ops.add(new GetterEntry(COMPUTED_KEY));
             hasGetterSetter = true;
+            size += 2;
         }
 
         public void addComputedSetter() {
             ops.add(new SetterEntry(COMPUTED_KEY));
             hasGetterSetter = true;
+            size += 2;
         }
 
         public void addSpread() {
             ops.add(new SpreadEntry());
             hasSpread = true;
+            size++;
+        }
+
+        public int getSize() {
+            return size;
         }
 
         public ObjectLiteralDescriptor build() {
