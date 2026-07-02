@@ -48,7 +48,7 @@ public abstract class New extends Instruction {
                         ? new New3Spread(fun, arguments[0], arguments[1], arguments[2])
                         : new New3(fun, arguments[0], arguments[1], arguments[2]);
             default:
-                return new NewN(fun, arguments);
+                return lastIsSpread ? new NewNSpread(fun, arguments) : new NewN(fun, arguments);
         }
     }
 
