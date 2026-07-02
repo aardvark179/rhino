@@ -1049,7 +1049,7 @@ class BodyCodegen {
                         OptFunctionNode target;
                         target = (OptFunctionNode) node.getProp(Node.DIRECTCALL_PROP);
 
-                        if (target != null && !lastIsSpread(child)) {
+                        if (target != null && !hasAccumulatedArgs(child)) {
                             visitOptimizedCall(node, target, type, child);
                         } else if (type == Token.CALL) {
                             visitStandardCall(node, child);
@@ -2843,14 +2843,14 @@ class BodyCodegen {
         }
     }
 
-    private static boolean lastIsSpread(Node firstArgChild) {
-        if (firstArgChild == null) return false;
-
-        var child = firstArgChild;
-        while (child.getNext() != null) {
-            child = child.getNext();
-        }
-        return child.getType() == Token.DOTDOTDOT;
+    /**
+     * Whether the call/new arguments use the accumulator shape emitted for spread arguments in any
+     * position. {@code callTarget} is the call node's first child (the function/target); the first
+     * argument, if present, immediately follows it.
+     */
+    private static boolean hasAccumulatedArgs(Node callTarget) {
+        Node firstArg = callTarget.getNext();
+        return firstArg != null && firstArg.getType() == Token.RESULT_ACCUMULATOR;
     }
 
     private static int countArguments(Node firstArgChild) {
@@ -3023,13 +3023,14 @@ class BodyCodegen {
     }
 
     private void generateCallArgArray(Node node, Node argChild, boolean directCall) {
-        int argCount = countArguments(argChild);
-        boolean lastIsSpread = lastIsSpread(argChild);
-
-        if (lastIsSpread) {
-            cfw.addALoad(contextLocal);
-            cfw.addALoad(variableObjectLocal);
+        if (argChild != null && argChild.getType() == Token.RESULT_ACCUMULATOR) {
+            // Spread arguments in any position: build a ResultAccumulator, fill it, and turn it
+            // into a flat argument array. Leaves an Object[] on the stack, like the normal path.
+            generateAccumulatedCallArgArray(argChild);
+            return;
         }
+
+        int argCount = countArguments(argChild);
 
         // load array object to set arguments
         if (argCount == 1 && itsOneArgArray >= 0) {
@@ -3039,23 +3040,16 @@ class BodyCodegen {
         }
         // Copy arguments into it
         for (int i = 0; i != argCount; ++i) {
-            boolean spreading = argChild.getNext() == null && lastIsSpread;
             // If we are compiling a generator an argument could be the result
             // of a yield. In that case we will have an immediate on the stack
             // which we need to avoid
             if (!isGenerator) {
-                if (!spreading) {
-                    cfw.add(ByteCode.DUP);
-                }
+                cfw.add(ByteCode.DUP);
                 cfw.addPush(i);
             }
 
             if (!directCall) {
-                if (spreading) {
-                    generateExpression(argChild.getFirstChild(), argChild);
-                } else {
-                    generateExpression(argChild, node);
-                }
+                generateExpression(argChild, node);
             } else {
                 // If this has also been a directCall sequence, the Number
                 // flag will have remained set for any parameter so that
@@ -3081,29 +3075,73 @@ class BodyCodegen {
                 short tempLocal = getNewWordLocal();
                 cfw.addAStore(tempLocal);
                 cfw.add(ByteCode.CHECKCAST, "[Ljava/lang/Object;");
-                if (!spreading) {
-                    cfw.add(ByteCode.DUP);
-                }
+                cfw.add(ByteCode.DUP);
                 cfw.addPush(i);
                 cfw.addALoad(tempLocal);
                 releaseWordLocal(tempLocal);
             }
 
-            if (lastIsSpread && argChild.getNext() == null) {
-                addOptRuntimeInvoke(
-                        "spreadArgs",
-                        "(Lorg/mozilla/javascript/Context;"
-                                + "Lorg/mozilla/javascript/VarScope;"
-                                + "[Ljava/lang/Object;"
-                                + "I"
-                                + "Ljava/lang/Object;"
-                                + ")[Ljava/lang/Object;");
-            } else {
-                cfw.add(ByteCode.AASTORE);
-            }
+            cfw.add(ByteCode.AASTORE);
 
             argChild = argChild.getNext();
         }
+    }
+
+    /**
+     * Emits bytecode that builds a {@link ResultAccumulator} from the {@code RESULT_ACCUMULATOR} /
+     * {@code ACCUMULATE_*} children (used for calls with spread arguments in any position) and
+     * leaves the flattened argument {@code Object[]} on the stack.
+     */
+    private void generateAccumulatedCallArgArray(Node firstArg) {
+        for (Node child = firstArg; child != null; child = child.getNext()) {
+            switch (child.getType()) {
+                case Token.RESULT_ACCUMULATOR:
+                    cfw.add(ByteCode.NEW, "org/mozilla/javascript/ResultAccumulator");
+                    cfw.add(ByteCode.DUP);
+                    cfw.addLoadConstant(child.getIntProp(Node.RESULTS_SIZE_PROP, 0));
+                    cfw.addInvoke(
+                            ByteCode.INVOKESPECIAL,
+                            "org/mozilla/javascript/ResultAccumulator",
+                            "<init>",
+                            "(I)V");
+                    break;
+                case Token.ACCUMULATE_RESULT:
+                    cfw.add(ByteCode.DUP);
+                    generateExpression(child.getFirstChild(), child);
+                    cfw.add(ByteCode.SWAP);
+                    cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
+                    cfw.add(ByteCode.SWAP);
+                    cfw.addInvoke(
+                            ByteCode.INVOKEVIRTUAL,
+                            "org/mozilla/javascript/ResultAccumulator",
+                            "addResult",
+                            "(Ljava/lang/Object;)V");
+                    break;
+                case Token.ACCUMULATE_ITERATOR:
+                    cfw.add(ByteCode.DUP);
+                    generateExpression(child.getFirstChild(), child);
+                    cfw.add(ByteCode.SWAP);
+                    cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
+                    cfw.addALoad(contextLocal);
+                    cfw.addALoad(variableObjectLocal);
+                    addOptRuntimeInvoke(
+                            "accumulateIterator",
+                            "(Ljava/lang/Object;"
+                                    + "Lorg/mozilla/javascript/ResultAccumulator;"
+                                    + "Lorg/mozilla/javascript/Context;"
+                                    + "Lorg/mozilla/javascript/VarScope;"
+                                    + ")V");
+                    break;
+                default:
+                    Kit.codeBug(Token.typeToName(child.getType()));
+            }
+        }
+        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
+        cfw.addInvoke(
+                ByteCode.INVOKEVIRTUAL,
+                "org/mozilla/javascript/ResultAccumulator",
+                "getCallArgs",
+                "()[Ljava/lang/Object;");
     }
 
     /**

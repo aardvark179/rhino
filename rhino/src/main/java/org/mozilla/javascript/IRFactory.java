@@ -740,9 +740,13 @@ public final class IRFactory {
             Node call = createCallOrNew(Token.CALL, transformedTarget);
             call.setLineColumnNumber(node.getLineno(), node.getColumn());
             List<AstNode> args = node.getArguments();
-            for (int i = 0; i < args.size(); i++) {
-                AstNode arg = args.get(i);
-                call.addChildToBack(transform(arg));
+            if (hasSpreadArgument(args)) {
+                addAccumulatedArguments(call, args, null);
+            } else {
+                for (int i = 0; i < args.size(); i++) {
+                    AstNode arg = args.get(i);
+                    call.addChildToBack(transform(arg));
+                }
             }
             if (node.isOptionalCall()) {
                 call.putIntProp(Node.OPTIONAL_CHAINING, 1);
@@ -962,14 +966,56 @@ public final class IRFactory {
         Node nx = createCallOrNew(Token.NEW, transform(node.getTarget()));
         nx.setLineColumnNumber(node.getLineno(), node.getColumn());
         List<AstNode> args = node.getArguments();
-        for (int i = 0; i < args.size(); i++) {
-            AstNode arg = args.get(i);
-            nx.addChildToBack(transform(arg));
-        }
-        if (node.getInitializer() != null) {
-            nx.addChildToBack(transformObjectLiteral(node.getInitializer()));
+        Node initializer =
+                node.getInitializer() != null
+                        ? transformObjectLiteral(node.getInitializer())
+                        : null;
+        if (hasSpreadArgument(args)) {
+            addAccumulatedArguments(nx, args, initializer);
+        } else {
+            for (int i = 0; i < args.size(); i++) {
+                AstNode arg = args.get(i);
+                nx.addChildToBack(transform(arg));
+            }
+            if (initializer != null) {
+                nx.addChildToBack(initializer);
+            }
         }
         return nx;
+    }
+
+    private static boolean hasSpreadArgument(List<AstNode> args) {
+        for (AstNode arg : args) {
+            if (arg.getType() == Token.DOTDOTDOT) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Builds the accumulator-based IR shape for a call or {@code new} whose arguments contain a
+     * spread in any position. Mirrors {@link #transformArrayLiteral}: a {@link
+     * Token#RESULT_ACCUMULATOR} child is followed by one {@link Token#ACCUMULATE_RESULT} per plain
+     * argument and one {@link Token#ACCUMULATE_ITERATOR} per spread. An optional trailing node (the
+     * {@code new Foo(){...}} initializer) is accumulated as a plain argument to preserve existing
+     * behavior.
+     */
+    private void addAccumulatedArguments(Node call, List<AstNode> args, Node trailing) {
+        Node accumulator = new Node(Token.RESULT_ACCUMULATOR);
+        accumulator.putIntProp(Node.RESULTS_SIZE_PROP, args.size() + (trailing != null ? 1 : 0));
+        call.addChildToBack(accumulator);
+        for (AstNode arg : args) {
+            if (arg.getType() == Token.DOTDOTDOT) {
+                call.addChildToBack(
+                        new Node(Token.ACCUMULATE_ITERATOR, transform(arg).getFirstChild()));
+            } else {
+                call.addChildToBack(new Node(Token.ACCUMULATE_RESULT, transform(arg)));
+            }
+        }
+        if (trailing != null) {
+            call.addChildToBack(new Node(Token.ACCUMULATE_RESULT, trailing));
+        }
     }
 
     private Node transformNumber(NumberLiteral node) {

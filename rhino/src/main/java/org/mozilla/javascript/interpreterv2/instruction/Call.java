@@ -3,13 +3,10 @@ package org.mozilla.javascript.interpreterv2.instruction;
 import static org.mozilla.javascript.InterpreterV2.INVOCATION_COST;
 import static org.mozilla.javascript.InterpreterV2.addInstructionCount;
 
-import java.util.ArrayList;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Callable;
 import org.mozilla.javascript.Context;
-import org.mozilla.javascript.IteratorLikeIterable;
 import org.mozilla.javascript.ScriptRuntime;
-import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
 import org.mozilla.javascript.VarScope;
 import org.mozilla.javascript.interpreterv2.InstructionFormatter;
@@ -39,32 +36,22 @@ public abstract class Call extends Instruction {
         this.lookupResult = lookupResult;
     }
 
-    public static Call create(
-            Operand lookupResult, Operand[] arguments, Type callType, boolean lastIsSpread) {
+    public static Call create(Operand lookupResult, Operand[] arguments, Type callType) {
         if (callType == Type.Call) {
             switch (arguments.length) {
                 case 0:
                     return new Call0(lookupResult);
                 case 1:
-                    return lastIsSpread
-                            ? new Call1Spread(lookupResult, arguments[0])
-                            : new Call1(lookupResult, arguments[0]);
+                    return new Call1(lookupResult, arguments[0]);
                 case 2:
-                    return lastIsSpread
-                            ? new Call2Spread(lookupResult, arguments[0], arguments[1])
-                            : new Call2(lookupResult, arguments[0], arguments[1]);
+                    return new Call2(lookupResult, arguments[0], arguments[1]);
                 case 3:
-                    return lastIsSpread
-                            ? new Call3Spread(
-                                    lookupResult, arguments[0], arguments[1], arguments[2])
-                            : new Call3(lookupResult, arguments[0], arguments[1], arguments[2]);
+                    return new Call3(lookupResult, arguments[0], arguments[1], arguments[2]);
                 default:
                     break;
             }
         }
-        return lastIsSpread
-                ? new CallNSpread(lookupResult, arguments, callType)
-                : new CallN(lookupResult, arguments, callType);
+        return new CallN(lookupResult, arguments, callType);
     }
 
     protected void countInvocation(Context cx, CallFrameV2 frame) {
@@ -98,15 +85,5 @@ public abstract class Call extends Instruction {
     String formatDebug(Operand[] args) {
         return InstructionFormatter.formatInstruction(
                 "Call", "callType", Type.Call, "lookupResult", lookupResult, "args", args);
-    }
-
-    void spreadArray(Context cx, VarScope scope, ArrayList<Object> args, Object source) {
-        Scriptable src = ScriptRuntime.toObject(cx, scope, source);
-        final Object iterator = ScriptRuntime.callIterator(src, cx, scope);
-        try (IteratorLikeIterable it = new IteratorLikeIterable(cx, scope, iterator)) {
-            for (Object temp : it) {
-                args.add(temp);
-            }
-        }
     }
 }

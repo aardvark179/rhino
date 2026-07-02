@@ -3382,8 +3382,7 @@ public class Parser {
                     spread.setLineColumnNumber(spreadLineno, spreadColumn);
                     spread.setExpression(exprNode);
                     result.add(spread);
-                    // Spread is only permitted as the final argument.
-                    break;
+                    continue;
                 }
                 AstNode en = assignExpr();
                 if (peekToken() == Token.FOR) {

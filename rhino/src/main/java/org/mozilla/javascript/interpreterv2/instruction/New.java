@@ -3,11 +3,9 @@ package org.mozilla.javascript.interpreterv2.instruction;
 import static org.mozilla.javascript.InterpreterV2.INVOCATION_COST;
 import static org.mozilla.javascript.InterpreterV2.addInstructionCount;
 
-import java.util.ArrayList;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Constructable;
 import org.mozilla.javascript.Context;
-import org.mozilla.javascript.IteratorLikeIterable;
 import org.mozilla.javascript.JSFunction;
 import org.mozilla.javascript.ScriptRuntime;
 import org.mozilla.javascript.Scriptable;
@@ -31,24 +29,18 @@ public abstract class New extends Instruction {
         this.fun = fun;
     }
 
-    public static New create(Operand fun, Operand[] arguments, boolean lastIsSpread) {
+    public static New create(Operand fun, Operand[] arguments) {
         switch (arguments.length) {
             case 0:
                 return new New0(fun);
             case 1:
-                return lastIsSpread
-                        ? new New1Spread(fun, arguments[0])
-                        : new New1(fun, arguments[0]);
+                return new New1(fun, arguments[0]);
             case 2:
-                return lastIsSpread
-                        ? new New2Spread(fun, arguments[0], arguments[1])
-                        : new New2(fun, arguments[0], arguments[1]);
+                return new New2(fun, arguments[0], arguments[1]);
             case 3:
-                return lastIsSpread
-                        ? new New3Spread(fun, arguments[0], arguments[1], arguments[2])
-                        : new New3(fun, arguments[0], arguments[1], arguments[2]);
+                return new New3(fun, arguments[0], arguments[1], arguments[2]);
             default:
-                return lastIsSpread ? new NewNSpread(fun, arguments) : new NewN(fun, arguments);
+                return new NewN(fun, arguments);
         }
     }
 
@@ -102,15 +94,5 @@ public abstract class New extends Instruction {
     /** Shared {@link #toDebugString()} rendering for the subclasses. */
     String formatDebug(Operand[] args) {
         return InstructionFormatter.formatInstruction("New", "fun", fun, "args", args);
-    }
-
-    void spreadArray(Context cx, VarScope scope, ArrayList<Object> args, Object source) {
-        Scriptable src = ScriptRuntime.toObject(cx, scope, source);
-        final Object iterator = ScriptRuntime.callIterator(src, cx, scope);
-        try (IteratorLikeIterable it = new IteratorLikeIterable(cx, scope, iterator)) {
-            for (Object temp : it) {
-                args.add(temp);
-            }
-        }
     }
 }

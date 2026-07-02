@@ -80,27 +80,7 @@ final class CallFrame extends ACallFrame<CallFrame, InterpreterData<?>> implemen
             Object[] boundArgs,
             int argShift,
             int argCount,
-            Scriptable homeObject,
-            boolean lastIsSpread) {
-        if (lastIsSpread) {
-            var spreadValues =
-                    Interpreter.spreadArray(cx, callerScope, args[argShift + argCount - 1]);
-            int normalArgs = argCount - 1;
-            int spreadCount = spreadValues.size();
-            int totalArgs = spreadCount + normalArgs;
-            Object[] newArgs = new Object[totalArgs];
-            double[] newDbls = new double[totalArgs];
-            System.arraycopy(args, argShift, newArgs, 0, normalArgs);
-            System.arraycopy(argsDbl, argShift, newDbls, 0, normalArgs);
-            for (int i = 0; i < spreadCount; i++) {
-                newArgs[normalArgs + i] = spreadValues.get(i);
-            }
-            args = newArgs;
-            argsDbl = newDbls;
-            argCount = totalArgs;
-            argShift = 0;
-        }
-
+            Scriptable homeObject) {
         var desc = fnOrScript.getDescriptor();
         if (useActivation) {
             // Copy args to new array to pass to enterActivationFunction

@@ -117,22 +117,6 @@ public class SpreadArgumentParserTest {
     }
 
     @Test
-    public void spreadNotInFinalPositionIsSyntaxError() {
-        CompilerEnvirons env = new CompilerEnvirons();
-        env.setLanguageVersion(Context.VERSION_ES6);
-        Parser p = new Parser(env);
-        assertThrows(EvaluatorException.class, () -> p.parse("f(...a, b)", "eval", 1));
-    }
-
-    @Test
-    public void multipleSpreadsIsSyntaxError() {
-        CompilerEnvirons env = new CompilerEnvirons();
-        env.setLanguageVersion(Context.VERSION_ES6);
-        Parser p = new Parser(env);
-        assertThrows(EvaluatorException.class, () -> p.parse("f(...a, ...b)", "eval", 1));
-    }
-
-    @Test
     public void spreadBeforeEs6IsSyntaxError() {
         CompilerEnvirons env = new CompilerEnvirons();
         env.setLanguageVersion(Context.VERSION_1_8);

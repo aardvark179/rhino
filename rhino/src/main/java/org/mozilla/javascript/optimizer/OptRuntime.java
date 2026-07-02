@@ -4,13 +4,11 @@
 
 package org.mozilla.javascript.optimizer;
 
-import java.util.ArrayList;
 import java.util.List;
 import org.mozilla.javascript.Callable;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ContextFactory;
 import org.mozilla.javascript.ES6Generator;
-import org.mozilla.javascript.IteratorLikeIterable;
 import org.mozilla.javascript.JSFunction;
 import org.mozilla.javascript.JavaScriptException;
 import org.mozilla.javascript.NativeGenerator;
@@ -342,24 +340,6 @@ public final class OptRuntime extends ScriptRuntime {
     public static void accumulatekeyvalues(
             Object source, ResultAccumulator results, Context cx, VarScope scope) {
         ScriptRuntime.accumulateObjectKeyValues(cx, scope, results, source);
-    }
-
-    public static Object[] spreadArgs(
-            Context cx, VarScope scope, Object[] others, int pos, Object source) {
-        Scriptable src = ScriptRuntime.toObject(cx, scope, source);
-        final Object iterator = ScriptRuntime.callIterator(src, cx, scope);
-        ArrayList<Object> spreadValues = new ArrayList<>();
-        try (IteratorLikeIterable it = new IteratorLikeIterable(cx, scope, iterator)) {
-            for (Object temp : it) {
-                spreadValues.add(temp);
-            }
-        }
-        var finalArgs = new Object[others.length - 1 + spreadValues.size()];
-        System.arraycopy(others, 0, finalArgs, 0, others.length - 1);
-        for (int i = 0; i < spreadValues.size(); i++) {
-            finalArgs[others.length - 1 + i] = spreadValues.get(i);
-        }
-        return finalArgs;
     }
 
     public static class GeneratorState {
