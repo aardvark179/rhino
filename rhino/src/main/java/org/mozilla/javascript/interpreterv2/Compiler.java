@@ -856,9 +856,19 @@ public class Compiler<T extends ScriptOrFn<T>> {
                         }
                         lookupResultOrFunction = PopOperand.instance;
                     }
+                    boolean lastIsSpread = false;
                     List<Operand> args = new ArrayList<>();
                     while ((child = child.getNext()) != null) {
-                        args.add(getOperand(child, 0, false, lines));
+                        if (child.getType() == Token.DOTDOTDOT) {
+                            if (child.getNext() != null) {
+                                badTree(child);
+                            } else {
+                                lastIsSpread = true;
+                                args.add(getOperand(child.getFirstChild(), 0, false, lines));
+                            }
+                        } else {
+                            args.add(getOperand(child, 0, false, lines));
+                        }
                     }
                     int callType = node.getIntProp(Node.SPECIALCALL_PROP, Node.NON_SPECIALCALL);
                     updateLineNumber(node);
@@ -883,7 +893,8 @@ public class Compiler<T extends ScriptOrFn<T>> {
                                 Call.create(
                                         lookupResultOrFunction,
                                         args.toArray(Operand.EMPTY_ARRAY),
-                                        Call.Type.CallOnSuper));
+                                        Call.Type.CallOnSuper,
+                                        lastIsSpread));
                     } else {
                         // Only use the tail call optimization if we're not in a try
                         // or we're not generating debug info (since the
@@ -908,7 +919,8 @@ public class Compiler<T extends ScriptOrFn<T>> {
                                     Call.create(
                                             lookupResultOrFunction,
                                             args.toArray(Operand.EMPTY_ARRAY),
-                                            type));
+                                            type,
+                                            lastIsSpread));
                         }
                     }
 
