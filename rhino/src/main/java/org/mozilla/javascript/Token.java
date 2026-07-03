@@ -146,7 +146,8 @@ public class Token {
             ACCUMULATE_KEYVALUES = ACCUMULATE_ITERATOR + 1,
             MAKE_OBJECT = ACCUMULATE_KEYVALUES + 1,
             MAKE_ARRAAY = MAKE_OBJECT + 1,
-            TO_OBJECT_COERCIBLE = MAKE_ARRAAY + 1, // ES6 RequireObjectCoercible
+            MAKE_CLASS = MAKE_ARRAAY + 1, // ES6 class literal
+            TO_OBJECT_COERCIBLE = MAKE_CLASS + 1, // ES6 RequireObjectCoercible
             // Async iteration support (for-await-of)
             ENUM_INIT_ASYNC_ITERATOR = TO_OBJECT_COERCIBLE + 1,
             ENUM_ASYNC_NEXT = ENUM_INIT_ASYNC_ITERATOR + 1,
@@ -271,7 +272,9 @@ public class Token {
             QUESTION_DOT = NULLISH_COALESCING + 1, // optional chaining operator (?.)
             OBJECT_REST = QUESTION_DOT + 1, // ES6 object rest operation
             AWAIT = OBJECT_REST + 1, // ES2017 await expression
-            LAST_TOKEN = AWAIT + 1;
+            CLASS = AWAIT + 1, // ES6 class keyword
+            EXTENDS = CLASS + 1, // ES6 extends keyword
+            LAST_TOKEN = EXTENDS + 1;
 
     /**
      * Returns a name for the token. If Rhino is compiled with certain hardcoded debugging flags in
@@ -428,6 +431,8 @@ public class Token {
                 return "MAKE_OBJECT";
             case MAKE_ARRAAY:
                 return "MAKE_ARRAAY";
+            case MAKE_CLASS:
+                return "MAKE_CLASS";
             case BINDNAME:
                 return "BINDNAME";
             case THROW:
@@ -646,6 +651,10 @@ public class Token {
                 return "OBJECT_REST";
             case AWAIT:
                 return "AWAIT";
+            case CLASS:
+                return "CLASS";
+            case EXTENDS:
+                return "EXTENDS";
             case TO_OBJECT_COERCIBLE:
                 return "TO_OBJECT_COERCIBLE";
             case ITERATOR_CLOSE_ABRUPT:

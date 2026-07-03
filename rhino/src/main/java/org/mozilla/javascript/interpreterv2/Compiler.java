@@ -97,6 +97,7 @@ import org.mozilla.javascript.interpreterv2.instruction.Literal;
 import org.mozilla.javascript.interpreterv2.instruction.LocalClear;
 import org.mozilla.javascript.interpreterv2.instruction.LocalLoad;
 import org.mozilla.javascript.interpreterv2.instruction.MakeArray;
+import org.mozilla.javascript.interpreterv2.instruction.MakeClass;
 import org.mozilla.javascript.interpreterv2.instruction.MakeObject;
 import org.mozilla.javascript.interpreterv2.instruction.Mod;
 import org.mozilla.javascript.interpreterv2.instruction.Multiply;
@@ -155,6 +156,8 @@ import org.mozilla.javascript.interpreterv2.instruction.StrictSetName;
 import org.mozilla.javascript.interpreterv2.instruction.StringConcat;
 import org.mozilla.javascript.interpreterv2.instruction.Subtract;
 import org.mozilla.javascript.interpreterv2.instruction.Super;
+import org.mozilla.javascript.interpreterv2.instruction.SuperConstructorCall;
+import org.mozilla.javascript.interpreterv2.instruction.SuperConstructorCallAccumulated;
 import org.mozilla.javascript.interpreterv2.instruction.TemplateLiteralCallsite;
 import org.mozilla.javascript.interpreterv2.instruction.ThawFrame;
 import org.mozilla.javascript.interpreterv2.instruction.This;
@@ -854,6 +857,10 @@ public class Compiler<T extends ScriptOrFn<T>> {
             case Token.CALL:
             case Token.NEW:
                 {
+                    if (op == Token.CALL && node.getIntProp(Node.SUPER_CONSTRUCTOR_CALL, 0) == 1) {
+                        visitSuperConstructorCall(node, child);
+                        return;
+                    }
                     boolean isOptionalChainingCall =
                             node.getIntProp(Node.OPTIONAL_CHAINING, 0) == 1;
                     CompleteOptionalCallJump completeOptionalCallJump = null;
@@ -1488,6 +1495,11 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     visitLiteral(node, child);
                     break;
                 }
+            case Token.CLASS:
+                {
+                    visitClassLiteral(node, child);
+                    break;
+                }
             case Token.ARRAYCOMP:
                 {
                     // A bit of a hack: array comprehensions are implemented using
@@ -1706,6 +1718,59 @@ public class Compiler<T extends ScriptOrFn<T>> {
         } else {
             throw badTree(node);
         }
+    }
+
+    private void visitSuperConstructorCall(Node node, Node child) {
+        Node firstArg = child.getNext();
+        if (firstArg != null && firstArg.getType() == Token.RESULT_ACCUMULATOR) {
+            // Spread arguments in any position: gather into a ResultAccumulator, same shape as
+            // any other accumulated call.
+            for (Node c = firstArg; c != null; c = c.getNext()) {
+                switch (c.getType()) {
+                    case Token.RESULT_ACCUMULATOR:
+                        addInstruction(
+                                new ResultAccumulatorInstruction(
+                                        c.getIntProp(Node.RESULTS_SIZE_PROP, 0)));
+                        break;
+                    case Token.ACCUMULATE_RESULT:
+                        visitExpression(c.getFirstChild(), 0);
+                        addInstruction(AccumulateResult.instance);
+                        break;
+                    case Token.ACCUMULATE_ITERATOR:
+                        visitExpression(c.getFirstChild(), 0);
+                        addInstruction(AccumulateIterator.instance);
+                        break;
+                    default:
+                        badTree(c);
+                }
+            }
+            updateLineNumber(node);
+            addInstruction(new SuperConstructorCallAccumulated(PopOperand.instance));
+            return;
+        }
+
+        var lines = new ArrayList<Integer>();
+        List<Operand> args = new ArrayList<>();
+        Node argChild = child;
+        while ((argChild = argChild.getNext()) != null) {
+            args.add(getOperand(argChild, 0, false, lines));
+        }
+        updateLineNumber(node);
+        updateLineNumbers(lines);
+        addInstruction(new SuperConstructorCall(args.toArray(Operand.EMPTY_ARRAY)));
+    }
+
+    private void visitClassLiteral(Node node, Node superExprChild) {
+        // Children: [superClassExpr (or UNDEFINED), constructorFunctionExpr]
+        var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
+        visitExpression(superExprChild, 0);
+        Node ctorChild = superExprChild.getNext();
+        visitExpression(ctorChild, 0);
+        addInstruction(
+                new MakeClass(
+                        new LiteralOperand(generateLiteral(index)),
+                        PopOperand.instance,
+                        PopOperand.instance));
     }
 
     private void visitUnaryOperation(Node child, Function<Operand, Instruction> instruction) {

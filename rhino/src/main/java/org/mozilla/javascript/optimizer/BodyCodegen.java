@@ -1083,6 +1083,11 @@ class BodyCodegen {
             case Token.CALL:
             case Token.NEW:
                 {
+                    if (type == Token.CALL
+                            && node.getIntProp(Node.SUPER_CONSTRUCTOR_CALL, 0) == 1) {
+                        visitSuperConstructorCall(node, child);
+                        break;
+                    }
                     int specialType = node.getIntProp(Node.SPECIALCALL_PROP, Node.NON_SPECIALCALL);
                     if (specialType == Node.NON_SPECIALCALL) {
                         OptFunctionNode target;
@@ -1336,6 +1341,10 @@ class BodyCodegen {
 
             case Token.OBJECTLIT:
                 visitObjectLiteral(node, child, false);
+                break;
+
+            case Token.CLASS:
+                visitClassLiteral(node, child);
                 break;
 
             case Token.NOT:
@@ -2735,6 +2744,38 @@ class BodyCodegen {
         }
     }
 
+    private void visitClassLiteral(Node node, Node superExprChild) {
+        // Children: [superClassExpr (or UNDEFINED), constructorFunctionExpr]
+        var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
+        pushDescriptor();
+        cfw.addPush(index);
+        cfw.addInvoke(
+                ByteCode.INVOKEVIRTUAL,
+                "org/mozilla/javascript/JSDescriptor",
+                "getLiteral",
+                "(I)Ljava/lang/Object;");
+        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ClassLiteralDescriptor");
+        cfw.addALoad(contextLocal);
+        cfw.addALoad(variableObjectLocal);
+        generateExpression(superExprChild, node);
+        Node ctorChild = superExprChild.getNext();
+        generateExpression(ctorChild, node);
+        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/BaseFunction");
+        cfw.addPush(0);
+        cfw.add(ByteCode.ANEWARRAY, "java/lang/Object");
+        cfw.addInvoke(
+                ByteCode.INVOKEVIRTUAL,
+                "org/mozilla/javascript/ClassLiteralDescriptor",
+                "createClass",
+                "("
+                        + "Lorg/mozilla/javascript/Context;"
+                        + "Lorg/mozilla/javascript/VarScope;"
+                        + "Ljava/lang/Object;"
+                        + "Lorg/mozilla/javascript/BaseFunction;"
+                        + "[Ljava/lang/Object;"
+                        + ")Lorg/mozilla/javascript/Scriptable;");
+    }
+
     private void visitObjectLiteral(Node node, Node child, boolean topLevel) {
         Object[] properties = (Object[]) node.getProp(Node.OBJECT_IDS_PROP);
         int count = 0;
@@ -2876,6 +2917,44 @@ class BodyCodegen {
                         + ")Ljava/lang/Object;");
 
         cfw.markLabel(afterLabel);
+    }
+
+    /**
+     * Emits a {@code super(...)} constructor call: per GetSuperConstructor (ES2015 13.3.7.3), the
+     * callee is this constructor's own {@code [[Prototype]]}, called with the current {@code this}
+     * (see {@link org.mozilla.javascript.ClassLiteralDescriptor}'s "same-this" model of super()).
+     */
+    private void visitSuperConstructorCall(Node node, Node child) {
+        Node firstArgChild = child.getNext();
+        generateCallArgArray(node, firstArgChild, false);
+        cfw.addAStore(argsLocal);
+
+        cfw.addALoad(funObjLocal);
+        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/Scriptable");
+        cfw.addInvoke(
+                ByteCode.INVOKEINTERFACE,
+                "org/mozilla/javascript/Scriptable",
+                "getPrototype",
+                "()Lorg/mozilla/javascript/Scriptable;");
+        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/Callable");
+        cfw.addALoad(thisObjLocal);
+        // stack: ... functionObj thisObj
+        cfw.addALoad(contextLocal);
+        cfw.add(ByteCode.SWAP);
+        // stack: ... functionObj cx thisObj
+        cfw.addALoad(variableObjectLocal);
+        cfw.add(ByteCode.SWAP);
+        // stack: ... functionObj cx scope thisObj
+        cfw.addALoad(argsLocal);
+        cfw.addInvoke(
+                ByteCode.INVOKEINTERFACE,
+                "org/mozilla/javascript/Callable",
+                "call",
+                "(Lorg/mozilla/javascript/Context;"
+                        + "Lorg/mozilla/javascript/VarScope;"
+                        + "Ljava/lang/Object;"
+                        + "[Ljava/lang/Object;"
+                        + ")Ljava/lang/Object;");
     }
 
     private void visitStandardCall(Node node, Node child) {

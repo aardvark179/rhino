@@ -23,6 +23,7 @@ import org.mozilla.javascript.ast.BigIntLiteral;
 import org.mozilla.javascript.ast.Block;
 import org.mozilla.javascript.ast.BreakStatement;
 import org.mozilla.javascript.ast.CatchClause;
+import org.mozilla.javascript.ast.ClassNode;
 import org.mozilla.javascript.ast.ComputedPropertyKey;
 import org.mozilla.javascript.ast.ConditionalExpression;
 import org.mozilla.javascript.ast.ContinueStatement;
@@ -101,6 +102,7 @@ public final class IRFactory {
     private Parser parser;
     private AstNodePosition astNodePos;
     private boolean outerScopeIsStrict;
+    private boolean insideClassConstructor;
 
     public IRFactory(CompilerEnvirons env, String sourceString) {
         this(env, null, sourceString, env.getErrorReporter());
@@ -162,6 +164,8 @@ public final class IRFactory {
                 return transformBreak((BreakStatement) node);
             case Token.CALL:
                 return transformFunctionCall((FunctionCall) node);
+            case Token.CLASS:
+                return transformClass((ClassNode) node);
             case Token.CONTINUE:
                 return transformContinue((ContinueStatement) node);
             case Token.DO:
@@ -654,6 +658,8 @@ public final class IRFactory {
 
         var savedStrict = outerScopeIsStrict;
         outerScopeIsStrict |= fn.isInStrictMode();
+        boolean savedInsideClassConstructor = insideClassConstructor;
+        insideClassConstructor = fn.isClassConstructor();
         Parser.PerFunctionVariables savedVars = parser.createPerFunctionVariables(fn);
         try {
             // If we start needing to record much more codegen metadata during
@@ -766,6 +772,7 @@ public final class IRFactory {
             --parser.nestingOfFunction;
             savedVars.restore();
             outerScopeIsStrict = savedStrict;
+            insideClassConstructor = savedInsideClassConstructor;
         }
     }
 
@@ -790,7 +797,52 @@ public final class IRFactory {
             if (transformedTarget.getIntProp(Node.SUPER_PROPERTY_ACCESS, 0) == 1) {
                 call.putIntProp(Node.SUPER_PROPERTY_ACCESS, 1);
             }
+            if (transformedTarget.getType() == Token.SUPER) {
+                call.putIntProp(Node.SUPER_CONSTRUCTOR_CALL, 1);
+            }
             return call;
+        } finally {
+            astNodePos.pop();
+        }
+    }
+
+    /**
+     * Transforms a class declaration/expression into a {@link Token#CLASS} IR node.
+     *
+     * <p>Phase-1 shape: {@code CLASS(superClassExprOrEmpty, constructorFunctionNode)}. The
+     * constructor is transformed as an ordinary nested function; the class's runtime "shape" (here,
+     * trivial - just constructor + optional superclass) is captured by a {@link
+     * ClassLiteralDescriptor} registered in the current script/function's literal pool, mirroring
+     * how object/array literals register their descriptors.
+     */
+    private Node transformClass(ClassNode node) {
+        astNodePos.push(node);
+        try {
+            Node superExpr =
+                    node.getSuperClass() == null
+                            ? new Node(Token.UNDEFINED)
+                            : transform(node.getSuperClass());
+
+            Node ctorNode = transform(node.getConstructor());
+
+            Node classNode = new Node(Token.CLASS);
+            classNode.setLineColumnNumber(node.getLineno(), node.getColumn());
+            classNode.addChildToBack(superExpr);
+            classNode.addChildToBack(ctorNode);
+
+            ClassLiteralDescriptor.Builder builder = new ClassLiteralDescriptor.Builder();
+            classNode.putIntProp(
+                    Node.LITERAL_INDEX_PROP, parser.currentScriptOrFn.addLiteral(builder.build()));
+
+            if (node.isStatement() && node.getClassName() != null) {
+                Node assign =
+                        createAssignment(
+                                Token.ASSIGN,
+                                parser.createName(node.getClassName().getIdentifier()),
+                                classNode);
+                return createExprStatementNoReturn(assign, node.getLineno(), node.getColumn());
+            }
+            return classNode;
         } finally {
             astNodePos.pop();
         }
@@ -988,10 +1040,10 @@ public final class IRFactory {
 
     private Node transformLiteral(AstNode node) {
         // Trying to call super as a function. See 15.4.2 Static Semantics: HasDirectSuper
-        // Note that this will need to change when classes are implemented, because in a class
-        // constructor calling "super()" _is_ allowed.
-        if (node.getParent() instanceof FunctionCall && node.getType() == Token.SUPER)
-            parser.reportError("msg.super.shorthand.function");
+        // this is only allowed directly inside a class constructor.
+        if (node.getParent() instanceof FunctionCall
+                && node.getType() == Token.SUPER
+                && !insideClassConstructor) parser.reportError("msg.super.shorthand.function");
         return node;
     }
 

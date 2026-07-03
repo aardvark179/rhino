@@ -753,9 +753,21 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                 {
                     boolean isOptionalChainingCall =
                             node.getIntProp(Node.OPTIONAL_CHAINING, 0) == 1;
+                    boolean isSuperConstructorCall =
+                            node.getIntProp(Node.SUPER_CONSTRUCTOR_CALL, 0) == 1;
                     CompleteOptionalCallJump completeOptionalCallJump = null;
                     if (type == Token.NEW) {
                         visitExpression(child, 0);
+                    } else if (isSuperConstructorCall) {
+                        // super(...): push a LookupResult pairing the superclass constructor
+                        // (this constructor's own [[Prototype]]) with the current `this`,
+                        // bypassing the generic property/name-based callee resolution - the
+                        // `child` node (a bare Token.SUPER keyword) is not evaluated. Declare the
+                        // same stack depth (2) as generateCallFunAndThis's lookup-producing
+                        // branches, even though only one physical value (the LookupResult) is
+                        // pushed - matching that convention keeps the accounting below correct.
+                        addIcode(Icode.PUSH_SUPER_CONSTRUCTOR);
+                        stackChange(2);
                     } else {
                         completeOptionalCallJump =
                                 generateCallFunAndThis(child, isOptionalChainingCall);
@@ -1231,6 +1243,10 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
                 visitLiteral(node, child);
                 break;
 
+            case Token.CLASS:
+                visitClassLiteral(node, child);
+                break;
+
             case Token.ARRAYCOMP:
                 visitArrayComprehension(node, child, child.getNext());
                 break;
@@ -1693,6 +1709,15 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
         } else {
             throw badTree(node);
         }
+    }
+
+    private void visitClassLiteral(Node node, Node superExprChild) {
+        // Children: [superClassExpr (or UNDEFINED), constructorFunctionExpr]
+        visitExpression(superExprChild, 0);
+        Node ctorChild = superExprChild.getNext();
+        visitExpression(ctorChild, 0);
+        addIndexOp(Token.MAKE_CLASS, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
+        stackChange(-1);
     }
 
     private void visitAccumulatedCallArgs(Node node, Node firstArg) {

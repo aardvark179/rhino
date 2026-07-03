@@ -27,6 +27,7 @@ import org.mozilla.javascript.ast.BigIntLiteral;
 import org.mozilla.javascript.ast.Block;
 import org.mozilla.javascript.ast.BreakStatement;
 import org.mozilla.javascript.ast.CatchClause;
+import org.mozilla.javascript.ast.ClassNode;
 import org.mozilla.javascript.ast.Comment;
 import org.mozilla.javascript.ast.ComputedPropertyKey;
 import org.mozilla.javascript.ast.ConditionalExpression;
@@ -148,6 +149,7 @@ public class Parser {
     // during function parsing.  See PerFunctionVariables class below.
     ScriptNode currentScriptOrFn;
     private boolean insideMethod;
+    private boolean insideClassConstructor;
     Scope currentScope;
     private int endFlags;
     private boolean inForInit; // bound temporarily during forStatement()
@@ -1098,6 +1100,12 @@ public class Parser {
 
     private FunctionNode function(int type, boolean isMethodDefiniton, boolean isAsync)
             throws IOException {
+        return function(type, isMethodDefiniton, isAsync, false);
+    }
+
+    private FunctionNode function(
+            int type, boolean isMethodDefiniton, boolean isAsync, boolean isClassConstructor)
+            throws IOException {
         boolean isGenerator = false;
         int syntheticType = type;
         int baseLineno = lineNumber(); // line number where source starts
@@ -1174,6 +1182,9 @@ public class Parser {
         if (isAsync) {
             fnNode.setIsAsync();
         }
+        if (isClassConstructor) {
+            fnNode.setIsClassConstructor(true);
+        }
         if (lpPos != -1) fnNode.setLp(lpPos - functionSourceStart);
 
         fnNode.setJsDocNode(getAndResetJsDoc());
@@ -1181,6 +1192,8 @@ public class Parser {
         PerFunctionVariables savedVars = new PerFunctionVariables(fnNode);
         boolean wasInsideMethod = insideMethod;
         insideMethod = isMethodDefiniton;
+        boolean wasInsideClassConstructor = insideClassConstructor;
+        insideClassConstructor = isClassConstructor;
         try {
             parseFunctionParams(fnNode);
             AstNode body = parseFunctionBody(type, fnNode);
@@ -1199,6 +1212,7 @@ public class Parser {
         } finally {
             savedVars.restore();
             insideMethod = wasInsideMethod;
+            insideClassConstructor = wasInsideClassConstructor;
         }
 
         if (memberExprNode != null) {
@@ -1229,6 +1243,121 @@ public class Parser {
         }
         fnNode.doAnnexBHoisting();
         return fnNode;
+    }
+
+    /**
+     * Parses an ES6 class declaration or expression.
+     *
+     * <p>This is a minimal, phase-1 implementation: only an optional {@code extends} clause and a
+     * single {@code constructor(...)} member are supported. Any other class member is a parse error
+     * for now.
+     */
+    private ClassNode parseClass(boolean isStatement) throws IOException {
+        int pos = ts.tokenBeg;
+        int lineno = lineNumber();
+        int column = columnNumber();
+
+        ClassNode classNode = new ClassNode(pos);
+        classNode.setLineColumnNumber(lineno, column);
+        classNode.setIsStatement(isStatement);
+
+        Name className = null;
+        if (matchToken(Token.NAME, true)) {
+            className = createNameNode(true, Token.NAME);
+            classNode.setClassName(className);
+        } else if (isStatement) {
+            reportError("msg.unnamed.class.stmt");
+        }
+
+        if (matchToken(Token.EXTENDS, true)) {
+            classNode.setSuperClass(assignExpr());
+        }
+
+        mustMatchToken(Token.LC, "msg.no.brace.class", true);
+
+        boolean savedStrict = inUseStrictDirective;
+        inUseStrictDirective = true;
+
+        FunctionNode constructor = null;
+        while (peekToken() != Token.RC && peekToken() != Token.EOF) {
+            if (peekToken() == Token.SEMI) {
+                consumeToken();
+                continue;
+            }
+            if (peekToken() == Token.NAME) {
+                consumeToken();
+                String memberName = ts.getString();
+                if ("constructor".equals(memberName) && peekToken() == Token.LP) {
+                    if (constructor != null) {
+                        reportError("msg.dup.ctor");
+                    }
+                    constructor = function(FunctionNode.FUNCTION_EXPRESSION, false, false, true);
+                    continue;
+                }
+            }
+            reportError("msg.class.member.not.supported");
+            // Best-effort resync: if this looks like a method, consume it as one so
+            // parsing of the rest of the class body (and the file) can continue.
+            if (peekToken() == Token.LP) {
+                function(FunctionNode.FUNCTION_EXPRESSION, true, false);
+            } else {
+                consumeToken();
+            }
+        }
+
+        mustMatchToken(Token.RC, "msg.no.brace.class", true);
+
+        inUseStrictDirective = savedStrict;
+
+        if (constructor == null) {
+            constructor = createDefaultConstructor(pos, classNode.getSuperClass() != null);
+        }
+        classNode.setConstructor(constructor);
+
+        if (isStatement && className != null) {
+            defineSymbol(Token.LET, className.getIdentifier());
+        }
+
+        int end = ts.tokenEnd;
+        classNode.setLength(end - pos);
+        constructor.setRawSourceBounds(pos, end);
+
+        return classNode;
+    }
+
+    private FunctionNode createDefaultConstructor(int pos, boolean isDerived) {
+        FunctionNode fn = new FunctionNode(pos);
+        fn.setFunctionType(FunctionNode.FUNCTION_EXPRESSION);
+        fn.setIsClassConstructor(true);
+
+        Block body = new Block(pos);
+
+        if (isDerived) {
+            // Derived default constructor: constructor(...args) { super(...args); }
+            fn.setHasRestParameter(true);
+            Name argsParam = new Name(pos, "args");
+            fn.addParam(argsParam);
+            fn.putSymbol(new Symbol(Token.LP, "args"));
+
+            KeywordLiteral superTarget = new KeywordLiteral(pos, 0);
+            superTarget.setType(Token.SUPER);
+
+            Spread spread = new Spread(pos, 0);
+            spread.setExpression(new Name(pos, "args"));
+
+            FunctionCall superCall = new FunctionCall(pos);
+            superCall.setTarget(superTarget);
+            List<AstNode> callArgs = new ArrayList<>(1);
+            callArgs.add(spread);
+            superCall.setArguments(callArgs);
+
+            body.addStatement(new ExpressionStatement(superCall));
+        }
+
+        fn.setBody(body);
+        fn.setLength(0);
+
+        return fn;
     }
 
     private ParenthesizedExpression callArgsToArrowParams(FunctionCall call) {
@@ -1662,6 +1791,10 @@ public class Parser {
                 }
                 // Pre-ES6: legacy behavior
                 return function(FunctionNode.FUNCTION_EXPRESSION_STATEMENT);
+
+            case Token.CLASS:
+                consumeToken();
+                return parseClass(true);
 
             case Token.DEFAULT:
                 pn = defaultXmlNamespace();
@@ -4022,6 +4155,10 @@ public class Parser {
                 consumeToken();
                 return function(FunctionNode.FUNCTION_EXPRESSION);
 
+            case Token.CLASS:
+                consumeToken();
+                return parseClass(false);
+
             case Token.LB:
                 consumeToken();
                 return arrayLiteral();
@@ -4105,7 +4242,8 @@ public class Parser {
                 }
 
             case Token.SUPER:
-                if (((insideFunctionParams() || insideFunctionBody()) && insideMethod)
+                if (((insideFunctionParams() || insideFunctionBody())
+                                && (insideMethod || insideClassConstructor))
                         || compilerEnv.isAllowSuper()) {
                     consumeToken();
                     pos = ts.tokenBeg;

@@ -84,6 +84,7 @@ public class FunctionNode extends ScriptNode {
     private int rp = -1;
     private boolean hasRestParameter;
     private boolean isShorthand;
+    private boolean isClassConstructor;
 
     @Override
     public List<Object> getDefaultParams() {
@@ -383,6 +384,14 @@ public class FunctionNode extends ScriptNode {
         isShorthand = true;
     }
 
+    public boolean isClassConstructor() {
+        return isClassConstructor;
+    }
+
+    public void setIsClassConstructor(boolean isClassConstructor) {
+        this.isClassConstructor = isClassConstructor;
+    }
+
     public void addResumptionPoint(Node target) {
         if (generatorResumePoints == null) generatorResumePoints = new ArrayList<>();
         generatorResumePoints.add(target);
@@ -581,6 +590,7 @@ public class FunctionNode extends ScriptNode {
         this.rp = source.rp;
         this.hasRestParameter = source.hasRestParameter;
         this.isShorthand = source.isShorthand;
+        this.isClassConstructor = source.isClassConstructor;
         this.defaultParams = source.defaultParams;
         this.destructuringRvalues = source.destructuringRvalues;
         this.functionType = source.functionType;

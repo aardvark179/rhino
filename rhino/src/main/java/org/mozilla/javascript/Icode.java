@@ -166,8 +166,12 @@ abstract class Icode {
             // driver can distinguish await from yield).
             WRAP_AWAIT = CALLSPECIAL_ACCUMULATED - 1,
 
+            // Push the currently executing (class constructor) function's own [[Prototype]],
+            // i.e. the superclass constructor, per GetSuperConstructor - used for super(...) calls.
+            PUSH_SUPER_CONSTRUCTOR = WRAP_AWAIT - 1,
+
             // Last icode
-            MIN_ICODE = WRAP_AWAIT;
+            MIN_ICODE = PUSH_SUPER_CONSTRUCTOR;
 
     static String bytecodeName(int bytecode) {
         if (!validBytecode(bytecode)) {
@@ -355,6 +359,8 @@ abstract class Icode {
                 return "CALLSPECIAL_ACCUMULATED";
             case WRAP_AWAIT:
                 return "WRAP_AWAIT";
+            case PUSH_SUPER_CONSTRUCTOR:
+                return "PUSH_SUPER_CONSTRUCTOR";
         }
 
         // icode without name

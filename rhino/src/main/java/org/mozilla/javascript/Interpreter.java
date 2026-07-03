@@ -793,6 +793,8 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Token.ACCUMULATE_KEYVALUES] = new DoAccumulateKeyValues();
         instructionObjs[base + Token.MAKE_OBJECT] = new DoMakeObject();
         instructionObjs[base + Token.MAKE_ARRAAY] = new DoMakeArray();
+        instructionObjs[base + Token.MAKE_CLASS] = new DoMakeClass();
+        instructionObjs[base + Icode.PUSH_SUPER_CONSTRUCTOR] = new DoPushSuperConstructor();
         instructionObjs[base + Token.TO_PROPKEY] = new DoToPropKey();
         instructionObjs[base + Icode.ENTERDQ] = new DoEnterDotQuery();
         instructionObjs[base + Icode.LEAVEDQ] = new DoLeaveDotQuery();
@@ -3430,6 +3432,22 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         }
     }
 
+    private static class DoPushSuperConstructor extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            // super(...) resolves via GetSuperConstructor: the currently executing (class
+            // constructor) function's own [[Prototype]] - see ClassLiteralDescriptor.setupClass,
+            // which sets that up to be the superclass. Calls go through the same
+            // lookup-result-based CALL bytecode as any other call, invoked with the current
+            // `this` per the "same-this" model of super().
+            Object superConstructor = ((Scriptable) frame.fnOrScript).getPrototype();
+            frame.stack[++frame.stackTop] =
+                    new ScriptRuntime.LookupResult(
+                            superConstructor, (Scriptable) frame.thisObj, "super");
+            return null;
+        }
+    }
+
     private static class DoHomeObj extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
@@ -4096,6 +4114,24 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             var obj = (Scriptable) frame.stack[frame.stackTop];
             frame.stack[frame.stackTop] =
                     desc.createObject(cx, frame.scope, obj, results.getResults());
+            return null;
+        }
+    }
+
+    private static class DoMakeClass extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            var desc =
+                    (ClassLiteralDescriptor)
+                            frame.fnOrScript.getDescriptor().getLiteral(state.indexReg);
+            var constructor = (BaseFunction) frame.stack[frame.stackTop--];
+            var superClass = frame.stack[frame.stackTop];
+            if (superClass == DOUBLE_MARK) {
+                superClass = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
+            }
+            frame.stack[frame.stackTop] =
+                    desc.createClass(
+                            cx, frame.scope, superClass, constructor, ScriptRuntime.emptyArgs);
             return null;
         }
     }
