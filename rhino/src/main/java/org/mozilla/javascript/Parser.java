@@ -5602,21 +5602,24 @@ public class Parser {
 
                 Node restValue;
                 if (iteratorName != null) {
-                    // When using the iterator protocol, collect remaining
-                    // elements via Array.from(iterator). The iterator has
-                    // not been advanced past this point, so Array.from
-                    // collects exactly the remaining elements. Array.from
-                    // also properly closes the iterator when done, so we
-                    // clear the iterator tracking to skip the manual
-                    // closing code generated after the loop.
-                    restValue =
-                            new Node(
-                                    Token.CALL,
-                                    new Node(
-                                            Token.GETPROP,
-                                            createName("Array"),
-                                            Node.newString("from")));
-                    restValue.addChildToBack(createName(iteratorName));
+                    // Collect remaining elements the same way [...iteratorName] would:
+                    // via the shared ResultAccumulator/ACCUMULATE_ITERATOR mechanism
+                    // used for array-literal and call spread (see
+                    // IRFactory.transformArrayLiteral). The iterator has not been
+                    // advanced past this point, so this collects exactly the
+                    // remaining elements, and closes the iterator when done (see
+                    // ScriptRuntime.accumulateIteratorValues), so lastResultName
+                    // stays null here, skipping the manual closing code generated
+                    // after the loop (see destructuringAssignmentHelper).
+                    Node accumulator = new Node(Token.RESULT_ACCUMULATOR);
+                    restValue = new Node(Token.ARRAYLIT);
+                    restValue.addChildToBack(accumulator);
+                    restValue.addChildToBack(
+                            new Node(Token.ACCUMULATE_ITERATOR, createName(iteratorName)));
+                    var builder = new ArrayLiteralDescriptor.Builder().withSpread();
+                    accumulator.putIntProp(Node.RESULTS_SIZE_PROP, builder.getSize());
+                    restValue.putIntProp(
+                            Node.LITERAL_INDEX_PROP, currentScriptOrFn.addLiteral(builder.build()));
                 } else {
                     // call array.slice(index) to collect remaining elements
                     restValue =
