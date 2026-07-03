@@ -1284,25 +1284,62 @@ public class Parser {
                 consumeToken();
                 continue;
             }
-            if (peekToken() == Token.NAME) {
+
+            int tt = peekToken();
+            String memberName;
+            if (tt == Token.NAME || tt == Token.STRING) {
                 consumeToken();
-                String memberName = ts.getString();
-                if ("constructor".equals(memberName) && peekToken() == Token.LP) {
-                    if (constructor != null) {
-                        reportError("msg.dup.ctor");
-                    }
-                    constructor = function(FunctionNode.FUNCTION_EXPRESSION, false, false, true);
-                    continue;
-                }
-            }
-            reportError("msg.class.member.not.supported");
-            // Best-effort resync: if this looks like a method, consume it as one so
-            // parsing of the rest of the class body (and the file) can continue.
-            if (peekToken() == Token.LP) {
-                function(FunctionNode.FUNCTION_EXPRESSION, true, false);
+                memberName = ts.getString();
             } else {
-                consumeToken();
+                reportError("msg.class.member.not.supported");
+                // Best-effort resync: if this looks like a method, consume it as one so
+                // parsing of the rest of the class body (and the file) can continue.
+                if (peekToken() == Token.LP) {
+                    function(FunctionNode.FUNCTION_EXPRESSION, true, false);
+                } else {
+                    consumeToken();
+                }
+                continue;
             }
+
+            if ("constructor".equals(memberName) && peekToken() == Token.LP) {
+                if (constructor != null) {
+                    reportError("msg.dup.ctor");
+                }
+                constructor = function(FunctionNode.FUNCTION_EXPRESSION, true, false, true);
+                continue;
+            }
+
+            // Check for 'get'/'set' accessor modifier before the member name.
+            ClassNode.ElementKind accessorKind = ClassNode.ElementKind.METHOD;
+            if (("get".equals(memberName) || "set".equals(memberName))
+                    && (peekToken() == Token.NAME || peekToken() == Token.STRING)) {
+                accessorKind =
+                        "get".equals(memberName)
+                                ? ClassNode.ElementKind.GETTER
+                                : ClassNode.ElementKind.SETTER;
+                consumeToken();
+                memberName = ts.getString();
+            }
+
+            if (peekToken() != Token.LP) {
+                reportError("msg.class.member.not.supported");
+                continue;
+            }
+
+            FunctionNode method = function(FunctionNode.FUNCTION_EXPRESSION, true, false);
+            if (accessorKind == ClassNode.ElementKind.GETTER) {
+                if (method.getParamCount() != 0) {
+                    reportError("msg.getter.no.parms");
+                }
+                method.setFunctionIsGetterMethod();
+            } else if (accessorKind == ClassNode.ElementKind.SETTER) {
+                if (method.getParamCount() != 1 || method.hasRestParameter()) {
+                    reportError("msg.setter.one.parm");
+                }
+                method.setFunctionIsSetterMethod();
+            }
+            classNode.addMethod(memberName, method, accessorKind);
         }
 
         mustMatchToken(Token.RC, "msg.no.brace.class", true);
@@ -1328,6 +1365,7 @@ public class Parser {
     private FunctionNode createDefaultConstructor(int pos, boolean isDerived) {
         FunctionNode fn = new FunctionNode(pos);
         fn.setFunctionType(FunctionNode.FUNCTION_EXPRESSION);
+        fn.setMethodDefinition(true);
         fn.setIsClassConstructor(true);
 
         Block body = new Block(pos);

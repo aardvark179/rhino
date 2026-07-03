@@ -2745,7 +2745,11 @@ class BodyCodegen {
     }
 
     private void visitClassLiteral(Node node, Node superExprChild) {
-        // Children: [superClassExpr (or UNDEFINED), constructorFunctionExpr]
+        // Children: [superClassExpr (or UNDEFINED), EMPTY_OBJECT, RESULT_ACCUMULATOR,
+        // ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(method)...] - see visitLiteral's
+        // EMPTY_OBJECT/RESULT_ACCUMULATOR/ACCUMULATE_RESULT handling, which this mirrors so that
+        // method/constructor closures pick up the prototype object as their home object via
+        // savedHomeObjectLocal.
         var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
         pushDescriptor();
         cfw.addPush(index);
@@ -2758,11 +2762,65 @@ class BodyCodegen {
         cfw.addALoad(contextLocal);
         cfw.addALoad(variableObjectLocal);
         generateExpression(superExprChild, node);
-        Node ctorChild = superExprChild.getNext();
-        generateExpression(ctorChild, node);
-        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/BaseFunction");
-        cfw.addPush(0);
-        cfw.add(ByteCode.ANEWARRAY, "java/lang/Object");
+
+        Node child = superExprChild.getNext();
+        while (child != null) {
+            switch (child.getType()) {
+                case Token.EMPTY_OBJECT:
+                    {
+                        cfw.addALoad(contextLocal);
+                        cfw.addALoad(variableObjectLocal);
+                        cfw.addInvoke(
+                                ByteCode.INVOKEVIRTUAL,
+                                "org/mozilla/javascript/Context",
+                                "newObject",
+                                "(Lorg/mozilla/javascript/VarScope;)Lorg/mozilla/javascript/Scriptable;");
+                        cfw.add(ByteCode.DUP);
+                        if (savedHomeObjectLocal == -1) {
+                            savedHomeObjectLocal = getNewWordLocal();
+                        }
+                        cfw.addAStore(savedHomeObjectLocal);
+                        break;
+                    }
+                case Token.RESULT_ACCUMULATOR:
+                    {
+                        cfw.add(ByteCode.NEW, "org/mozilla/javascript/ResultAccumulator");
+                        cfw.add(ByteCode.DUP);
+                        cfw.addLoadConstant(child.getIntProp(Node.RESULTS_SIZE_PROP, 0));
+                        cfw.addInvoke(
+                                ByteCode.INVOKESPECIAL,
+                                "org/mozilla/javascript/ResultAccumulator",
+                                "<init>",
+                                "(I)V");
+                        break;
+                    }
+                case Token.ACCUMULATE_RESULT:
+                    {
+                        cfw.add(ByteCode.DUP);
+                        generateExpression(child.getFirstChild(), child);
+                        cfw.add(ByteCode.SWAP);
+                        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
+                        cfw.add(ByteCode.SWAP);
+                        cfw.addInvoke(
+                                ByteCode.INVOKEVIRTUAL,
+                                "org/mozilla/javascript/ResultAccumulator",
+                                "addResult",
+                                "(Ljava/lang/Object;)V");
+                        break;
+                    }
+                default:
+                    Kit.codeBug(Token.typeToName(child.getType()));
+            }
+            child = child.getNext();
+        }
+
+        // stack: descriptor cx scope superClass prototype accumulator
+        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/ResultAccumulator");
+        cfw.addInvoke(
+                ByteCode.INVOKEVIRTUAL,
+                "org/mozilla/javascript/ResultAccumulator",
+                "getResults",
+                "()[Ljava/lang/Object;");
         cfw.addInvoke(
                 ByteCode.INVOKEVIRTUAL,
                 "org/mozilla/javascript/ClassLiteralDescriptor",
@@ -2771,7 +2829,7 @@ class BodyCodegen {
                         + "Lorg/mozilla/javascript/Context;"
                         + "Lorg/mozilla/javascript/VarScope;"
                         + "Ljava/lang/Object;"
-                        + "Lorg/mozilla/javascript/BaseFunction;"
+                        + "Lorg/mozilla/javascript/Scriptable;"
                         + "[Ljava/lang/Object;"
                         + ")Lorg/mozilla/javascript/Scriptable;");
     }

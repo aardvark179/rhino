@@ -1712,12 +1712,37 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
     }
 
     private void visitClassLiteral(Node node, Node superExprChild) {
-        // Children: [superClassExpr (or UNDEFINED), constructorFunctionExpr]
+        // Children: [superClassExpr (or UNDEFINED), EMPTY_OBJECT, RESULT_ACCUMULATOR,
+        // ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(method)...] - the EMPTY_OBJECT/
+        // RESULT_ACCUMULATOR/ACCUMULATE_RESULT shape exactly mirrors an object literal's, so that
+        // method/constructor closures (which use isMethodDefinition()) pick up the prototype
+        // object as their home object via the same "peek the object under construction"
+        // convention.
         visitExpression(superExprChild, 0);
-        Node ctorChild = superExprChild.getNext();
-        visitExpression(ctorChild, 0);
+        Node child = superExprChild.getNext();
+        while (child != null) {
+            switch (child.getType()) {
+                case Token.EMPTY_OBJECT:
+                    addToken(Token.EMPTY_OBJECT);
+                    stackChange(1);
+                    break;
+                case Token.RESULT_ACCUMULATOR:
+                    addIndexOp(
+                            Token.RESULT_ACCUMULATOR, child.getIntProp(Node.RESULTS_SIZE_PROP, 0));
+                    stackChange(1);
+                    break;
+                case Token.ACCUMULATE_RESULT:
+                    visitExpression(child.getFirstChild(), 0);
+                    addToken(Token.ACCUMULATE_RESULT);
+                    stackChange(-1);
+                    break;
+                default:
+                    throw badTree(node);
+            }
+            child = child.getNext();
+        }
         addIndexOp(Token.MAKE_CLASS, node.getIntProp(Node.LITERAL_INDEX_PROP, 0));
-        stackChange(-1);
+        stackChange(-2);
     }
 
     private void visitAccumulatedCallArgs(Node node, Node firstArg) {

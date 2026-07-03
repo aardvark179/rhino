@@ -189,7 +189,10 @@ public class JSFunction extends BaseFunction implements ScriptOrFn<JSFunction> {
         if (nt == null || Undefined.isUndefined(nt)) {
             nt = this;
         }
-        var thisObj = homeObject == null ? this.createObject(cx, s, nt) : null;
+        // A non-null homeObject here can only mean this is a class constructor (methods/arrows
+        // are already rejected by the getConstructor() == null check above), which still needs a
+        // normally auto-created `this` like any other constructor.
+        var thisObj = this.createObject(cx, s, nt);
         // Pass `this` in as new.target for now. This can change when
         // the public `construct` signature changes.
         var res = descriptor.getConstructor().execute(cx, this, nt, s, thisObj, args);

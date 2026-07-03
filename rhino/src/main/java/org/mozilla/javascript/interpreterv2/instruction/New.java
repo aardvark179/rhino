@@ -65,10 +65,10 @@ public abstract class New extends Instruction {
             JSFunction f = (JSFunction) lhs;
             if (frame.fnOrScript.getDescriptor().getSecurityDomain()
                     == f.getDescriptor().getSecurityDomain()) {
-                if (cx.getLanguageVersion() >= Context.VERSION_ES6 && f.getHomeObject() != null) {
-                    // Only methods have home objects associated with them
-                    throw ScriptRuntime.typeErrorById("msg.not.ctor", f.getFunctionName());
-                }
+                // Class constructors legitimately have both a non-null home object (for method
+                // `super.x` resolution) and constructor bytecode, so home-object presence alone
+                // can't be used to reject non-constructors here - the constructor-nullness check
+                // below (which methods and arrows do fail) is the real gate.
                 if (f.getDescriptor().getConstructor() == null) {
                     // Arrow functions and generators are not constructors
                     throw ScriptRuntime.typeErrorById("msg.not.ctor", f.getFunctionName());

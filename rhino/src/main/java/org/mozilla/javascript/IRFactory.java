@@ -809,11 +809,16 @@ public final class IRFactory {
     /**
      * Transforms a class declaration/expression into a {@link Token#CLASS} IR node.
      *
-     * <p>Phase-1 shape: {@code CLASS(superClassExprOrEmpty, constructorFunctionNode)}. The
-     * constructor is transformed as an ordinary nested function; the class's runtime "shape" (here,
-     * trivial - just constructor + optional superclass) is captured by a {@link
-     * ClassLiteralDescriptor} registered in the current script/function's literal pool, mirroring
-     * how object/array literals register their descriptors.
+     * <p>Shape: {@code CLASS(superClassExprOrUndefined, EMPTY_OBJECT, RESULT_ACCUMULATOR,
+     * ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(method)...)}. This mirrors {@code
+     * transformObjectLiteral}'s shape exactly: the {@code EMPTY_OBJECT} node creates the (eventual)
+     * prototype object, and every accumulated function value (the constructor first, then each
+     * instance method/getter/setter, in source order) is built with {@code homeObject == } that
+     * prototype via the very same "peek the object under construction" convention object-literal
+     * methods already use - which is why the constructor and methods are parsed as method
+     * definitions. The class's shape (which accumulated values are the constructor vs. named
+     * members, and of what kind) is captured by a {@link ClassLiteralDescriptor} registered in the
+     * current script/function's literal pool, exactly like object/array literals register theirs.
      */
     private Node transformClass(ClassNode node) {
         astNodePos.push(node);
@@ -823,14 +828,29 @@ public final class IRFactory {
                             ? new Node(Token.UNDEFINED)
                             : transform(node.getSuperClass());
 
-            Node ctorNode = transform(node.getConstructor());
-
             Node classNode = new Node(Token.CLASS);
             classNode.setLineColumnNumber(node.getLineno(), node.getColumn());
             classNode.addChildToBack(superExpr);
-            classNode.addChildToBack(ctorNode);
+            classNode.addChildToBack(new Node(Token.EMPTY_OBJECT));
+
+            Node accumulator = new Node(Token.RESULT_ACCUMULATOR);
+            classNode.addChildToBack(accumulator);
 
             ClassLiteralDescriptor.Builder builder = new ClassLiteralDescriptor.Builder();
+
+            classNode.addChildToBack(
+                    new Node(Token.ACCUMULATE_RESULT, transform(node.getConstructor())));
+
+            List<String> methodNames = node.getMethodNames();
+            List<FunctionNode> methods = node.getMethods();
+            List<ClassNode.ElementKind> methodKinds = node.getMethodKinds();
+            for (int i = 0; i < methods.size(); i++) {
+                Node methodValue = transform(methods.get(i));
+                classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
+                builder.addMethod(methodNames.get(i), toDescriptorKind(methodKinds.get(i)));
+            }
+
+            accumulator.putIntProp(Node.RESULTS_SIZE_PROP, builder.getSize());
             classNode.putIntProp(
                     Node.LITERAL_INDEX_PROP, parser.currentScriptOrFn.addLiteral(builder.build()));
 
@@ -845,6 +865,17 @@ public final class IRFactory {
             return classNode;
         } finally {
             astNodePos.pop();
+        }
+    }
+
+    private static ClassLiteralDescriptor.ElementKind toDescriptorKind(ClassNode.ElementKind kind) {
+        switch (kind) {
+            case GETTER:
+                return ClassLiteralDescriptor.ElementKind.GETTER;
+            case SETTER:
+                return ClassLiteralDescriptor.ElementKind.SETTER;
+            default:
+                return ClassLiteralDescriptor.ElementKind.METHOD;
         }
     }
 

@@ -2876,15 +2876,13 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                 var compilerData = (InterpreterData<JSFunction>) desc.getConstructor();
                 if (frame.fnOrScript.getDescriptor().getSecurityDomain()
                         == desc.getSecurityDomain()) {
-                    if (cx.getLanguageVersion() >= Context.VERSION_ES6
-                            && f.getHomeObject() != null) {
-                        // Only methods have home objects associated with
-                        // them
-                        throw ScriptRuntime.typeErrorById("msg.not.ctor", f.getFunctionName());
-                    }
-
-                    Scriptable newInstance =
-                            f.getHomeObject() == null ? f.createObject(cx, frame.scope) : null;
+                    // Methods have a non-null home object but no constructor bytecode (see
+                    // CodeGenUtils.setConstructor), so they never reach this branch at all - the
+                    // `instanceof InterpreterData` check above already excludes them. A non-null
+                    // home object here can only mean this is a class constructor (for method
+                    // `super.x` resolution), which still needs a normally auto-created `this`
+                    // like any other constructor.
+                    Scriptable newInstance = f.createObject(cx, frame.scope);
                     CallFrame calleeFrame =
                             initFrame(
                                     cx,
@@ -4124,14 +4122,14 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             var desc =
                     (ClassLiteralDescriptor)
                             frame.fnOrScript.getDescriptor().getLiteral(state.indexReg);
-            var constructor = (BaseFunction) frame.stack[frame.stackTop--];
+            var results = (ResultAccumulator) frame.stack[frame.stackTop--];
+            var prototype = (Scriptable) frame.stack[frame.stackTop--];
             var superClass = frame.stack[frame.stackTop];
             if (superClass == DOUBLE_MARK) {
                 superClass = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
             }
             frame.stack[frame.stackTop] =
-                    desc.createClass(
-                            cx, frame.scope, superClass, constructor, ScriptRuntime.emptyArgs);
+                    desc.createClass(cx, frame.scope, superClass, prototype, results.getResults());
             return null;
         }
     }

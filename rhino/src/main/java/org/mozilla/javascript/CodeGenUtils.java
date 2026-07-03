@@ -134,7 +134,10 @@ public class CodeGenUtils {
             FunctionNode f = (FunctionNode) scriptOrFn;
             boolean isArrow = f.getFunctionType() == FunctionNode.ARROW_FUNCTION;
             boolean isAsyncNonGenerator = f.isAsync() && !f.isES6Generator();
-            if (isArrow || f.isMethodDefinition() || f.isGenerator() || isAsyncNonGenerator) {
+            if (isArrow
+                    || (f.isMethodDefinition() && !f.isClassConstructor())
+                    || f.isGenerator()
+                    || isAsyncNonGenerator) {
                 builder.constructor = new JSCode.NullBuilder<T>();
             } else {
                 builder.constructor = builder.code;

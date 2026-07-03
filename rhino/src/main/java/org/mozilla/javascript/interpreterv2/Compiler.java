@@ -1761,14 +1761,36 @@ public class Compiler<T extends ScriptOrFn<T>> {
     }
 
     private void visitClassLiteral(Node node, Node superExprChild) {
-        // Children: [superClassExpr (or UNDEFINED), constructorFunctionExpr]
+        // Children: [superClassExpr (or UNDEFINED), EMPTY_OBJECT, RESULT_ACCUMULATOR,
+        // ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(method)...] - mirrors an object
+        // literal's shape so method/constructor closures pick up the prototype object as their
+        // home object via PeekOperand(-1), same as object-literal methods.
         var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
         visitExpression(superExprChild, 0);
-        Node ctorChild = superExprChild.getNext();
-        visitExpression(ctorChild, 0);
+        Node child = superExprChild.getNext();
+        while (child != null) {
+            switch (child.getType()) {
+                case Token.EMPTY_OBJECT:
+                    addInstruction(EmptyObject.instance);
+                    break;
+                case Token.RESULT_ACCUMULATOR:
+                    addInstruction(
+                            new ResultAccumulatorInstruction(
+                                    child.getIntProp(Node.RESULTS_SIZE_PROP, 0)));
+                    break;
+                case Token.ACCUMULATE_RESULT:
+                    visitExpression(child.getFirstChild(), 0);
+                    addInstruction(AccumulateResult.instance);
+                    break;
+                default:
+                    throw badTree(node);
+            }
+            child = child.getNext();
+        }
         addInstruction(
                 new MakeClass(
                         new LiteralOperand(generateLiteral(index)),
+                        PopOperand.instance,
                         PopOperand.instance,
                         PopOperand.instance));
     }
