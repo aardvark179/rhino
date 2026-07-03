@@ -844,10 +844,23 @@ public final class IRFactory {
             List<String> methodNames = node.getMethodNames();
             List<FunctionNode> methods = node.getMethods();
             List<ClassNode.ElementKind> methodKinds = node.getMethodKinds();
+            List<AstNode> methodComputedKeys = node.getMethodComputedKeys();
             for (int i = 0; i < methods.size(); i++) {
-                Node methodValue = transform(methods.get(i));
-                classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
-                builder.addMethod(methodNames.get(i), toDescriptorKind(methodKinds.get(i)));
+                ClassLiteralDescriptor.ElementKind kind = toDescriptorKind(methodKinds.get(i));
+                AstNode computedKeyExpr = methodComputedKeys.get(i);
+                if (computedKeyExpr != null) {
+                    Node keyValue = transform(computedKeyExpr);
+                    classNode.addChildToBack(
+                            new Node(
+                                    Token.ACCUMULATE_RESULT, new Node(Token.TO_PROPKEY, keyValue)));
+                    Node methodValue = transform(methods.get(i));
+                    classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
+                    builder.addComputedMethod(kind);
+                } else {
+                    Node methodValue = transform(methods.get(i));
+                    classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
+                    builder.addMethod(methodNames.get(i), kind);
+                }
             }
 
             accumulator.putIntProp(Node.RESULTS_SIZE_PROP, builder.getSize());

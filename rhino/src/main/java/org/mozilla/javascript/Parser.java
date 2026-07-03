@@ -1286,10 +1286,17 @@ public class Parser {
             }
 
             int tt = peekToken();
-            String memberName;
+            String memberName = null;
+            boolean isComputed = false;
+            AstNode computedKeyExpr = null;
             if (tt == Token.NAME || tt == Token.STRING) {
                 consumeToken();
                 memberName = ts.getString();
+            } else if (tt == Token.LB) {
+                isComputed = true;
+                consumeToken();
+                computedKeyExpr = assignExpr();
+                mustMatchToken(Token.RB, "msg.no.bracket.index", true);
             } else {
                 reportError("msg.class.member.not.supported");
                 // Best-effort resync: if this looks like a method, consume it as one so
@@ -1302,7 +1309,7 @@ public class Parser {
                 continue;
             }
 
-            if ("constructor".equals(memberName) && peekToken() == Token.LP) {
+            if (!isComputed && "constructor".equals(memberName) && peekToken() == Token.LP) {
                 if (constructor != null) {
                     reportError("msg.dup.ctor");
                 }
@@ -1312,14 +1319,25 @@ public class Parser {
 
             // Check for 'get'/'set' accessor modifier before the member name.
             ClassNode.ElementKind accessorKind = ClassNode.ElementKind.METHOD;
-            if (("get".equals(memberName) || "set".equals(memberName))
-                    && (peekToken() == Token.NAME || peekToken() == Token.STRING)) {
+            if (!isComputed
+                    && ("get".equals(memberName) || "set".equals(memberName))
+                    && (peekToken() == Token.NAME
+                            || peekToken() == Token.STRING
+                            || peekToken() == Token.LB)) {
                 accessorKind =
                         "get".equals(memberName)
                                 ? ClassNode.ElementKind.GETTER
                                 : ClassNode.ElementKind.SETTER;
-                consumeToken();
-                memberName = ts.getString();
+                if (peekToken() == Token.LB) {
+                    isComputed = true;
+                    memberName = null;
+                    consumeToken();
+                    computedKeyExpr = assignExpr();
+                    mustMatchToken(Token.RB, "msg.no.bracket.index", true);
+                } else {
+                    consumeToken();
+                    memberName = ts.getString();
+                }
             }
 
             if (peekToken() != Token.LP) {
@@ -1339,7 +1357,11 @@ public class Parser {
                 }
                 method.setFunctionIsSetterMethod();
             }
-            classNode.addMethod(memberName, method, accessorKind);
+            if (isComputed) {
+                classNode.addComputedMethod(computedKeyExpr, method, accessorKind);
+            } else {
+                classNode.addMethod(memberName, method, accessorKind);
+            }
         }
 
         mustMatchToken(Token.RC, "msg.no.brace.class", true);

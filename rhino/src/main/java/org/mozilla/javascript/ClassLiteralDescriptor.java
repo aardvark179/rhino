@@ -9,16 +9,16 @@ import java.util.ArrayList;
  * the class's shape, and is invoked identically from all three backends via a single {@link
  * #createClass} call.
  *
- * <p>{@code values[0]} is always the (already-built) constructor function; {@code values[1..]} are
- * the instance method/getter/setter values, in the same order as this descriptor's member entries.
- * {@code prototype} is a freshly created plain object (built the same way as an object literal's
- * {@code EMPTY_OBJECT}) that becomes the constructor's {@code .prototype}; methods/the constructor
- * are all built with {@code homeObject == prototype} via the same "peek the object under
- * construction" convention object-literal methods already use.
+ * <p>{@code values[0]} is always the (already-built) constructor function. The rest of {@code
+ * values} holds, per member entry in order: the computed key value (only for entries whose key is
+ * {@link UniqueTag#COMPUTED_KEY}) followed by the member's function value. {@code prototype} is a
+ * freshly created plain object (built the same way as an object literal's {@code EMPTY_OBJECT})
+ * that becomes the constructor's {@code .prototype}; methods/the constructor are all built with
+ * {@code homeObject == prototype} via the same "peek the object under construction" convention
+ * object-literal methods already use.
  *
- * <p>This is a phase-1/2 shape: instance methods/getters/setters with literal (non-computed) keys.
- * Static members, fields, computed keys, and private names will add further subclasses in later
- * phases, mirroring how {@link ObjectLiteralDescriptor} grew from a simple case to a complex one.
+ * <p>Static members, fields, and private names will add further subclasses in later phases,
+ * mirroring how {@link ObjectLiteralDescriptor} grew from a simple case to a complex one.
  */
 public abstract class ClassLiteralDescriptor implements Serializable {
 
@@ -59,10 +59,11 @@ public abstract class ClassLiteralDescriptor implements Serializable {
         return constructor;
     }
 
-    private static void installMember(ScriptableObject target, MemberEntry member, Object value) {
-        var s = ScriptRuntime.toStringIdOrIndex(member.key);
-        boolean isSetter = member.kind == ElementKind.SETTER;
-        if (member.kind == ElementKind.METHOD) {
+    private static void installMember(
+            ScriptableObject target, Object key, ElementKind kind, Object value) {
+        var s = ScriptRuntime.toStringIdOrIndex(key);
+        boolean isSetter = kind == ElementKind.SETTER;
+        if (kind == ElementKind.METHOD) {
             if (s.stringId != null) {
                 target.defineProperty(s.stringId, value, ScriptableObject.DONTENUM);
             } else {
@@ -114,6 +115,12 @@ public abstract class ClassLiteralDescriptor implements Serializable {
             size++;
         }
 
+        /** Adds a method/getter/setter whose key value occupies the next {@code values} slot. */
+        public void addComputedMethod(ElementKind kind) {
+            members.add(new MemberEntry(UniqueTag.COMPUTED_KEY, kind));
+            size += 2;
+        }
+
         public int getSize() {
             return size;
         }
@@ -154,8 +161,11 @@ public abstract class ClassLiteralDescriptor implements Serializable {
                 Object[] values) {
             BaseFunction constructor = setupClass((BaseFunction) values[0], prototype, superClass);
             ScriptableObject target = (ScriptableObject) prototype;
-            for (int i = 0; i < members.length; i++) {
-                installMember(target, members[i], values[i + 1]);
+            int v = 1;
+            for (MemberEntry member : members) {
+                Object key = member.key == UniqueTag.COMPUTED_KEY ? values[v++] : member.key;
+                Object value = values[v++];
+                installMember(target, key, member.kind, value);
             }
             return constructor;
         }
