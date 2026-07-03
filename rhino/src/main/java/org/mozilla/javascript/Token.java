@@ -274,7 +274,8 @@ public class Token {
             AWAIT = OBJECT_REST + 1, // ES2017 await expression
             CLASS = AWAIT + 1, // ES6 class keyword
             EXTENDS = CLASS + 1, // ES6 extends keyword
-            LAST_TOKEN = EXTENDS + 1;
+            PRIVATE_NAME = EXTENDS + 1, // ES2022 private name (#name)
+            LAST_TOKEN = PRIVATE_NAME + 1;
 
     /**
      * Returns a name for the token. If Rhino is compiled with certain hardcoded debugging flags in
@@ -655,6 +656,8 @@ public class Token {
                 return "CLASS";
             case EXTENDS:
                 return "EXTENDS";
+            case PRIVATE_NAME:
+                return "PRIVATE_NAME";
             case TO_OBJECT_COERCIBLE:
                 return "TO_OBJECT_COERCIBLE";
             case ITERATOR_CLOSE_ABRUPT:

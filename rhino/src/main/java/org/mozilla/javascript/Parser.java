@@ -1292,6 +1292,10 @@ public class Parser {
             if (tt == Token.NAME || tt == Token.STRING) {
                 consumeToken();
                 memberName = ts.getString();
+            } else if (tt == Token.PRIVATE_NAME) {
+                consumeToken();
+                memberName = ts.getString();
+                definePrivateNameIfNew(classNode, memberName);
             } else if (tt == Token.LB) {
                 isComputed = true;
                 consumeToken();
@@ -1323,7 +1327,8 @@ public class Parser {
                     && ("get".equals(memberName) || "set".equals(memberName))
                     && (peekToken() == Token.NAME
                             || peekToken() == Token.STRING
-                            || peekToken() == Token.LB)) {
+                            || peekToken() == Token.LB
+                            || peekToken() == Token.PRIVATE_NAME)) {
                 accessorKind =
                         "get".equals(memberName)
                                 ? ClassNode.ElementKind.GETTER
@@ -1334,6 +1339,10 @@ public class Parser {
                     consumeToken();
                     computedKeyExpr = assignExpr();
                     mustMatchToken(Token.RB, "msg.no.bracket.index", true);
+                } else if (peekToken() == Token.PRIVATE_NAME) {
+                    consumeToken();
+                    memberName = ts.getString();
+                    definePrivateNameIfNew(classNode, memberName);
                 } else {
                     consumeToken();
                     memberName = ts.getString();
@@ -1404,6 +1413,25 @@ public class Parser {
         constructor.setRawSourceBounds(pos, end);
 
         return classNode;
+    }
+
+    /**
+     * The first time a given private name is seen in a class, defines its hidden per-class-
+     * definition-evaluation binding (see {@link ClassNode#privateVarName}) as a real, closure-
+     * capturable symbol of the scope enclosing the class, so every method/field/accessor
+     * referencing {@code #name} - however deeply nested - can resolve it via ordinary scope-chain
+     * lookup.
+     */
+    private void definePrivateNameIfNew(ClassNode classNode, String privateName) {
+        if (classNode.addPrivateNameIfNew(privateName)) {
+            if (classNode.getPrivateNameScopeId() == null) {
+                classNode.setPrivateNameScopeId(currentScriptOrFn.getNextTempName());
+            }
+            defineSymbol(
+                    Token.LET,
+                    ClassNode.privateVarName(classNode.getPrivateNameScopeId(), privateName),
+                    true);
+        }
     }
 
     private FunctionNode createDefaultConstructor(int pos, boolean isDerived) {
@@ -3973,6 +4001,11 @@ public class Parser {
 
             case Token.NAME:
                 // handles: name, ns::name, ns::*, ns::[expr]
+                ref = propertyName(-1, memberTypeFlags);
+                break;
+
+            case Token.PRIVATE_NAME:
+                // handles: obj.#name
                 ref = propertyName(-1, memberTypeFlags);
                 break;
 

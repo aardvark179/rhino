@@ -103,6 +103,10 @@ public final class IRFactory {
     private AstNodePosition astNodePos;
     private boolean outerScopeIsStrict;
     private boolean insideClassConstructor;
+    // The enclosing class's private-name scope id (see ClassNode.privateVarName), valid for the
+    // entire transform of that class's constructor/methods/field initializers - including inside
+    // arbitrarily nested functions, unlike insideClassConstructor which resets per function.
+    private String currentPrivateNameScopeId;
 
     public IRFactory(CompilerEnvirons env, String sourceString) {
         this(env, null, sourceString, env.getErrorReporter());
@@ -822,6 +826,8 @@ public final class IRFactory {
      */
     private Node transformClass(ClassNode node) {
         astNodePos.push(node);
+        String savedPrivateNameScopeId = currentPrivateNameScopeId;
+        currentPrivateNameScopeId = node.getPrivateNameScopeId();
         try {
             Node superExpr =
                     node.getSuperClass() == null
@@ -848,9 +854,21 @@ public final class IRFactory {
             List<AstNode> methodComputedKeys = node.getMethodComputedKeys();
             for (int i = 0; i < methods.size(); i++) {
                 ClassLiteralDescriptor.ElementKind kind = toDescriptorKind(methodKinds.get(i));
+                String name = methodNames.get(i);
                 AstNode computedKeyExpr = methodComputedKeys.get(i);
+                Node keyValue;
                 if (computedKeyExpr != null) {
-                    Node keyValue = transform(computedKeyExpr);
+                    keyValue = transform(computedKeyExpr);
+                } else if (isPrivateName(name)) {
+                    // A private name's key is the (hidden, per-class) SymbolKey value, resolved
+                    // the same way a user-written computed key would be.
+                    keyValue =
+                            parser.createName(
+                                    ClassNode.privateVarName(node.getPrivateNameScopeId(), name));
+                } else {
+                    keyValue = null;
+                }
+                if (keyValue != null) {
                     classNode.addChildToBack(
                             new Node(
                                     Token.ACCUMULATE_RESULT, new Node(Token.TO_PROPKEY, keyValue)));
@@ -860,7 +878,7 @@ public final class IRFactory {
                 } else {
                     Node methodValue = transform(methods.get(i));
                     classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
-                    builder.addMethod(methodNames.get(i), kind);
+                    builder.addMethod(name, kind);
                 }
             }
 
@@ -868,18 +886,59 @@ public final class IRFactory {
             classNode.putIntProp(
                     Node.LITERAL_INDEX_PROP, parser.currentScriptOrFn.addLiteral(builder.build()));
 
+            // Still a pure expression at this point, so it's safe to prepend the (also
+            // expression-shaped) private-name setup here, before branching into the
+            // statement-vs-expression forms below.
+            Node classValue = prependPrivateNameSetup(node, classNode);
+
             if (node.isStatement() && node.getClassName() != null) {
                 Node assign =
                         createAssignment(
                                 Token.ASSIGN,
                                 parser.createName(node.getClassName().getIdentifier()),
-                                classNode);
+                                classValue);
                 return createExprStatementNoReturn(assign, node.getLineno(), node.getColumn());
             }
-            return classNode;
+            return classValue;
         } finally {
+            currentPrivateNameScopeId = savedPrivateNameScopeId;
             astNodePos.pop();
         }
+    }
+
+    /** Returns whether {@code name} is a private name ({@code #name}, including the {@code #}). */
+    private static boolean isPrivateName(String name) {
+        return name != null && !name.isEmpty() && name.charAt(0) == '#';
+    }
+
+    /**
+     * Assigns each of the class's private names (see {@link ClassNode#getPrivateNames}) a fresh
+     * {@link SymbolKey}, once, before the class itself is evaluated: {@code (%priv#a =
+     * LOAD_LITERAL, %priv#b = LOAD_LITERAL, ..., <result>)}. Every reference to {@code #a}/{@code
+     * #b} (in field initializers or method bodies, however deeply nested) resolves the same
+     * SymbolKey via ordinary closure/scope-chain lookup of the hidden {@code %priv#a} binding
+     * declared (via {@code defineSymbol}) when the class was parsed.
+     *
+     * <p>Note: this SymbolKey is shared by every evaluation of a given class-literal source
+     * location (e.g. inside a loop), rather than being fresh per evaluation as the spec requires -
+     * a deliberate simplification.
+     */
+    private Node prependPrivateNameSetup(ClassNode node, Node result) {
+        for (String name : node.getPrivateNames()) {
+            Node literal = new Node(Token.LOAD_LITERAL);
+            literal.putIntProp(
+                    Node.LITERAL_INDEX_PROP,
+                    parser.currentScriptOrFn.addLiteral(
+                            new SymbolKey(name, org.mozilla.javascript.Symbol.Kind.PRIVATE)));
+            String varName = ClassNode.privateVarName(node.getPrivateNameScopeId(), name);
+            Node assign =
+                    new Node(
+                            Token.SETNAME,
+                            parser.createName(Token.BINDNAME, varName, null),
+                            literal);
+            result = new Node(Token.COMMA, assign, result);
+        }
+        return result;
     }
 
     /**
@@ -904,7 +963,10 @@ public final class IRFactory {
         for (int i = 0; i < fieldNames.size(); i++) {
             stmts.add(
                     buildFieldInitStatement(
-                            fieldNames.get(i), fieldInits.get(i), node.getPosition()));
+                            node.getPrivateNameScopeId(),
+                            fieldNames.get(i),
+                            fieldInits.get(i),
+                            node.getPosition()));
         }
 
         if (afterAnchor == null) {
@@ -936,10 +998,17 @@ public final class IRFactory {
         return null;
     }
 
-    private static AstNode buildFieldInitStatement(String name, AstNode initializer, int pos) {
+    private static AstNode buildFieldInitStatement(
+            String privateNameScopeId, String name, AstNode initializer, int pos) {
         KeywordLiteral thisExpr = new KeywordLiteral(pos, 0, Token.THIS);
-        Name prop = new Name(pos, name);
-        PropertyGet target = new PropertyGet(thisExpr, prop);
+        AstNode target;
+        if (isPrivateName(name)) {
+            // this[%priv#x] = init; - the hidden variable holds this class's SymbolKey for #x.
+            String varName = ClassNode.privateVarName(privateNameScopeId, name);
+            target = new ElementGet(thisExpr, new Name(pos, varName));
+        } else {
+            target = new PropertyGet(thisExpr, new Name(pos, name));
+        }
         AstNode value =
                 initializer != null ? initializer : new KeywordLiteral(pos, 0, Token.UNDEFINED);
         Assignment assign = new Assignment(Token.ASSIGN, target, value, pos);
@@ -1333,6 +1402,20 @@ public final class IRFactory {
     private Node transformPropertyGet(PropertyGet node) {
         Node target = transform(node.getTarget());
         String name = node.getProperty().getIdentifier();
+        if (isPrivateName(name)) {
+            // obj.#x - the hidden %priv#x variable holds the enclosing class's SymbolKey for #x;
+            // access it the same way any other computed member (obj[expr]) would be.
+            Node getElem =
+                    new Node(
+                            Token.GETELEM,
+                            target,
+                            parser.createName(
+                                    ClassNode.privateVarName(currentPrivateNameScopeId, name)));
+            if (node.type == Token.QUESTION_DOT) {
+                getElem.putIntProp(Node.OPTIONAL_CHAINING, 1);
+            }
+            return getElem;
+        }
         return createPropertyGet(target, null, name, 0, node.type);
     }
 

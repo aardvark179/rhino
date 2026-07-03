@@ -61,8 +61,24 @@ public abstract class ClassLiteralDescriptor implements Serializable {
 
     private static void installMember(
             ScriptableObject target, Object key, ElementKind kind, Object value) {
-        var s = ScriptRuntime.toStringIdOrIndex(key);
         boolean isSetter = kind == ElementKind.SETTER;
+        if (key instanceof Symbol) {
+            // Includes private names (SymbolKey, Symbol.Kind.PRIVATE): already hidden from
+            // Object.keys/for-in like any Symbol-keyed property (see SlotMapOwner.getIds).
+            Symbol symbol = (Symbol) key;
+            if (kind == ElementKind.METHOD) {
+                target.put(symbol, target, value);
+                target.setAttributes(symbol, ScriptableObject.DONTENUM);
+            } else {
+                target.setGetterOrSetter(symbol, 0, (Callable) value, isSetter);
+                target.setAttributes(
+                        symbol,
+                        (target.getAttributes(symbol) | ScriptableObject.DONTENUM)
+                                & ~ScriptableObject.READONLY);
+            }
+            return;
+        }
+        var s = ScriptRuntime.toStringIdOrIndex(key);
         if (kind == ElementKind.METHOD) {
             if (s.stringId != null) {
                 target.defineProperty(s.stringId, value, ScriptableObject.DONTENUM);

@@ -1106,13 +1106,13 @@ class TokenStream implements Parser.CurrentPositionReporter {
                 return Token.STRING;
             }
 
-            if (c == '#'
-                    && cursor == 1
-                    && peekChar() == '!'
-                    && !this.parser.calledByCompileFunction) {
-                // #! hashbang: only on the first line of a Script, no leading whitespace
-                skipLine();
-                return Token.COMMENT;
+            if (c == '#') {
+                if (cursor == 1 && peekChar() == '!' && !this.parser.calledByCompileFunction) {
+                    // #! hashbang: only on the first line of a Script, no leading whitespace
+                    skipLine();
+                    return Token.COMMENT;
+                }
+                return scanPrivateName();
             }
 
             switch (c) {
@@ -2087,6 +2087,36 @@ class TokenStream implements Parser.CurrentPositionReporter {
         this.string = null;
         parser.addError("msg.XML.bad.form");
         return false;
+    }
+
+    /**
+     * Scans a private name {@code #IdentifierName} (the leading {@code #} has already been
+     * consumed). Does not support Unicode escapes within the identifier - an obscure edge case for
+     * a syntax form that's already rare.
+     */
+    private int scanPrivateName() throws IOException {
+        stringBufferTop = 0;
+        int c = getChar();
+        if (c == EOF_CHAR || !(Character.isUnicodeIdentifierStart(c) || c == '$' || c == '_')) {
+            parser.addError("msg.syntax");
+            return Token.ERROR;
+        }
+        addToString(c);
+        for (; ; ) {
+            c = getChar();
+            if (c == EOF_CHAR
+                    || c == BYTE_ORDER_MARK
+                    || !(Character.isUnicodeIdentifierPart(c) || c == '$')) {
+                break;
+            }
+            addToString(c);
+        }
+        if (c != EOF_CHAR) {
+            ungetChar(c);
+        }
+        String str = getStringFromBuffer();
+        this.string = internString("#" + str);
+        return Token.PRIVATE_NAME;
     }
 
     private String getStringFromBuffer() {
