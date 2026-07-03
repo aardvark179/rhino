@@ -1341,7 +1341,29 @@ public class Parser {
             }
 
             if (peekToken() != Token.LP) {
-                reportError("msg.class.member.not.supported");
+                if (accessorKind != ClassNode.ElementKind.METHOD) {
+                    // A get/set accessor must be a method.
+                    reportError("msg.class.member.not.supported");
+                    continue;
+                }
+                // Field declaration: name = expr; or name;
+                if (!isComputed && "constructor".equals(memberName)) {
+                    reportError("msg.unexpected.token");
+                }
+                AstNode initializer = null;
+                if (peekToken() == Token.ASSIGN) {
+                    consumeToken();
+                    initializer = assignExpr();
+                }
+                if (peekToken() == Token.SEMI) {
+                    consumeToken();
+                }
+                if (isComputed) {
+                    // Computed field keys are not yet supported.
+                    reportError("msg.class.member.not.supported");
+                } else {
+                    classNode.addField(memberName, initializer);
+                }
                 continue;
             }
 

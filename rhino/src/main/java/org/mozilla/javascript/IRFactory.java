@@ -838,6 +838,7 @@ public final class IRFactory {
 
             ClassLiteralDescriptor.Builder builder = new ClassLiteralDescriptor.Builder();
 
+            injectFieldInitializers(node);
             classNode.addChildToBack(
                     new Node(Token.ACCUMULATE_RESULT, transform(node.getConstructor())));
 
@@ -879,6 +880,70 @@ public final class IRFactory {
         } finally {
             astNodePos.pop();
         }
+    }
+
+    /**
+     * Desugars each instance field declaration into a {@code this.name = init;} (or {@code
+     * this.name = undefined;}) statement spliced into the (possibly synthesized) constructor's
+     * body, before the constructor is transformed - so instance field initialization rides on
+     * ordinary property-assignment codegen rather than needing new descriptor/opcode machinery.
+     * Statements are prepended to the front for a base class, or inserted right after the {@code
+     * super(...)} call for a derived class (falling back to the front if no such call is found).
+     */
+    private void injectFieldInitializers(ClassNode node) {
+        List<String> fieldNames = node.getFieldNames();
+        if (fieldNames.isEmpty()) {
+            return;
+        }
+        List<AstNode> fieldInits = node.getFieldInitializers();
+        Node body = node.getConstructor().getBody();
+
+        Node afterAnchor = node.getSuperClass() == null ? null : findSuperCallStatement(body);
+
+        List<AstNode> stmts = new ArrayList<>(fieldNames.size());
+        for (int i = 0; i < fieldNames.size(); i++) {
+            stmts.add(
+                    buildFieldInitStatement(
+                            fieldNames.get(i), fieldInits.get(i), node.getPosition()));
+        }
+
+        if (afterAnchor == null) {
+            for (int i = stmts.size() - 1; i >= 0; i--) {
+                body.addChildToFront(stmts.get(i));
+            }
+        } else {
+            Node anchor = afterAnchor;
+            for (AstNode stmt : stmts) {
+                body.addChildAfter(stmt, anchor);
+                anchor = stmt;
+            }
+        }
+    }
+
+    /** Finds a top-level {@code super(...)} call statement in a constructor body, if any. */
+    private static Node findSuperCallStatement(Node body) {
+        for (Node stmt = body.getFirstChild(); stmt != null; stmt = stmt.getNext()) {
+            if (stmt instanceof ExpressionStatement) {
+                AstNode expr = ((ExpressionStatement) stmt).getExpression();
+                if (expr instanceof FunctionCall) {
+                    AstNode target = ((FunctionCall) expr).getTarget();
+                    if (target != null && target.getType() == Token.SUPER) {
+                        return stmt;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static AstNode buildFieldInitStatement(String name, AstNode initializer, int pos) {
+        KeywordLiteral thisExpr = new KeywordLiteral(pos, 0, Token.THIS);
+        Name prop = new Name(pos, name);
+        PropertyGet target = new PropertyGet(thisExpr, prop);
+        AstNode value =
+                initializer != null ? initializer : new KeywordLiteral(pos, 0, Token.UNDEFINED);
+        Assignment assign = new Assignment(Token.ASSIGN, target, value, pos);
+        return new ExpressionStatement(assign);
     }
 
     private static ClassLiteralDescriptor.ElementKind toDescriptorKind(ClassNode.ElementKind kind) {
