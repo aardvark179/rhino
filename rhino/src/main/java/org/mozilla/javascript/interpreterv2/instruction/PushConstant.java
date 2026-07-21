@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptRuntime;
@@ -51,5 +52,22 @@ public class PushConstant extends Instruction {
         } else {
             return KnownType.UNKNOWN;
         }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof PushConstant)) {
+            return false;
+        }
+        PushConstant other = (PushConstant) o;
+        return Objects.equals(value, other.value);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(value);
     }
 }

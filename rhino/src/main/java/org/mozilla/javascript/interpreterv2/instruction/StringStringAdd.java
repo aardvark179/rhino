@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.ConsString;
 import org.mozilla.javascript.Context;
@@ -40,5 +41,22 @@ public class StringStringAdd extends Instruction {
     @Override
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(this, "lhs", lhs, "rhs", rhs);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof StringStringAdd)) {
+            return false;
+        }
+        StringStringAdd other = (StringStringAdd) o;
+        return Objects.equals(lhs, other.lhs) && Objects.equals(rhs, other.rhs);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(lhs, rhs);
     }
 }

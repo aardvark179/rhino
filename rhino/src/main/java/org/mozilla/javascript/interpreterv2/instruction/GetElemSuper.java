@@ -2,6 +2,7 @@ package org.mozilla.javascript.interpreterv2.instruction;
 
 import static org.mozilla.javascript.UniqueTag.DOUBLE_MARK;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.Kit;
@@ -47,5 +48,22 @@ public class GetElemSuper extends Instruction {
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(
                 this, "superObject", superObject, "elem", elem);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof GetElemSuper)) {
+            return false;
+        }
+        GetElemSuper other = (GetElemSuper) o;
+        return Objects.equals(superObject, other.superObject) && Objects.equals(elem, other.elem);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(superObject, elem);
     }
 }

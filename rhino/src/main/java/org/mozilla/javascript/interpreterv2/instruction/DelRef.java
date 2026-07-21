@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.Ref;
@@ -30,5 +31,22 @@ public class DelRef extends Instruction {
     @Override
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(this, "obj", obj.getClass().getSimpleName());
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof DelRef)) {
+            return false;
+        }
+        DelRef other = (DelRef) o;
+        return Objects.equals(obj, other.obj);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(obj);
     }
 }

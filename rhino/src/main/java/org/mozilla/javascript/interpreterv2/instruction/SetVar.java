@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptableObject;
@@ -59,5 +60,22 @@ public class SetVar extends Instruction {
     @Override
     public KnownType getKnownType(InstructionSimplification simplifier) {
         return value.getKnownType(simplifier);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof SetVar)) {
+            return false;
+        }
+        SetVar other = (SetVar) o;
+        return index == other.index && Objects.equals(value, other.value);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(index, value);
     }
 }

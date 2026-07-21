@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptRuntime;
@@ -38,5 +39,22 @@ public class DelPropSuper extends Instruction {
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(
                 this, "lhs", lhs.getClass().getSimpleName(), "rhs", rhs.getClass().getSimpleName());
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof DelPropSuper)) {
+            return false;
+        }
+        DelPropSuper other = (DelPropSuper) o;
+        return Objects.equals(lhs, other.lhs) && Objects.equals(rhs, other.rhs);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(lhs, rhs);
     }
 }

@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptRuntime;
@@ -30,5 +31,24 @@ public class RefMember extends Instruction {
     @Override
     public int stackChange() {
         return 1 + object.stackChange() + property.stackChange();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof RefMember)) {
+            return false;
+        }
+        RefMember other = (RefMember) o;
+        return Objects.equals(object, other.object)
+                && Objects.equals(property, other.property)
+                && flags == other.flags;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(object, property, flags);
     }
 }

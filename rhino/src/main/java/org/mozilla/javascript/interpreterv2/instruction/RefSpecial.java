@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptRuntime;
@@ -31,5 +32,22 @@ public class RefSpecial extends Instruction {
     @Override
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(this, "lhs", lhs, "property", property);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof RefSpecial)) {
+            return false;
+        }
+        RefSpecial other = (RefSpecial) o;
+        return Objects.equals(lhs, other.lhs) && Objects.equals(property, other.property);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(lhs, property);
     }
 }

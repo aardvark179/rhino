@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.ConstProperties;
 import org.mozilla.javascript.Context;
@@ -50,5 +51,22 @@ public class SetConstVar extends Instruction {
     @Override
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(this, "index", index, "value", value);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof SetConstVar)) {
+            return false;
+        }
+        SetConstVar other = (SetConstVar) o;
+        return index == other.index && Objects.equals(value, other.value);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(index, value);
     }
 }

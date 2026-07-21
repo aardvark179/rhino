@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptRuntime;
@@ -58,5 +59,25 @@ public class CatchScope extends Instruction {
                 localIndex,
                 "scopeIndex",
                 scopeIndex);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof CatchScope)) {
+            return false;
+        }
+        CatchScope other = (CatchScope) o;
+        return Objects.equals(exception, other.exception)
+                && Objects.equals(name, other.name)
+                && localIndex == other.localIndex
+                && scopeIndex == other.scopeIndex;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(exception, name, localIndex, scopeIndex);
     }
 }

@@ -1,5 +1,7 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Arrays;
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.NewLiteralStorage;
@@ -56,5 +58,27 @@ public class NewObjectLiteralWithSpread extends Instruction {
                 prefixValues,
                 "nonSpreadCount",
                 nonSpreadCount);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof NewObjectLiteralWithSpread)) {
+            return false;
+        }
+        NewObjectLiteralWithSpread other = (NewObjectLiteralWithSpread) o;
+        return Arrays.equals(prefixKeys, other.prefixKeys)
+                && Arrays.equals(prefixValues, other.prefixValues)
+                && nonSpreadCount == other.nonSpreadCount;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = Objects.hash(nonSpreadCount);
+        result = 31 * result + Arrays.hashCode(prefixKeys);
+        result = 31 * result + Arrays.hashCode(prefixValues);
+        return result;
     }
 }
