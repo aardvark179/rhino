@@ -8,7 +8,22 @@ import org.mozilla.javascript.interpreterv2.InstructionFormatter;
 public class LocalLoad extends Instruction {
     private final int localIndex;
 
-    public LocalLoad(int localIndex) {
+    private static final LocalLoad[] CACHE = new LocalLoad[16];
+
+    static {
+        for (int i = 0; i < CACHE.length; i++) {
+            CACHE[i] = new LocalLoad(i);
+        }
+    }
+
+    public static LocalLoad createInstruction(int localIndex) {
+        if (localIndex >= 0 && localIndex < CACHE.length) {
+            return CACHE[localIndex];
+        }
+        return new LocalLoad(localIndex);
+    }
+
+    private LocalLoad(int localIndex) {
         this.localIndex = localIndex;
     }
 

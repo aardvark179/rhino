@@ -11,7 +11,22 @@ import org.mozilla.javascript.interpreterv2.InstructionFormatter;
 public class ClosureExpression extends Instruction {
     private final int fnIndex;
 
-    public ClosureExpression(int fnIndex) {
+    private static final ClosureExpression[] CACHE = new ClosureExpression[16];
+
+    static {
+        for (int i = 0; i < CACHE.length; i++) {
+            CACHE[i] = new ClosureExpression(i);
+        }
+    }
+
+    public static ClosureExpression createInstruction(int fnIndex) {
+        if (fnIndex >= 0 && fnIndex < CACHE.length) {
+            return CACHE[fnIndex];
+        }
+        return new ClosureExpression(fnIndex);
+    }
+
+    private ClosureExpression(int fnIndex) {
         this.fnIndex = fnIndex;
     }
 

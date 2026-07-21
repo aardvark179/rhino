@@ -16,7 +16,7 @@ public class GetVar extends Instruction {
         }
     }
 
-    public static GetVar createOperand(int index) {
+    public static GetVar createInstruction(int index) {
         if (index >= 0 && index < CACHE.length) {
             return CACHE[index];
         }

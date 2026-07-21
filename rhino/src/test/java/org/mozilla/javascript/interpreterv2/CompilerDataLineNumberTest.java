@@ -4,11 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.junit.jupiter.api.Test;
+import org.mozilla.javascript.interpreterv2.instruction.Instruction;
 
 public class CompilerDataLineNumberTest {
 
     private CompilerData<?> build(LineNumberTable.Builder lineNumberTable) {
         CompilerData.Builder<?> b = new CompilerData.Builder<>();
+        b.instructions = new Instruction[0];
         b.setLineNumberTable(lineNumberTable);
         return b.build();
     }
