@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.JSFunction;
@@ -39,5 +40,22 @@ public class MethodExpression extends Instruction {
     @Override
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(this, "fnIndex", fnIndex);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof MethodExpression)) {
+            return false;
+        }
+        MethodExpression other = (MethodExpression) o;
+        return fnIndex == other.fnIndex && homeObjectOperand.equals(other.homeObjectOperand);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(fnIndex);
     }
 }
