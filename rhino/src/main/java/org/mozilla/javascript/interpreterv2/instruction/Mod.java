@@ -1,6 +1,7 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
 import java.math.BigInteger;
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptRuntime;
@@ -71,5 +72,22 @@ public class Mod extends Instruction {
     @Override
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(this, "lhs", lhs, "rhs", rhs);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof Mod)) {
+            return false;
+        }
+        Mod other = (Mod) o;
+        return Objects.equals(lhs, other.lhs) && Objects.equals(rhs, other.rhs);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(lhs, rhs);
     }
 }

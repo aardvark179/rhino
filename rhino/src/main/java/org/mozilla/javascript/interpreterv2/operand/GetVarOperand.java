@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.operand;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 
@@ -53,5 +54,22 @@ public final class GetVarOperand extends Operand {
     @Override
     public void appendDebugString(StringBuilder sb) {
         sb.append("var.").append(index);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof GetVarOperand)) {
+            return false;
+        }
+        GetVarOperand other = (GetVarOperand) o;
+        return index == other.index;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(index);
     }
 }

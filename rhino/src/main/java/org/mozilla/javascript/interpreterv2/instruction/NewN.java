@@ -1,5 +1,8 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Arrays;
+import java.util.Objects;
+
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.interpreterv2.operand.Operand;
@@ -37,5 +40,22 @@ final class NewN extends New {
     @Override
     public String toDebugString() {
         return formatDebug(arguments);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof NewN)) {
+            return false;
+        }
+        NewN other = (NewN) o;
+        return Objects.equals(fun, other.fun) && Arrays.equals(arguments, other.arguments);
+    }
+
+    @Override
+    public int hashCode() {
+        return 31 * Objects.hashCode(fun) + Arrays.hashCode(arguments);
     }
 }

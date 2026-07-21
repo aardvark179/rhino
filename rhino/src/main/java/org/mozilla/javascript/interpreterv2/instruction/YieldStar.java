@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ES6Generator;
@@ -50,5 +51,22 @@ public class YieldStar extends Instruction {
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(
                 this, "value", valueOperand, "lineNumber", lineNumber);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof YieldStar)) {
+            return false;
+        }
+        YieldStar other = (YieldStar) o;
+        return Objects.equals(valueOperand, other.valueOperand) && lineNumber == other.lineNumber;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(valueOperand, lineNumber);
     }
 }

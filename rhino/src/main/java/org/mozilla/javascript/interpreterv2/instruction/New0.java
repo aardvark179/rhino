@@ -1,5 +1,7 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
+
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptRuntime;
@@ -26,5 +28,21 @@ final class New0 extends New {
     @Override
     public String toDebugString() {
         return formatDebug(Operand.EMPTY_ARRAY);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof New0)) {
+            return false;
+        }
+        return Objects.equals(fun, ((New0) o).fun);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(fun);
     }
 }

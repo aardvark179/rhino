@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.interpreterv2.InstructionFormatter;
@@ -26,5 +27,22 @@ public class SaveScope extends Instruction {
     @Override
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(this, "offset", exceptionScopeOffset);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof SaveScope)) {
+            return false;
+        }
+        SaveScope other = (SaveScope) o;
+        return exceptionScopeOffset == other.exceptionScopeOffset;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(exceptionScopeOffset);
     }
 }

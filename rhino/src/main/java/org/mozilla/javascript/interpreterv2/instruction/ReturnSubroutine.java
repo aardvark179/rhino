@@ -2,6 +2,7 @@ package org.mozilla.javascript.interpreterv2.instruction;
 
 import static org.mozilla.javascript.InterpreterV2.addInstructionCount;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.interpreterv2.InstructionFormatter;
@@ -43,5 +44,22 @@ public class ReturnSubroutine extends Instruction {
     @Override
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(this, "returnPcOffset", returnPcOffset);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof ReturnSubroutine)) {
+            return false;
+        }
+        ReturnSubroutine other = (ReturnSubroutine) o;
+        return returnPcOffset == other.returnPcOffset;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(returnPcOffset);
     }
 }

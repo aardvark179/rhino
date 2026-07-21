@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.ConsString;
@@ -118,5 +119,24 @@ public class SimpleSwitch extends JumpInstruction {
         // Add the default jump target
         targets.add(fromPC + getOffset());
         return targets;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof SimpleSwitch)) {
+            return false;
+        }
+        SimpleSwitch other = (SimpleSwitch) o;
+        return getOffset() == other.getOffset()
+                && Objects.equals(valueOperand, other.valueOperand)
+                && Objects.equals(jumpTable, other.jumpTable);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(getOffset(), valueOperand, jumpTable);
     }
 }
