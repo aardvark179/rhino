@@ -1,5 +1,7 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Arrays;
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Callable;
 import org.mozilla.javascript.Context;
@@ -67,5 +69,26 @@ final class CallN extends Call {
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(
                 "Call", "callType", callType, "lookupResult", lookupResult, "args", arguments);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof CallN)) {
+            return false;
+        }
+        CallN other = (CallN) o;
+        return Objects.equals(lookupResult, other.lookupResult)
+                && Arrays.equals(arguments, other.arguments)
+                && Objects.equals(callType, other.callType);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = Objects.hash(lookupResult, callType);
+        result = 31 * result + Arrays.hashCode(arguments);
+        return result;
     }
 }

@@ -1207,7 +1207,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
             Kit.codeBug();
         }
         int index = scriptOrFn.getIndexForNameNode(node);
-        addInstruction(new GetVar(index));
+        addInstruction(GetVar.createOperand(index));
     }
 
     private void visitSetVar(Node child) {

@@ -3,6 +3,7 @@ package org.mozilla.javascript.interpreterv2.instruction;
 import static org.mozilla.javascript.InterpreterV2.addInstructionCount;
 
 import java.util.Collections;
+import java.util.Objects;
 import java.util.Set;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
@@ -43,5 +44,22 @@ public class IfEq extends JumpInstruction {
     @Override
     public Set<Integer> getTargets(int fromPC) {
         return Collections.singleton(fromPC + getOffset());
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof IfEq)) {
+            return false;
+        }
+        IfEq other = (IfEq) o;
+        return getOffset() == other.getOffset() && Objects.equals(lhs, other.lhs);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(getOffset(), lhs);
     }
 }

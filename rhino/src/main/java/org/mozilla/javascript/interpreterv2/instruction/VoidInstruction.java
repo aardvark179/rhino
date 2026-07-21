@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.interpreterv2.InstructionFormatter;
@@ -38,5 +39,22 @@ public class VoidInstruction extends Instruction {
     @Override
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(this, "obj", obj);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof VoidInstruction)) {
+            return false;
+        }
+        VoidInstruction other = (VoidInstruction) o;
+        return Objects.equals(obj, other.obj);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(obj);
     }
 }

@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.NewLiteralStorage;
@@ -93,5 +94,25 @@ public class LitSetAt extends Instruction {
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(
                 this, "slot", slotIdx, "key", keyOp, "value", valueOp, "kind", kind);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof LitSetAt)) {
+            return false;
+        }
+        LitSetAt other = (LitSetAt) o;
+        return slotIdx == other.slotIdx
+                && Objects.equals(keyOp, other.keyOp)
+                && Objects.equals(valueOp, other.valueOp)
+                && kind == other.kind;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(slotIdx, keyOp, valueOp, kind);
     }
 }

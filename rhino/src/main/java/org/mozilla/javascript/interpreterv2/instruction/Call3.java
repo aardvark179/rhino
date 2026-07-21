@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.interpreterv2.operand.Operand;
@@ -41,5 +42,25 @@ final class Call3 extends Call {
     @Override
     public String toDebugString() {
         return formatDebug(new Operand[] {arg0, arg1, arg2});
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof Call3)) {
+            return false;
+        }
+        Call3 other = (Call3) o;
+        return Objects.equals(lookupResult, other.lookupResult)
+                && Objects.equals(arg0, other.arg0)
+                && Objects.equals(arg1, other.arg1)
+                && Objects.equals(arg2, other.arg2);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(lookupResult, arg0, arg1, arg2);
     }
 }
