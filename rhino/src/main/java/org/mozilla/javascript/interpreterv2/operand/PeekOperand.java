@@ -2,6 +2,7 @@ package org.mozilla.javascript.interpreterv2.operand;
 
 import static org.mozilla.javascript.UniqueTag.DOUBLE_MARK;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.interpreterv2.InstructionSimplification;
@@ -53,5 +54,22 @@ public final class PeekOperand extends Operand {
     @Override
     public void appendDebugString(StringBuilder sb) {
         sb.append("peek(offset=").append(offset).append(")");
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof PeekOperand)) {
+            return false;
+        }
+        PeekOperand other = (PeekOperand) o;
+        return offset == other.offset;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(offset);
     }
 }

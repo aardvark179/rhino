@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.NewLiteralStorage;
@@ -60,5 +61,24 @@ public class LitPush extends Instruction {
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(
                 this, "key", keyOp, "value", valueOp, "kind", kind);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof LitPush)) {
+            return false;
+        }
+        LitPush other = (LitPush) o;
+        return Objects.equals(keyOp, other.keyOp)
+                && Objects.equals(valueOp, other.valueOp)
+                && kind == other.kind;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(keyOp, valueOp, kind);
     }
 }
