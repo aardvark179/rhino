@@ -25,6 +25,7 @@ public class CompilerEnvirons {
         warningAsError = false;
         generateObserverCount = false;
         allowSharpComments = false;
+        deduplicator = NullDeduplicator.INSTANCE;
     }
 
     public void initFromContext(Context cx) {
@@ -45,6 +46,7 @@ public class CompilerEnvirons {
         // Observer code generation in compiled code :
         generateObserverCount = cx.isGenerateObserverCount();
         securityController = cx.getSecurityController();
+        deduplicator = NullDeduplicator.INSTANCE;
     }
 
     public final ErrorReporter getErrorReporter() {
@@ -290,6 +292,14 @@ public class CompilerEnvirons {
         return sourceMapper;
     }
 
+    public void setDeduplicator(Deduplicator deduplicator) {
+        this.deduplicator = deduplicator;
+    }
+
+    public Deduplicator getDeduplicator() {
+        return deduplicator;
+    }
+
     /**
      * Returns a {@code CompilerEnvirons} suitable for using Rhino in an IDE environment. Most
      * features are enabled by default. The {@link ErrorReporter} is set to an {@link
@@ -333,4 +343,5 @@ public class CompilerEnvirons {
     private SecurityController securityController;
     private Object securityDomain;
     private SourceMapper sourceMapper;
+    private Deduplicator deduplicator;
 }
