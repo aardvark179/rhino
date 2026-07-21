@@ -236,7 +236,6 @@ public class Compiler<T extends ScriptOrFn<T>> {
 
     public Compiler() {
         var cx = Context.getCurrentContext();
-        // FEATURE_TREAT_NUMERIC_LITERALS_LIKE_OLD_RHINO not present in open-source
     }
 
     public JSDescriptor<T> compile(
@@ -470,7 +469,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                         generateStatement(child, initialStackDepth);
                         child = child.getNext();
                     }
-                    addInstruction(new LocalClear(local));
+                    addInstruction(LocalClear.createInstruction(local));
                     releaseLocal(local);
                     return;
                 }
@@ -633,7 +632,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                                 scopeLocal);
                     }
 
-                    addInstruction(new LocalClear(scopeLocal));
+                    addInstruction(LocalClear.createInstruction(scopeLocal));
                     releaseLocal(scopeLocal);
                     return;
                 }
@@ -1203,7 +1202,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
             Kit.codeBug();
         }
         int index = scriptOrFn.getIndexForNameNode(node);
-        addInstruction(GetVar.createOperand(index));
+        addInstruction(GetVar.createInstruction(index));
     }
 
     private void visitSetVar(Node child) {
@@ -1510,7 +1509,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
 
     private void visitLocalLoad(Node node) {
         int localIndex = getLocalBlockRef(node);
-        addInstruction(new LocalLoad(localIndex));
+        addInstruction(LocalLoad.createInstruction(localIndex));
     }
 
     private void visitFunction(Node node) {
@@ -1521,7 +1520,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 && fn.getFunctionType() != FunctionNode.ARROW_FUNCTION) {
             throw Kit.codeBug();
         }
-        addInstruction(new ClosureExpression(fnIndex));
+        addInstruction(ClosureExpression.createInstruction(fnIndex));
         if (fn.isMethodDefinition()) {
             throw Kit.codeBug();
         }
@@ -2037,7 +2036,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     int objOffset = keyExprEmitted ? -2 : -1;
                     addInstruction(new MethodExpression(fnIndex, new PeekOperand(objOffset)));
                 } else {
-                    addInstruction(new ClosureExpression(fnIndex));
+                    addInstruction(ClosureExpression.createInstruction(fnIndex));
                 }
                 valueOp = PopOperand.instance;
             } else {
@@ -2130,7 +2129,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     int objOffset = keyExprEmitted ? -2 : -1;
                     addInstruction(new MethodExpression(fnIndex, new PeekOperand(objOffset)));
                 } else {
-                    addInstruction(new ClosureExpression(fnIndex));
+                    addInstruction(ClosureExpression.createInstruction(fnIndex));
                 }
                 valueOp = PopOperand.instance;
             } else {
