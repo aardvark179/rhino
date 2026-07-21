@@ -3,6 +3,7 @@ package org.mozilla.javascript.interpreterv2.instruction;
 import static org.mozilla.javascript.UniqueTag.DOUBLE_MARK;
 
 import java.math.BigInteger;
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.Node;
@@ -89,5 +90,22 @@ public class VarIncDec extends Instruction {
     @Override
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(this, "index", index, "mask", incrDecrMask);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof VarIncDec)) {
+            return false;
+        }
+        VarIncDec other = (VarIncDec) o;
+        return index == other.index && incrDecrMask == other.incrDecrMask;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(index, incrDecrMask);
     }
 }

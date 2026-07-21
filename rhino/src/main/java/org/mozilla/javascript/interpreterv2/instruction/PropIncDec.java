@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptRuntime;
@@ -34,5 +35,24 @@ public class PropIncDec extends Instruction {
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(
                 this, "obj", obj, "property", property, "mask", incrDecrMask);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof PropIncDec)) {
+            return false;
+        }
+        PropIncDec other = (PropIncDec) o;
+        return Objects.equals(obj, other.obj)
+                && Objects.equals(property, other.property)
+                && incrDecrMask == other.incrDecrMask;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(obj, property, incrDecrMask);
     }
 }

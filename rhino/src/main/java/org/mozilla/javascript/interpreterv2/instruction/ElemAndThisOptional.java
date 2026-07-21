@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptRuntime;
@@ -34,5 +35,22 @@ public class ElemAndThisOptional extends Instruction {
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(
                 this, "obj", obj.getClass().getSimpleName(), "id", id.getClass().getSimpleName());
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof ElemAndThisOptional)) {
+            return false;
+        }
+        ElemAndThisOptional other = (ElemAndThisOptional) o;
+        return Objects.equals(obj, other.obj) && Objects.equals(id, other.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(obj, id);
     }
 }

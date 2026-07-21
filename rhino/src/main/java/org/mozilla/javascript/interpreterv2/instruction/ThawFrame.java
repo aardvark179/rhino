@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.JavaScriptException;
@@ -61,5 +62,22 @@ public class ThawFrame extends Instruction {
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(
                 this, "isYield", isYield, "baseLineNumber", baseLineNumber);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof ThawFrame)) {
+            return false;
+        }
+        ThawFrame other = (ThawFrame) o;
+        return isYield == other.isYield && baseLineNumber == other.baseLineNumber;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(isYield, baseLineNumber);
     }
 }

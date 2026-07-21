@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.NativeGenerator;
@@ -47,5 +48,22 @@ public class Yield extends Instruction {
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(
                 this, "value", valueOperand, "lineNumber", lineNumber);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof Yield)) {
+            return false;
+        }
+        Yield other = (Yield) o;
+        return Objects.equals(valueOperand, other.valueOperand) && lineNumber == other.lineNumber;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(valueOperand, lineNumber);
     }
 }

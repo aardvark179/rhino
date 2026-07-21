@@ -3,6 +3,8 @@ package org.mozilla.javascript.interpreterv2.instruction;
 import static org.mozilla.javascript.InterpreterV2.INVOCATION_COST;
 import static org.mozilla.javascript.InterpreterV2.addInstructionCount;
 
+import java.util.Arrays;
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Callable;
 import org.mozilla.javascript.Context;
@@ -74,5 +76,27 @@ public class SpecialCall extends Instruction {
                 lineNumber,
                 "callType",
                 callType);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof SpecialCall)) {
+            return false;
+        }
+        SpecialCall other = (SpecialCall) o;
+        return Objects.equals(lookupResult, other.lookupResult)
+                && Arrays.equals(arguments, other.arguments)
+                && lineNumber == other.lineNumber
+                && callType == other.callType;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = Objects.hash(lookupResult, lineNumber, callType);
+        result = 31 * result + Arrays.hashCode(arguments);
+        return result;
     }
 }

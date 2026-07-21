@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Arrays;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptRuntime;
@@ -38,5 +39,26 @@ public class ArrayLit extends Instruction {
         var length = skipIndices == null ? 0 : skipIndices.length;
         return InstructionFormatter.formatInstruction(
                 this, "elements", elements, "skipIndices", length);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof ArrayLit)) {
+            return false;
+        }
+        ArrayLit other = (ArrayLit) o;
+        return Arrays.equals(elements, other.elements)
+                && Arrays.equals(skipIndices, other.skipIndices);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = 1;
+        result = 31 * result + Arrays.hashCode(elements);
+        result = 31 * result + Arrays.hashCode(skipIndices);
+        return result;
     }
 }

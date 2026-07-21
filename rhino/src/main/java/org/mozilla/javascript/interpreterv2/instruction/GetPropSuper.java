@@ -2,6 +2,7 @@ package org.mozilla.javascript.interpreterv2.instruction;
 
 import static org.mozilla.javascript.UniqueTag.DOUBLE_MARK;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.Kit;
@@ -40,5 +41,24 @@ public class GetPropSuper extends Instruction {
     public String toDebugString() {
         return InstructionFormatter.formatInstruction(
                 this, "superObject", superObject, "property", property, "noWarn", noWarn);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof GetPropSuper)) {
+            return false;
+        }
+        GetPropSuper other = (GetPropSuper) o;
+        return Objects.equals(superObject, other.superObject)
+                && Objects.equals(property, other.property)
+                && noWarn == other.noWarn;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(superObject, property, noWarn);
     }
 }

@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ScriptRuntime;
@@ -42,5 +43,24 @@ public class ElemIncDec extends Instruction {
                 elem.getClass().getSimpleName(),
                 "mask",
                 incrDecrMask);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof ElemIncDec)) {
+            return false;
+        }
+        ElemIncDec other = (ElemIncDec) o;
+        return Objects.equals(obj, other.obj)
+                && Objects.equals(elem, other.elem)
+                && incrDecrMask == other.incrDecrMask;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(obj, elem, incrDecrMask);
     }
 }

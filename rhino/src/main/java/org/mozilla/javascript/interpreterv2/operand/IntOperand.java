@@ -1,5 +1,6 @@
 package org.mozilla.javascript.interpreterv2.operand;
 
+import java.util.Objects;
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.interpreterv2.InstructionSimplification;
@@ -46,5 +47,21 @@ public final class IntOperand extends Operand {
     @Override
     public boolean coerceToBoolean(Context cx, CallFrameV2 frame) {
         return value != 0;
+    }
+
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof IntOperand)) {
+            return false;
+        }
+        IntOperand other = (IntOperand) o;
+        return value == other.value;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(value);
     }
 }
