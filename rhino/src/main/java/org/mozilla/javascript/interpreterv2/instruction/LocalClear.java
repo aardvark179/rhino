@@ -8,7 +8,22 @@ import org.mozilla.javascript.interpreterv2.InstructionFormatter;
 public class LocalClear extends Instruction {
     private final int localIndex;
 
-    public LocalClear(int localIndex) {
+    private static final LocalClear[] CACHE = new LocalClear[16];
+
+    static {
+        for (int i = 0; i < CACHE.length; i++) {
+            CACHE[i] = new LocalClear(i);
+        }
+    }
+
+    public static LocalClear createInstruction(int localIndex) {
+        if (localIndex >= 0 && localIndex < CACHE.length) {
+            return CACHE[localIndex];
+        }
+        return new LocalClear(localIndex);
+    }
+
+    private LocalClear(int localIndex) {
         this.localIndex = localIndex;
     }
 

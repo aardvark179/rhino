@@ -1,6 +1,7 @@
 package org.mozilla.javascript.interpreterv2;
 
 import java.io.PrintStream;
+import java.util.HashMap;
 import java.util.List;
 import org.mozilla.javascript.ACompilerData;
 import org.mozilla.javascript.Context;
@@ -204,6 +205,10 @@ public class CompilerData<T extends ScriptOrFn<T>> extends ACompilerData<T, Comp
         @Override
         public CompilerData<T> build() {
             if (built == null) {
+                var map = new HashMap<Instruction, Instruction>();
+                for (int i = 0; i < instructions.length; i++) {
+                    instructions[i] = map.computeIfAbsent(instructions[i], k -> k);
+                }
                 built = new CompilerData<>(this);
             }
             return built;
