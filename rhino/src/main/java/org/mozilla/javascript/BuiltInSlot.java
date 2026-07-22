@@ -26,7 +26,7 @@ import org.mozilla.javascript.ScriptableObject.DescriptorInfo;
  * map from which a slot was fetched. We store it in the slot's value field as this is not used for
  * any real value storage on a built in slot.
  */
-public class BuiltInSlot<T extends ScriptableObject> extends CompactSlot<Scriptable, T> {
+public class BuiltInSlot<T extends ScriptableObject> extends CompactSlot<BuiltInSlot.Descriptor<T>, Scriptable, T> {
     @Serial private static final long serialVersionUID = 8728562620206845355L;
 
     public interface Getter<T extends ScriptableObject> extends Serializable {
@@ -53,11 +53,9 @@ public class BuiltInSlot<T extends ScriptableObject> extends CompactSlot<Scripta
     }
 
     public static class Descriptor<T extends ScriptableObject>
-            extends CompactSlot.Descriptor<BuiltInSlot<T>, Scriptable, T> implements Serializable {
+            extends CompactSlot.Descriptor<BuiltInSlot.Descriptor<T>, Scriptable, T> {
         @Serial private static final long serialVersionUID = 8728562620206845355L;
 
-        private final Object name;
-        private int indexOrHash;
         private final Getter<T> getter;
         private final Setter<T> setter;
         private final AttributeSetter<T> attrUpdater;
@@ -104,19 +102,11 @@ public class BuiltInSlot<T extends ScriptableObject> extends CompactSlot<Scripta
                 Setter<T> setter,
                 AttributeSetter<T> attrUpdater,
                 PropDescriptionSetter<T> propDescSetter) {
-            this.name = name;
-            this.indexOrHash = name == null ? indexOrHash : name.hashCode();
+            super(name, indexOrHash);
             this.getter = getter;
             this.setter = setter;
             this.attrUpdater = attrUpdater;
             this.propDescSetter = propDescSetter;
-        }
-
-        private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
-            in.defaultReadObject();
-            if (name != null) {
-                indexOrHash = name.hashCode();
-            }
         }
 
         @Override
@@ -125,75 +115,36 @@ public class BuiltInSlot<T extends ScriptableObject> extends CompactSlot<Scripta
         }
     }
 
-    private final Descriptor<T> descriptor;
-
-    BuiltInSlot(Object name, int index, int attr, T builtIn, Getter<T> getter) {
-        this(
-                name,
-                index,
-                attr,
-                builtIn,
-                getter,
-                BuiltInSlot::defaultSetter,
-                BuiltInSlot::defaultAttrSetter,
-                BuiltInSlot::defaultPropDescSetter);
+    private static <T extends ScriptableObject> boolean defaultSetter(
+            T builtIn, Object value, Scriptable owner, Scriptable start, boolean isThrow) {
+        return true;
     }
 
-    BuiltInSlot(Object name, int index, int attr, T builtIn, Getter<T> getter, Setter<T> setter) {
-        this(
-                name,
-                index,
-                attr,
-                builtIn,
-                getter,
-                setter,
-                BuiltInSlot::defaultAttrSetter,
-                BuiltInSlot::defaultPropDescSetter);
+    private static <T extends ScriptableObject> void defaultAttrSetter(T builtIn, int attributes) {
+        // Do nothing.
     }
 
-    BuiltInSlot(
-            Object name,
-            int index,
-            int attr,
+    private static <T extends ScriptableObject> boolean defaultPropDescSetter(
             T builtIn,
-            Getter<T> getter,
-            Setter<T> setter,
-            AttributeSetter<T> attrUpdater) {
-        this(
-                name,
-                index,
-                attr,
-                builtIn,
-                getter,
-                setter,
-                attrUpdater,
-                BuiltInSlot::defaultPropDescSetter);
-    }
-
-    BuiltInSlot(
-            Object name,
-            int index,
-            int attr,
-            T builtIn,
-            Getter<T> getter,
-            Setter<T> setter,
-            AttributeSetter<T> attrUpdater,
-            PropDescriptionSetter<T> propDescSetter) {
-        this(
-                new Descriptor<>(name, index, getter, setter, attrUpdater, propDescSetter),
-                attr,
-                builtIn);
+            BuiltInSlot<T> current,
+            Object id,
+            DescriptorInfo info,
+            boolean checkValid,
+            Object key,
+            int index) {
+        try (var map = builtIn.startCompoundOp(true)) {
+            return ScriptableObject.defineOrdinaryProperty(
+                    ScriptableObject::setSlotValue, builtIn, map, id, info, checkValid, key, index);
+        }
     }
 
     BuiltInSlot(Descriptor<T> descriptor, int attr, T builtIn) {
-        super(attr);
+        super(descriptor, attr);
         this.value = builtIn;
-        this.descriptor = descriptor;
     }
 
     BuiltInSlot(BuiltInSlot<T> slot) {
         super(slot);
-        this.descriptor = slot.descriptor;
     }
 
     @Override
@@ -252,30 +203,6 @@ public class BuiltInSlot<T extends ScriptableObject> extends CompactSlot<Scripta
         return descriptor.propDescSetter.apply(
                 ((T) this.value), this, id, info, checkValid, key, index);
     }
-
-    private static <T extends ScriptableObject> boolean defaultSetter(
-            T builtIn, Object value, Scriptable owner, Scriptable start, boolean isThrow) {
-        return true;
-    }
-
-    private static <T extends ScriptableObject> void defaultAttrSetter(T builtIn, int attributes) {
-        // Do nothing.
-    }
-
-    private static <T extends ScriptableObject> boolean defaultPropDescSetter(
-            T builtIn,
-            BuiltInSlot<T> current,
-            Object id,
-            DescriptorInfo info,
-            boolean checkValid,
-            Object key,
-            int index) {
-        try (var map = builtIn.startCompoundOp(true)) {
-            return ScriptableObject.defineOrdinaryProperty(
-                    ScriptableObject::setSlotValue, builtIn, map, id, info, checkValid, key, index);
-        }
-    }
-
     @Override
     protected void throwNoSetterException(Scriptable start, Object newValue) {
         Context cx = Context.getContext();
@@ -286,32 +213,11 @@ public class BuiltInSlot<T extends ScriptableObject> extends CompactSlot<Scripta
                 cx.hasFeature(Context.FEATURE_STRICT_MODE)) {
 
             String prop = "";
-            if (descriptor.name != null) {
-                prop = "[" + ((Scriptable) start).getClassName() + "]." + descriptor.name;
+            if (descriptor.getName() != null) {
+                prop = "[" + ((Scriptable) start).getClassName() + "]." + descriptor.getName();
             }
             throw ScriptRuntime.typeErrorById(
                     "msg.set.prop.no.setter", prop, Context.toString(newValue));
         }
-    }
-
-    @Override
-    public boolean keyMatches(Object key, int indexOrHash) {
-        return indexOrHash == this.descriptor.indexOrHash
-                && Objects.equals(this.descriptor.name, key);
-    }
-
-    @Override
-    public Object getKey() {
-        return descriptor.name != null ? descriptor.name : descriptor.indexOrHash;
-    }
-
-    @Override
-    public Object getName() {
-        return descriptor.name;
-    }
-
-    @Override
-    public int getIndexOrHash() {
-        return descriptor.indexOrHash;
     }
 }
