@@ -14,7 +14,7 @@ public abstract class Slot<T extends PropHolder<T>> implements Serializable {
     transient Slot<T> next; // next in hash table bucket
     transient Slot<T> orderedNext; // next in linked list
 
-    Slot() {}
+    Slot() { }
 
     abstract Slot<T> copySlot();
 
