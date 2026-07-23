@@ -10,14 +10,11 @@ import org.mozilla.javascript.ScriptableObject.DescriptorInfo;
  * various types of getter and setter methods.
  */
 public abstract class Slot<T extends PropHolder<T>> implements Serializable {
-    private short attributes;
     Object value;
     transient Slot<T> next; // next in hash table bucket
     transient Slot<T> orderedNext; // next in linked list
 
-    Slot(int attributes) {
-        this.attributes = (short) attributes;
-    }
+    Slot() { }
 
     abstract Slot<T> copySlot();
 
@@ -37,7 +34,6 @@ public abstract class Slot<T extends PropHolder<T>> implements Serializable {
     }
 
     protected Slot(Slot<T> oldSlot) {
-        attributes = oldSlot.attributes;
         value = oldSlot.value;
         next = oldSlot.next;
         orderedNext = oldSlot.orderedNext;
@@ -47,35 +43,18 @@ public abstract class Slot<T extends PropHolder<T>> implements Serializable {
         return setValue(value, owner, start, Context.isCurrentContextStrict());
     }
 
-    public boolean setValue(Object value, T owner, T start, boolean isThrow) {
-        if ((attributes & ScriptableObject.READONLY) != 0) {
-            if (isThrow) {
-                throw ScriptRuntime.typeErrorById("msg.modify.readonly", getName());
-            }
-            return true;
-        }
-        if (owner == start) {
-            this.value = value;
-            return true;
-        }
-        return false;
-    }
+    public abstract boolean setValue(Object value, T owner, T start, boolean isThrow);
 
     public Object getValue(T start) {
         return value;
     }
 
-    int getAttributes() {
-        return attributes;
-    }
+    abstract int getAttributes();
 
-    void setAttributes(int value) {
-        ScriptableObject.checkValidAttributes(value);
-        attributes = (short) value;
-    }
+    abstract void setAttributes(int value);
 
     DescriptorInfo getPropertyDescriptor(Context cx, T scope) {
-        return ScriptableObject.buildDataDescriptor(value, attributes);
+        return ScriptableObject.buildDataDescriptor(value, getAttributes());
     }
 
     protected abstract void throwNoSetterException(T start, Object newValue);

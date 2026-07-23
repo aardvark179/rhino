@@ -111,7 +111,7 @@ public class BuiltInSlot<T extends ScriptableObject>
         @SuppressWarnings("unchecked")
         public Object getValue(
                 CompactSlot<BuiltInSlot.Descriptor<T>, Scriptable, T> slot, Scriptable start) {
-            return getter.apply(((T) slot.value), start);
+            return getter.apply(((T) slot.getRawValue()), start);
         }
 
         @Override
@@ -119,7 +119,7 @@ public class BuiltInSlot<T extends ScriptableObject>
         public boolean setValue(
                 CompactSlot<BuiltInSlot.Descriptor<T>, Scriptable, T> slot,
                 Object value,
-                T owner,
+                Scriptable owner,
                 Scriptable start,
                 boolean isThrow) {
             if ((slot.getAttributes() & ScriptableObject.READONLY) != 0) {
@@ -129,9 +129,16 @@ public class BuiltInSlot<T extends ScriptableObject>
                 return true;
             }
             if (owner == start) {
-                return setter.apply(((T) slot.value), value, owner, start, isThrow);
+                return setter.apply(((T) slot.getRawValue()), value, owner, start, isThrow);
             }
             return false;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public void setAttributes(CompactSlot<Descriptor<T>, Scriptable, T> slot, int value) {
+            attrUpdater.apply(((T) slot.getRawValue()), value);
+            super.setAttributes(slot, value);
         }
 
         @Override
@@ -188,41 +195,10 @@ public class BuiltInSlot<T extends ScriptableObject>
         descriptor.setter.apply(((T) this.value), value, owner, start, isThrow);
     }
 
-    @Override
-    @SuppressWarnings("unchecked")
-    void setAttributes(int value) {
-        descriptor.attrUpdater.apply(((T) this.value), value);
-        super.setAttributes(value);
-    }
-
-    @Override
-    @SuppressWarnings("unchecked")
-    DescriptorInfo getPropertyDescriptor(Context cx, Scriptable start) {
-        return ScriptableObject.buildDataDescriptor(getValue((T) this.value), getAttributes());
-    }
-
     @SuppressWarnings("unchecked")
     boolean applyNewDescriptor(
             Object id, DescriptorInfo info, boolean checkValid, Object key, int index) {
         return descriptor.propDescSetter.apply(
                 ((T) this.value), this, id, info, checkValid, key, index);
-    }
-
-    @Override
-    protected void throwNoSetterException(Scriptable start, Object newValue) {
-        Context cx = Context.getContext();
-        if (cx.isStrictMode()
-                ||
-                // Based on TC39 ES3.1 Draft of 9-Feb-2009, 8.12.4, step 2,
-                // we should throw a TypeError in this case.
-                cx.hasFeature(Context.FEATURE_STRICT_MODE)) {
-
-            String prop = "";
-            if (descriptor.getName() != null) {
-                prop = "[" + ((Scriptable) start).getClassName() + "]." + descriptor.getName();
-            }
-            throw ScriptRuntime.typeErrorById(
-                    "msg.set.prop.no.setter", prop, Context.toString(newValue));
-        }
     }
 }
