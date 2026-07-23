@@ -54,13 +54,9 @@ public class BuiltInSlot<T extends ScriptableObject>
             extends CompactSlot.Descriptor<BuiltInSlot.Descriptor<T>, Scriptable, T> {
         @Serial private static final long serialVersionUID = 8728562620206845355L;
 
-        private final Getter<T> getter;
-        private final Setter<T> setter;
-        private final AttributeSetter<T> attrUpdater;
-        private final PropDescriptionSetter<T> propDescSetter;
-
-        public Descriptor(Object name, Getter<T> getter) {
-            this(
+        public static <T extends ScriptableObject> Descriptor<T> builtInDesc(
+                Object name, Getter<T> getter) {
+            return new Descriptor<T>(
                     name,
                     0,
                     getter,
@@ -69,8 +65,9 @@ public class BuiltInSlot<T extends ScriptableObject>
                     BuiltInSlot::defaultPropDescSetter);
         }
 
-        public Descriptor(Object name, Getter<T> getter, Setter<T> setter) {
-            this(
+        public static <T extends ScriptableObject> Descriptor<T> builtInDesc(
+                Object name, Getter<T> getter, Setter<T> setter) {
+            return new Descriptor<>(
                     name,
                     0,
                     getter,
@@ -79,19 +76,25 @@ public class BuiltInSlot<T extends ScriptableObject>
                     BuiltInSlot::defaultPropDescSetter);
         }
 
-        public Descriptor(
+        public static <T extends ScriptableObject> Descriptor<T> builtInDesc(
                 Object name, Getter<T> getter, Setter<T> setter, AttributeSetter<T> attrUpdater) {
-            this(name, 0, getter, setter, attrUpdater, BuiltInSlot::defaultPropDescSetter);
+            return new Descriptor<>(
+                    name, 0, getter, setter, attrUpdater, BuiltInSlot::defaultPropDescSetter);
         }
 
-        public Descriptor(
+        public static <T extends ScriptableObject> Descriptor<T> builtInDesc(
                 Object name,
                 Getter<T> getter,
                 Setter<T> setter,
                 AttributeSetter<T> attrUpdater,
                 PropDescriptionSetter<T> propDescSetter) {
-            this(name, 0, getter, setter, attrUpdater, propDescSetter);
+            return new Descriptor<>(name, 0, getter, setter, attrUpdater, propDescSetter);
         }
+
+        private final Getter<T> getter;
+        private final Setter<T> setter;
+        private final AttributeSetter<T> attrUpdater;
+        private final PropDescriptionSetter<T> propDescSetter;
 
         public Descriptor(
                 Object name,

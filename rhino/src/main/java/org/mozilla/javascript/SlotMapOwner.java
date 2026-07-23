@@ -345,7 +345,7 @@ public abstract class SlotMapOwner<T extends PropHolder<T>> implements PropHolde
         }
     }
 
-    protected static <T extends PropHolder<T>, O extends ScriptableObject> SlotMap<T> createSlotMap(
+    protected static <T extends PropHolder<T>, O extends SlotMapOwner<T>> SlotMap<T> createSlotMap(
             CompactSlot<?, T, O> slot0,
             CompactSlot<?, T, O> slot1,
             CompactSlot<?, T, O> slot2,

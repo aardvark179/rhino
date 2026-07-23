@@ -1,5 +1,6 @@
 package org.mozilla.javascript;
 
+import static org.mozilla.javascript.BuiltInSlot.Descriptor.builtInDesc;
 import static org.mozilla.javascript.ScriptableObject.DONTENUM;
 import static org.mozilla.javascript.ScriptableObject.PERMANENT;
 import static org.mozilla.javascript.ScriptableObject.READONLY;
@@ -119,7 +120,7 @@ public class ClassDescriptor {
 
         BuiltInPropDesc(Object name, BuiltInSlot.Getter<T> getter, int attributes) {
             super(name, attributes);
-            desc = new BuiltInSlot.Descriptor<>(name, getter);
+            desc = builtInDesc(name, getter);
         }
 
         BuiltInPropDesc(
@@ -128,7 +129,7 @@ public class ClassDescriptor {
                 BuiltInSlot.Setter<T> setter,
                 int attributes) {
             super(name, attributes);
-            desc = new BuiltInSlot.Descriptor<>(name, getter, setter);
+            desc = builtInDesc(name, getter, setter);
         }
 
         BuiltInPropDesc(
@@ -138,7 +139,7 @@ public class ClassDescriptor {
                 BuiltInSlot.AttributeSetter<T> attrUpdater,
                 int attributes) {
             super(name, attributes);
-            desc = new BuiltInSlot.Descriptor<>(name, getter, setter, attrUpdater);
+            desc = builtInDesc(name, getter, setter, attrUpdater);
         }
 
         BuiltInPropDesc(
@@ -149,7 +150,7 @@ public class ClassDescriptor {
                 BuiltInSlot.PropDescriptionSetter<T> propDescSetter,
                 int attributes) {
             super(name, attributes);
-            desc = new BuiltInSlot.Descriptor<>(name, getter, setter, attrUpdater, propDescSetter);
+            desc = builtInDesc(name, getter, setter, attrUpdater, propDescSetter);
         }
 
         @Override

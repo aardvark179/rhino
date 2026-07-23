@@ -6,8 +6,11 @@
 
 package org.mozilla.javascript;
 
+import static org.mozilla.javascript.BuiltInSlot.Descriptor.builtInDesc;
 import static org.mozilla.javascript.ClassDescriptor.Builder.value;
 import static org.mozilla.javascript.ClassDescriptor.Destination.PROTO;
+import static org.mozilla.javascript.SlotMapDescriptor.Builder.extending;
+import static org.mozilla.javascript.SlotMapDescriptor.Builder.startingWith;
 import static org.mozilla.javascript.Symbol.Kind.REGULAR;
 
 import java.io.Serial;
@@ -41,34 +44,32 @@ public class BaseFunction extends ScriptableObject implements Function {
     private static final JSDescriptor<JSFunction> APPLY_DESCRIPTOR;
     private static final JSDescriptor<JSFunction> CALL_DESCRIPTOR;
 
-    private static final BuiltInSlot.Descriptor<BaseFunction> NAME_DESCRIPTOR =
-            new BuiltInSlot.Descriptor<>(
-                    "name", BaseFunction::nameGetter, BaseFunction::nameSetter);
-    private static final BuiltInSlot.Descriptor<BaseFunction> LENGTH_DESCRIPTOR =
-            new BuiltInSlot.Descriptor<>("length", BaseFunction::lengthGetter);
-    private static final BuiltInSlot.Descriptor<BaseFunction> ARITY_DESCRIPTOR =
-            new BuiltInSlot.Descriptor<>("arity", BaseFunction::arityGetter);
-    private static final BuiltInSlot.Descriptor<BaseFunction> ARGUMENTS_DESCRIPTOR =
-            new BuiltInSlot.Descriptor<>(
-                    "arguments", BaseFunction::argumentsGetter, BaseFunction::argumentsSetter);
-    private static final SlotMapDescriptor<BaseFunction> BASIC_MAP =
-            new SlotMapDescriptor.Builder<BaseFunction>()
-                    .withSlot(LENGTH_DESCRIPTOR, DONTENUM | READONLY)
-                    .withSlot(NAME_DESCRIPTOR, DONTENUM | READONLY)
+    private static final SlotMapDescriptor<Scriptable, BaseFunction> BASIC_MAP =
+            startingWith(builtInDesc("length", BaseFunction::lengthGetter), DONTENUM | READONLY)
+                    .withSlot(
+                            builtInDesc("name", BaseFunction::nameGetter, BaseFunction::nameSetter),
+                            DONTENUM | READONLY)
                     .build();
 
-    private static final SlotMapDescriptor<BaseFunction> ARITY_MAP =
-            SlotMapDescriptor.Builder.extending(BASIC_MAP)
-                    .withSlot(ARITY_DESCRIPTOR, PERMANENT | DONTENUM | READONLY)
+    private static final SlotMapDescriptor<Scriptable, BaseFunction> ARITY_MAP =
+            extending(BASIC_MAP)
+                    .withSlot(
+                            builtInDesc("arity", BaseFunction::arityGetter),
+                            PERMANENT | DONTENUM | READONLY)
                     .build();
 
-    private static final SlotMapDescriptor<BaseFunction> ARGUMENTS_MAP =
-            SlotMapDescriptor.Builder.extending(ARITY_MAP)
-                    .withSlot(ARGUMENTS_DESCRIPTOR, PERMANENT | DONTENUM)
+    private static final SlotMapDescriptor<Scriptable, BaseFunction> ARGUMENTS_MAP =
+            extending(ARITY_MAP)
+                    .withSlot(
+                            builtInDesc(
+                                    "arguments",
+                                    BaseFunction::argumentsGetter,
+                                    BaseFunction::argumentsSetter),
+                            PERMANENT | DONTENUM)
                     .build();
 
     private static final BuiltInSlot.Descriptor<BaseFunction> PROTOTYPE_DESCRIPTOR =
-            new BuiltInSlot.Descriptor<>(
+            builtInDesc(
                     PROTOTYPE_PROPERTY_NAME,
                     BaseFunction::prototypeGetter,
                     BaseFunction::prototypeSetter,
@@ -183,7 +184,7 @@ public class BaseFunction extends ScriptableObject implements Function {
     }
 
     protected void createProperties() {
-        SlotMapDescriptor<BaseFunction> desc;
+        var desc = BASIC_MAP;
 
         Context cx = Context.getCurrentContext();
         if (cx == null || !cx.isStrictMode()) {
@@ -192,8 +193,6 @@ public class BaseFunction extends ScriptableObject implements Function {
             } else {
                 desc = ARITY_MAP;
             }
-        } else {
-            desc = BASIC_MAP;
         }
 
         desc.installMap(this);

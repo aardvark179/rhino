@@ -6,6 +6,7 @@
 
 package org.mozilla.javascript.regexp;
 
+import static org.mozilla.javascript.BuiltInSlot.Descriptor.builtInDesc;
 import static org.mozilla.javascript.ClassDescriptor.Destination.CTOR;
 import static org.mozilla.javascript.ClassDescriptor.Destination.PROTO;
 
@@ -161,7 +162,7 @@ public class NativeRegExp extends ScriptableObject {
     private static final JSDescriptor<JSFunction> EXEC_DESCRIPTOR;
 
     private static final BuiltInSlot.Descriptor<NativeRegExp> LASTINDEX_DESCRIPTOR =
-            new BuiltInSlot.Descriptor<>(
+            builtInDesc(
                     "lastIndex",
                     NativeRegExp::lastIndexGetter,
                     NativeRegExp::lastIndexSetter,
