@@ -26,8 +26,6 @@ public class StandardSlot<T extends PropHolder<T>> extends Slot<T> {
 
     StandardSlot<T> copySlot() {
         var newSlot = new StandardSlot<T>(this);
-        newSlot.next = null;
-        newSlot.orderedNext = null;
         return newSlot;
     }
 

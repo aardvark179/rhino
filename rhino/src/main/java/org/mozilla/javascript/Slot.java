@@ -11,10 +11,8 @@ import org.mozilla.javascript.ScriptableObject.DescriptorInfo;
  */
 public abstract class Slot<T extends PropHolder<T>> implements Serializable {
     Object value;
-    transient Slot<T> next; // next in hash table bucket
-    transient Slot<T> orderedNext; // next in linked list
 
-    Slot() { }
+    Slot() {}
 
     abstract Slot<T> copySlot();
 
@@ -35,8 +33,6 @@ public abstract class Slot<T extends PropHolder<T>> implements Serializable {
 
     protected Slot(Slot<T> oldSlot) {
         value = oldSlot.value;
-        next = oldSlot.next;
-        orderedNext = oldSlot.orderedNext;
     }
 
     public final boolean setValue(Object value, T owner, T start) {

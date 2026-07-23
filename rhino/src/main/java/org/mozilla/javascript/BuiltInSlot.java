@@ -182,8 +182,6 @@ public class BuiltInSlot<T extends ScriptableObject>
     @Override
     Slot<Scriptable> copySlot() {
         var res = new BuiltInSlot<T>(this);
-        res.next = null;
-        res.orderedNext = null;
         return res;
     }
 

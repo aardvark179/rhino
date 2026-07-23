@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.Objects;
-
 import org.mozilla.javascript.ScriptableObject.DescriptorInfo;
 
 public abstract class CompactSlot<
@@ -47,7 +46,8 @@ public abstract class CompactSlot<
         }
 
         DescriptorInfo getPropertyDescriptor(CompactSlot<T, U, O> slot, Context cx, U start) {
-            return ScriptableObject.buildDataDescriptor(getValue(slot, start), slot.getAttributes());
+            return ScriptableObject.buildDataDescriptor(
+                    getValue(slot, start), slot.getAttributes());
         }
 
         private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {

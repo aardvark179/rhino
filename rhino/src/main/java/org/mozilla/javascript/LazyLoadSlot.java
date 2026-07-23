@@ -17,8 +17,6 @@ public class LazyLoadSlot<T extends PropHolder<T>> extends StandardSlot<T> {
     LazyLoadSlot<T> copySlot() {
         var newSlot = new LazyLoadSlot<T>(this);
         newSlot.value = value;
-        newSlot.next = null;
-        newSlot.orderedNext = null;
         return newSlot;
     }
 

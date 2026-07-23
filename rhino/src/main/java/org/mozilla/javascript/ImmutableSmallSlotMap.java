@@ -12,11 +12,8 @@ public class ImmutableSmallSlotMap<T extends PropHolder<T>> implements SlotMap<T
 
     public ImmutableSmallSlotMap(Slot<T> slot0, Slot<T> slot1, Slot<T> slot2, Slot<T> slot3) {
         this.slot0 = slot0;
-        if (slot0 != null) slot0.orderedNext = slot1;
         this.slot1 = slot1;
-        if (slot1 != null) slot1.orderedNext = slot2;
         this.slot2 = slot2;
-        if (slot2 != null) slot2.orderedNext = slot3;
         this.slot3 = slot3;
     }
 
@@ -91,28 +88,43 @@ public class ImmutableSmallSlotMap<T extends PropHolder<T>> implements SlotMap<T
 
     @Override
     public Iterator<Slot<T>> iterator() {
-        return new Iter<>(slot0);
+        return new Iter<>(this);
     }
 
     private static final class Iter<T extends PropHolder<T>> implements Iterator<Slot<T>> {
-        private Slot<T> next;
+        int offset = 0;
+        final ImmutableSmallSlotMap<T> map;
 
-        Iter(Slot<T> slot) {
-            next = slot;
+        Iter(ImmutableSmallSlotMap<T> map) {
+            this.map = map;
         }
 
         @Override
         public boolean hasNext() {
-            return next != null;
+            return switch (offset) {
+                case 0 -> map.slot0 != null;
+                case 1 -> map.slot1 != null;
+                case 2 -> map.slot2 != null;
+                case 3 -> map.slot3 != null;
+                default -> false;
+            };
         }
 
         @Override
         public Slot<T> next() {
-            var ret = next;
+            var ret =
+                    switch (offset) {
+                        case 0 -> map.slot0;
+                        case 1 -> map.slot1;
+                        case 2 -> map.slot2;
+                        case 3 -> map.slot3;
+                        default -> null;
+                    };
+
             if (ret == null) {
                 throw new NoSuchElementException();
             }
-            next = next.orderedNext;
+            offset++;
             return ret;
         }
     }
