@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.Objects;
+import org.mozilla.javascript.ScriptableObject.DescriptorInfo;
 
 public abstract class CompactSlot<
                 T extends CompactSlot.Descriptor<T, U, O>,
@@ -37,7 +38,17 @@ public abstract class CompactSlot<
         public abstract Object getValue(CompactSlot<T, U, O> slot, U start);
 
         public abstract boolean setValue(
-                CompactSlot<T, U, O> slot, Object value, O owner, U start, boolean isThrow);
+                CompactSlot<T, U, O> slot, Object value, U owner, U start, boolean isThrow);
+
+        public void setAttributes(CompactSlot<T, U, O> slot, int value) {
+            ScriptableObject.checkValidAttributes(value);
+            slot.attributes = (short) value;
+        }
+
+        DescriptorInfo getPropertyDescriptor(CompactSlot<T, U, O> slot, Context cx, U start) {
+            return ScriptableObject.buildDataDescriptor(
+                    getValue(slot, start), slot.getAttributes());
+        }
 
         private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
             in.defaultReadObject();
@@ -57,19 +68,17 @@ public abstract class CompactSlot<
     }
 
     CompactSlot(CompactSlot<T, U, O> oldSlot) {
-        super();
+        super(oldSlot);
         this.attributes = oldSlot.attributes;
         this.descriptor = oldSlot.descriptor;
     }
 
-    @Override
-    int getAttributes() {
-        return attributes;
+    protected final Object getRawValue() {
+        return value;
     }
 
-    @Override
-    void setAttributes(int value) {
-        this.attributes = (short) value;
+    protected final void setRawValue(Object value) {
+        this.value = value;
     }
 
     @Override
@@ -78,12 +87,24 @@ public abstract class CompactSlot<
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public final boolean setValue(Object value, U owner, U start, boolean isThrow) {
-        return descriptor.setValue(this, value, (O) owner, start, isThrow);
+        return descriptor.setValue(this, value, owner, start, isThrow);
     }
 
-    public final void setValueFromDescriptor(Object value, U owner, U start, boolean isThrow) {}
+    @Override
+    final int getAttributes() {
+        return attributes;
+    }
+
+    @Override
+    final void setAttributes(int value) {
+        descriptor.setAttributes(this, value);
+    }
+
+    @Override
+    final DescriptorInfo getPropertyDescriptor(Context cx, U start) {
+        return descriptor.getPropertyDescriptor(this, cx, start);
+    }
 
     @Override
     public final boolean keyMatches(Object key, int indexOrHash) {
@@ -104,5 +125,23 @@ public abstract class CompactSlot<
     @Override
     public final int getIndexOrHash() {
         return descriptor.getIndexOrHash();
+    }
+
+    @Override
+    protected void throwNoSetterException(U start, Object newValue) {
+        Context cx = Context.getContext();
+        if (cx.isStrictMode()
+                ||
+                // Based on TC39 ES3.1 Draft of 9-Feb-2009, 8.12.4, step 2,
+                // we should throw a TypeError in this case.
+                cx.hasFeature(Context.FEATURE_STRICT_MODE)) {
+
+            String prop = "";
+            if (descriptor.getName() != null) {
+                prop = "[" + ((Scriptable) start).getClassName() + "]." + descriptor.getName();
+            }
+            throw ScriptRuntime.typeErrorById(
+                    "msg.set.prop.no.setter", prop, Context.toString(newValue));
+        }
     }
 }
