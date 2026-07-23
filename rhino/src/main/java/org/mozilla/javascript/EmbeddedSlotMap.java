@@ -19,11 +19,21 @@ import java.util.Objects;
 
 public class EmbeddedSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
 
-    private Slot<T>[] slots;
+    private static class SlotHolder<T extends PropHolder<T>> {
+        private final Slot<T> slot;
+        private SlotHolder<T> next;
+        private SlotHolder<T> orderedNext;
+
+        private SlotHolder(Slot<T> slot) {
+            this.slot = slot;
+        }
+    }
+
+    private SlotHolder<T>[] slots;
 
     // gateways into the definition-order linked list of slots
-    private Slot<T> firstAdded;
-    private Slot<T> lastAdded;
+    private SlotHolder<T> firstAdded;
+    private SlotHolder<T> lastAdded;
 
     private int count;
     private boolean hasIndex = false;
@@ -32,10 +42,10 @@ public class EmbeddedSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
     private static final int INITIAL_SLOT_SIZE = 4;
 
     private static final class Iter<T extends PropHolder<T>> implements Iterator<Slot<T>> {
-        private Slot<T> next;
+        private SlotHolder<T> next;
 
-        Iter(Slot<T> slot) {
-            next = slot;
+        Iter(SlotHolder<T> holder) {
+            next = holder;
         }
 
         @Override
@@ -50,7 +60,7 @@ public class EmbeddedSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
                 throw new NoSuchElementException();
             }
             next = next.orderedNext;
-            return ret;
+            return ret.slot;
         }
     }
 
@@ -60,7 +70,7 @@ public class EmbeddedSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
     public EmbeddedSlotMap(int capacity) {
         int n = -1 >>> Integer.numberOfLeadingZeros(capacity - 1);
         n = (n < 0) ? 1 : n + 1;
-        slots = new Slot[n];
+        slots = new SlotHolder[n];
     }
 
     @Override
@@ -87,9 +97,9 @@ public class EmbeddedSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
 
         int indexOrHash = (key != null ? key.hashCode() : index);
         int slotIndex = getSlotIndex(slots.length, indexOrHash);
-        for (Slot<T> slot = slots[slotIndex]; slot != null; slot = slot.next) {
-            if (slot.keyMatches(key, indexOrHash)) {
-                return slot;
+        for (SlotHolder<T> holder = slots[slotIndex]; holder != null; holder = holder.next) {
+            if (holder.slot.keyMatches(key, indexOrHash)) {
+                return holder.slot;
             }
         }
         return null;
@@ -104,17 +114,12 @@ public class EmbeddedSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
     @Override
     public Slot<T> modify(SlotMapOwner<T> owner, Object key, int index, int attributes) {
         final int indexOrHash = (key != null ? key.hashCode() : index);
-        Slot<T> slot;
-
         if (slots != null) {
             final int slotIndex = getSlotIndex(slots.length, indexOrHash);
-            for (slot = slots[slotIndex]; slot != null; slot = slot.next) {
-                if (slot.keyMatches(key, indexOrHash)) {
-                    break;
+            for (var holder = slots[slotIndex]; holder != null; holder = holder.next) {
+                if (holder.slot.keyMatches(key, indexOrHash)) {
+                    return holder.slot;
                 }
-            }
-            if (slot != null) {
-                return slot;
             }
         }
 
@@ -127,7 +132,7 @@ public class EmbeddedSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
     private void createNewSlot(SlotMapOwner<T> owner, Slot<T> newSlot) {
         if (count == 0 && slots == null) {
             // Always throw away old slots if any on empty insert.
-            slots = new Slot[INITIAL_SLOT_SIZE];
+            slots = new SlotHolder[INITIAL_SLOT_SIZE];
         }
 
         // Check if the table is not too full before inserting.
@@ -137,7 +142,7 @@ public class EmbeddedSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
                 promoteMap(owner, newSlot);
                 return;
             }
-            Slot<T>[] newSlots = new Slot[slots.length * 2];
+            SlotHolder<T>[] newSlots = new SlotHolder[slots.length * 2];
             copyTable(slots, newSlots);
             slots = newSlots;
         }
@@ -160,17 +165,17 @@ public class EmbeddedSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
         final int indexOrHash = (key != null ? key.hashCode() : index);
 
         if (slots != null) {
-            Slot<T> slot;
+            SlotHolder<T> holder;
             final int slotIndex = getSlotIndex(slots.length, indexOrHash);
-            Slot<T> prev = slots[slotIndex];
-            for (slot = prev; slot != null; slot = slot.next) {
-                if (slot.keyMatches(key, indexOrHash)) {
+            SlotHolder<T> prev = slots[slotIndex];
+            for (holder = prev; holder != null; holder = holder.next) {
+                if (holder.slot.keyMatches(key, indexOrHash)) {
                     break;
                 }
-                prev = slot;
+                prev = holder;
             }
-            if (slot != null) {
-                return computeExisting(owner, compoundOp, key, index, c, slot, prev, slotIndex);
+            if (holder != null) {
+                return computeExisting(owner, compoundOp, key, index, c, holder, prev, slotIndex);
             }
         }
         return computeNew(owner, compoundOp, key, index, c);
@@ -199,38 +204,39 @@ public class EmbeddedSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
             Object key,
             int index,
             SlotComputer<S, T> c,
-            Slot<T> slot,
-            Slot<T> prev,
+            SlotHolder<T> holder,
+            SlotHolder<T> prev,
             int slotIndex) {
         // Modify or remove existing slot
-        S newSlot = c.compute(key, index, slot, compoundOp, owner);
+        S newSlot = c.compute(key, index, holder.slot, compoundOp, owner);
         if (!compoundOp.touched) {
             if (newSlot == null) {
                 // Need to delete this slot actually
-                removeSlot(slot, prev, slotIndex, key);
-            } else if (!Objects.equals(slot, newSlot)) {
+                removeSlot(holder, prev, slotIndex, key);
+            } else if (!Objects.equals(holder.slot, newSlot)) {
                 // Replace slot in hash table
-                if (prev == slot) {
-                    slots[slotIndex] = newSlot;
+                var newHolder = new SlotHolder<>(newSlot);
+                if (prev == holder) {
+                    slots[slotIndex] = newHolder;
                 } else {
-                    prev.next = newSlot;
+                    prev.next = newHolder;
                 }
-                newSlot.next = slot.next;
+                newHolder.next = holder.next;
                 // Replace new slot in linked list, keeping same order
-                if (slot == firstAdded) {
-                    firstAdded = newSlot;
+                if (holder == firstAdded) {
+                    firstAdded = newHolder;
                 } else {
-                    Slot<T> ps = firstAdded;
-                    while ((ps != null) && (ps.orderedNext != slot)) {
-                        ps = ps.orderedNext;
+                    SlotHolder<T> ph = firstAdded;
+                    while ((ph != null) && (ph.orderedNext != holder)) {
+                        ph = ph.orderedNext;
                     }
-                    if (ps != null) {
-                        ps.orderedNext = newSlot;
+                    if (ph != null) {
+                        ph.orderedNext = newHolder;
                     }
                 }
-                newSlot.orderedNext = slot.orderedNext;
-                if (slot == lastAdded) {
-                    lastAdded = newSlot;
+                newHolder.orderedNext = holder.orderedNext;
+                if (holder == lastAdded) {
+                    lastAdded = newHolder;
                 }
             }
             return newSlot;
@@ -244,7 +250,7 @@ public class EmbeddedSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
     @SuppressWarnings("unchecked")
     public void add(SlotMapOwner<T> owner, Slot<T> newSlot) {
         if (slots == null) {
-            slots = new Slot[INITIAL_SLOT_SIZE];
+            slots = new SlotHolder[INITIAL_SLOT_SIZE];
         }
         createNewSlot(owner, newSlot);
     }
@@ -252,24 +258,25 @@ public class EmbeddedSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
     private void insertNewSlot(Slot<T> newSlot) {
         ++count;
         // add new slot to linked list
+        var newHolder = new SlotHolder<>(newSlot);
         if (lastAdded != null) {
-            lastAdded.orderedNext = newSlot;
+            lastAdded.orderedNext = newHolder;
         }
         if (firstAdded == null) {
-            firstAdded = newSlot;
+            firstAdded = newHolder;
         }
-        lastAdded = newSlot;
+        lastAdded = newHolder;
         if (newSlot.getName() == null) hasIndex = true;
-        addKnownAbsentSlot(slots, newSlot);
+        addKnownAbsentSlot(slots, newHolder);
     }
 
-    private void removeSlot(Slot<T> slot, Slot<T> prev, int ix, Object key) {
+    private void removeSlot(SlotHolder<T> holder, SlotHolder<T> prev, int ix, Object key) {
         count--;
         // remove slot from hash table
-        if (prev == slot) {
-            slots[ix] = slot.next;
+        if (prev == holder) {
+            slots[ix] = holder.next;
         } else {
-            prev.next = slot.next;
+            prev.next = holder.next;
         }
 
         // remove from ordered list. Previously this was done lazily in
@@ -277,28 +284,28 @@ public class EmbeddedSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
         // should be ok
 
         // ordered list always uses the actual slot
-        if (slot == firstAdded) {
+        if (holder == firstAdded) {
             prev = null;
-            firstAdded = slot.orderedNext;
+            firstAdded = holder.orderedNext;
         } else {
             prev = firstAdded;
-            while (prev.orderedNext != slot) {
+            while (prev.orderedNext != holder) {
                 prev = prev.orderedNext;
             }
-            prev.orderedNext = slot.orderedNext;
+            prev.orderedNext = holder.orderedNext;
         }
-        if (slot == lastAdded) {
+        if (holder == lastAdded) {
             lastAdded = prev;
         }
     }
 
     private static <T extends PropHolder<T>> void copyTable(
-            Slot<T>[] oldSlots, Slot<T>[] newSlots) {
-        for (var slot : oldSlots) {
-            while (slot != null) {
-                var nextSlot = slot.next;
-                addKnownAbsentSlot(newSlots, slot);
-                slot = nextSlot;
+            SlotHolder<T>[] oldHolders, SlotHolder<T>[] newHolders) {
+        for (var holder : oldHolders) {
+            while (holder != null) {
+                var nextHolder = holder.next;
+                addKnownAbsentSlot(newHolders, holder);
+                holder = nextHolder;
             }
         }
     }
@@ -308,10 +315,10 @@ public class EmbeddedSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
      * when inserting into empty table, after table growth or during deserialization.
      */
     private static <T extends PropHolder<T>> void addKnownAbsentSlot(
-            Slot<T>[] addSlots, Slot<T> slot) {
-        final int insertPos = getSlotIndex(addSlots.length, slot.getIndexOrHash());
-        slot.next = addSlots[insertPos];
-        addSlots[insertPos] = slot;
+            SlotHolder<T>[] addSlots, SlotHolder<T> holder) {
+        final int insertPos = getSlotIndex(addSlots.length, holder.slot.getIndexOrHash());
+        holder.next = addSlots[insertPos];
+        addSlots[insertPos] = holder;
     }
 
     private static int getSlotIndex(int tableSize, int indexOrHash) {

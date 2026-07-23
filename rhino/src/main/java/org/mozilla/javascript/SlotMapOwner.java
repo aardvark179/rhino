@@ -180,7 +180,7 @@ public abstract class SlotMapOwner<T extends PropHolder<T>> implements PropHolde
             if (ret == null) {
                 throw new NoSuchElementException();
             }
-            next = next.orderedNext;
+            next = null;
             return ret;
         }
     }

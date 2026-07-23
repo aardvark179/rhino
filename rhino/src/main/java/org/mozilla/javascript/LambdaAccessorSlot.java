@@ -46,8 +46,6 @@ public class LambdaAccessorSlot extends StandardSlot<Scriptable> {
         newSlot.setter = setter;
         newSlot.getterFunction = getterFunction;
         newSlot.setterFunction = setterFunction;
-        newSlot.next = null;
-        newSlot.orderedNext = null;
         return newSlot;
     }
 

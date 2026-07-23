@@ -25,8 +25,6 @@ public class AccessorSlot extends StandardSlot<Scriptable> {
         newSlot.value = value;
         newSlot.getter = getter;
         newSlot.setter = setter;
-        newSlot.next = null;
-        newSlot.orderedNext = null;
         return newSlot;
     }
 
