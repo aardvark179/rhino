@@ -3,18 +3,17 @@ package org.mozilla.javascript;
 import java.util.ArrayList;
 import java.util.List;
 
-public class SlotMapDescriptor<O extends ScriptableObject> {
+public class SlotMapDescriptor<T extends PropHolder<T>, O extends SlotMapOwner<T>> {
 
-    private final List<CompactSlot.Descriptor<?, Scriptable, O>> slots;
+    private final List<CompactSlot.Descriptor<?, T, O>> slots;
     private final int[] attributes;
 
-    private SlotMapDescriptor(
-            List<CompactSlot.Descriptor<?, Scriptable, O>> slots, int[] attributes) {
+    private SlotMapDescriptor(List<CompactSlot.Descriptor<?, T, O>> slots, int[] attributes) {
         this.slots = slots;
         this.attributes = attributes;
     }
 
-    SlotMap<Scriptable> buildMap(O owner) {
+    SlotMap<T> buildMap(O owner) {
         return SlotMapOwner.createSlotMap(
                 slots.size() > 0 ? slots.get(0).createSlot(owner, attributes[0]) : null,
                 slots.size() > 1 ? slots.get(1).createSlot(owner, attributes[1]) : null,
@@ -26,13 +25,18 @@ public class SlotMapDescriptor<O extends ScriptableObject> {
         owner.setMap(buildMap(owner));
     }
 
-    public static class Builder<O extends ScriptableObject> {
-        List<CompactSlot.Descriptor<?, Scriptable, O>> slots = new ArrayList<>();
+    public static class Builder<T extends PropHolder<T>, O extends SlotMapOwner<T>> {
+        List<CompactSlot.Descriptor<?, T, O>> slots = new ArrayList<>();
         List<Integer> attributes = new ArrayList<>();
 
         public Builder() {}
 
-        private Builder(SlotMapDescriptor<O> old) {
+        public Builder(CompactSlot.Descriptor<?, T, O> descriptor, int attributes) {
+            slots.add(descriptor);
+            this.attributes.add(attributes);
+        }
+
+        private Builder(SlotMapDescriptor<T, O> old) {
             slots = new ArrayList<>(old.slots);
             attributes = new ArrayList<>(old.attributes.length * 2);
             for (int i = 0; i < old.attributes.length; i++) {
@@ -40,22 +44,24 @@ public class SlotMapDescriptor<O extends ScriptableObject> {
             }
         }
 
-        public static <O extends ScriptableObject> Builder<O> extending(
-                SlotMapDescriptor<O> start) {
+        public static <T extends PropHolder<T>, O extends SlotMapOwner<T>>
+                Builder<T, O> startingWith(
+                        CompactSlot.Descriptor<?, T, O> descriptor, int attributes) {
+            return new Builder<>(descriptor, attributes);
+        }
+
+        public static <T extends PropHolder<T>, O extends SlotMapOwner<T>> Builder<T, O> extending(
+                SlotMapDescriptor<T, O> start) {
             return new Builder<>(start);
         }
 
-        public Builder<O> withSlot(
-                CompactSlot.Descriptor<?, Scriptable, O> descriptor, int attributes) {
-            if (slots.size() >= 4) {
-                throw new IllegalStateException("Only maps of size 4 or less supported.");
-            }
+        public Builder<T, O> withSlot(CompactSlot.Descriptor<?, T, O> descriptor, int attributes) {
             slots.add(descriptor);
             this.attributes.add(attributes);
             return this;
         }
 
-        public SlotMapDescriptor<O> build() {
+        public SlotMapDescriptor<T, O> build() {
             return new SlotMapDescriptor<>(
                     List.copyOf(slots), attributes.stream().mapToInt(v -> v).toArray());
         }

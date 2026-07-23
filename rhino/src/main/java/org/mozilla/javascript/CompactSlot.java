@@ -9,13 +9,13 @@ import org.mozilla.javascript.ScriptableObject.DescriptorInfo;
 public abstract class CompactSlot<
                 T extends CompactSlot.Descriptor<T, U, O>,
                 U extends PropHolder<U>,
-                O extends ScriptableObject>
+                O extends SlotMapOwner<U>>
         extends Slot<U> {
 
     public abstract static class Descriptor<
                     T extends CompactSlot.Descriptor<T, U, O>,
                     U extends PropHolder<U>,
-                    O extends ScriptableObject>
+                    O extends SlotMapOwner<U>>
             implements Serializable {
         private final Object name;
         private int indexOrHash;
