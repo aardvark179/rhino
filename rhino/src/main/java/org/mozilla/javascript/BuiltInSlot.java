@@ -1,10 +1,7 @@
 package org.mozilla.javascript;
 
-import java.io.IOException;
-import java.io.ObjectInputStream;
 import java.io.Serial;
 import java.io.Serializable;
-import java.util.Objects;
 import org.mozilla.javascript.ScriptableObject.DescriptorInfo;
 
 /**
@@ -26,7 +23,8 @@ import org.mozilla.javascript.ScriptableObject.DescriptorInfo;
  * map from which a slot was fetched. We store it in the slot's value field as this is not used for
  * any real value storage on a built in slot.
  */
-public class BuiltInSlot<T extends ScriptableObject> extends CompactSlot<BuiltInSlot.Descriptor<T>, Scriptable, T> {
+public class BuiltInSlot<T extends ScriptableObject>
+        extends CompactSlot<BuiltInSlot.Descriptor<T>, Scriptable, T> {
     @Serial private static final long serialVersionUID = 8728562620206845355L;
 
     public interface Getter<T extends ScriptableObject> extends Serializable {
@@ -110,6 +108,33 @@ public class BuiltInSlot<T extends ScriptableObject> extends CompactSlot<BuiltIn
         }
 
         @Override
+        @SuppressWarnings("unchecked")
+        public Object getValue(
+                CompactSlot<BuiltInSlot.Descriptor<T>, Scriptable, T> slot, Scriptable start) {
+            return getter.apply(((T) slot.value), start);
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public boolean setValue(
+                CompactSlot<BuiltInSlot.Descriptor<T>, Scriptable, T> slot,
+                Object value,
+                T owner,
+                Scriptable start,
+                boolean isThrow) {
+            if ((slot.getAttributes() & ScriptableObject.READONLY) != 0) {
+                if (isThrow) {
+                    throw ScriptRuntime.typeErrorById("msg.modify.readonly", getName());
+                }
+                return true;
+            }
+            if (owner == start) {
+                return setter.apply(((T) slot.value), value, owner, start, isThrow);
+            }
+            return false;
+        }
+
+        @Override
         public BuiltInSlot<T> createSlot(T owner, int attr) {
             return new BuiltInSlot<>(this, attr, owner);
         }
@@ -155,27 +180,6 @@ public class BuiltInSlot<T extends ScriptableObject> extends CompactSlot<BuiltIn
         return res;
     }
 
-    @Override
-    @SuppressWarnings("unchecked")
-    public Object getValue(Scriptable start) {
-        return descriptor.getter.apply(((T) this.value), start);
-    }
-
-    @Override
-    @SuppressWarnings("unchecked")
-    public boolean setValue(Object value, Scriptable owner, Scriptable start, boolean isThrow) {
-        if ((getAttributes() & ScriptableObject.READONLY) != 0) {
-            if (isThrow) {
-                throw ScriptRuntime.typeErrorById("msg.modify.readonly", getName());
-            }
-            return true;
-        }
-        if (owner == start) {
-            return descriptor.setter.apply(((T) this.value), value, owner, start, isThrow);
-        }
-        return false;
-    }
-
     /* When setting a property descriptor we need to set the property
     _without_ the normal checks on readonly and similar. */
     @SuppressWarnings("unchecked")
@@ -203,6 +207,7 @@ public class BuiltInSlot<T extends ScriptableObject> extends CompactSlot<BuiltIn
         return descriptor.propDescSetter.apply(
                 ((T) this.value), this, id, info, checkValid, key, index);
     }
+
     @Override
     protected void throwNoSetterException(Scriptable start, Object newValue) {
         Context cx = Context.getContext();
