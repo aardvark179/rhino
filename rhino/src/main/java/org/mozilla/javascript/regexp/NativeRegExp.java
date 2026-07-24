@@ -6,7 +6,7 @@
 
 package org.mozilla.javascript.regexp;
 
-import static org.mozilla.javascript.BuiltInSlot.Descriptor.builtInDesc;
+import static org.mozilla.javascript.BuiltInDescriptor.builtInDesc;
 import static org.mozilla.javascript.ClassDescriptor.Destination.CTOR;
 import static org.mozilla.javascript.ClassDescriptor.Destination.PROTO;
 
@@ -22,7 +22,7 @@ import java.util.function.IntPredicate;
 import org.mozilla.javascript.AbstractEcmaObjectOperations;
 import org.mozilla.javascript.AbstractEcmaStringOperations;
 import org.mozilla.javascript.AbstractEcmaStringOperations.ReplacementOperation;
-import org.mozilla.javascript.BuiltInSlot;
+import org.mozilla.javascript.BuiltInDescriptor;
 import org.mozilla.javascript.Callable;
 import org.mozilla.javascript.ClassDescriptor;
 import org.mozilla.javascript.Constructable;
@@ -161,7 +161,7 @@ public class NativeRegExp extends ScriptableObject {
     private static final ClassDescriptor DESCRIPTOR;
     private static final JSDescriptor<JSFunction> EXEC_DESCRIPTOR;
 
-    private static final BuiltInSlot.Descriptor<NativeRegExp> LASTINDEX_DESCRIPTOR =
+    private static final BuiltInDescriptor<NativeRegExp> LASTINDEX_DESCRIPTOR =
             builtInDesc(
                     "lastIndex",
                     NativeRegExp::lastIndexGetter,

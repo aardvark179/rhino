@@ -2,7 +2,7 @@ package org.mozilla.javascript.tests;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
-import static org.mozilla.javascript.BuiltInSlot.Descriptor.builtInDesc;
+import static org.mozilla.javascript.BuiltInSlot.BuiltInDescriptor.builtInDesc;
 
 import java.io.FileInputStream;
 import java.io.IOException;

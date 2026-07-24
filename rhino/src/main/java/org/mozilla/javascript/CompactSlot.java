@@ -6,7 +6,7 @@ import java.io.Serializable;
 import java.util.Objects;
 import org.mozilla.javascript.ScriptableObject.DescriptorInfo;
 
-public abstract class CompactSlot<
+public class CompactSlot<
                 T extends CompactSlot.Descriptor<T, U, O>,
                 U extends PropHolder<U>,
                 O extends SlotMapOwner<U>>
@@ -71,6 +71,11 @@ public abstract class CompactSlot<
         super(oldSlot);
         this.attributes = oldSlot.attributes;
         this.descriptor = oldSlot.descriptor;
+    }
+
+    @Override
+    Slot<U> copySlot() {
+        return new CompactSlot<>(this);
     }
 
     protected final Object getRawValue() {
