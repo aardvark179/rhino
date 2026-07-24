@@ -253,8 +253,7 @@ public class BaseFunction extends ScriptableObject implements Function {
                 0,
                 (k, i, s, m, o) -> {
                     if (s == null) {
-                        return new BuiltInSlot<BaseFunction>(
-                                PROTOTYPE_DESCRIPTOR, prototypePropertyAttributes, this);
+                        return PROTOTYPE_DESCRIPTOR.createSlot(this, prototypePropertyAttributes);
                     }
                     return s;
                 });
@@ -280,7 +279,7 @@ public class BaseFunction extends ScriptableObject implements Function {
 
     protected static boolean prototypeDescSetter(
             BaseFunction builtIn,
-            BuiltInSlot<BaseFunction> current,
+            CompactSlot<BuiltInSlot.Descriptor<BaseFunction>, Scriptable, BaseFunction> current,
             Object id,
             ScriptableObject.DescriptorInfo info,
             boolean checkValid,

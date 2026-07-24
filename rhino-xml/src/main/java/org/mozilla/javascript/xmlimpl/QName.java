@@ -8,6 +8,7 @@ package org.mozilla.javascript.xmlimpl;
 
 import static org.mozilla.javascript.BuiltInSlot.Descriptor.builtInDesc;
 import static org.mozilla.javascript.ClassDescriptor.Destination.PROTO;
+import static org.mozilla.javascript.SlotMapDescriptor.Builder.startingWith;
 
 import org.mozilla.javascript.ClassDescriptor;
 import org.mozilla.javascript.Context;
@@ -28,8 +29,7 @@ final class QName extends ScriptableObject {
     private static final ClassDescriptor DESCRIPTOR;
 
     private static final SlotMapDescriptor<Scriptable, QName> INSTANCE_DESCRIPTOR =
-            new SlotMapDescriptor.Builder<Scriptable, QName>()
-                    .withSlot(builtInDesc("localName", QName::getLocalName), PERMANENT | READONLY)
+            startingWith(builtInDesc("localName", QName::getLocalName), PERMANENT | READONLY)
                     .withSlot(builtInDesc("uri", QName::getURI), PERMANENT | READONLY)
                     .build();
 

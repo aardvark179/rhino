@@ -42,7 +42,7 @@ public class BuiltInSlot<T extends ScriptableObject>
     public interface PropDescriptionSetter<T extends ScriptableObject> extends Serializable {
         boolean apply(
                 T builtIn,
-                BuiltInSlot<T> current,
+                CompactSlot<BuiltInSlot.Descriptor<T>, Scriptable, T> current,
                 Object id,
                 DescriptorInfo info,
                 boolean checkValid,
@@ -145,7 +145,7 @@ public class BuiltInSlot<T extends ScriptableObject>
         }
 
         @Override
-        public BuiltInSlot<T> createSlot(T owner, int attr) {
+        public CompactSlot<BuiltInSlot.Descriptor<T>, Scriptable, T> createSlot(T owner, int attr) {
             return new BuiltInSlot<>(this, attr, owner);
         }
     }
@@ -161,7 +161,7 @@ public class BuiltInSlot<T extends ScriptableObject>
 
     private static <T extends ScriptableObject> boolean defaultPropDescSetter(
             T builtIn,
-            BuiltInSlot<T> current,
+            CompactSlot<BuiltInSlot.Descriptor<T>, Scriptable, T> current,
             Object id,
             DescriptorInfo info,
             boolean checkValid,
@@ -173,12 +173,12 @@ public class BuiltInSlot<T extends ScriptableObject>
         }
     }
 
-    BuiltInSlot(Descriptor<T> descriptor, int attr, T builtIn) {
+    private BuiltInSlot(Descriptor<T> descriptor, int attr, T builtIn) {
         super(descriptor, attr);
         this.value = builtIn;
     }
 
-    BuiltInSlot(BuiltInSlot<T> slot) {
+    private BuiltInSlot(BuiltInSlot<T> slot) {
         super(slot);
     }
 
@@ -191,15 +191,29 @@ public class BuiltInSlot<T extends ScriptableObject>
     /* When setting a property descriptor we need to set the property
     _without_ the normal checks on readonly and similar. */
     @SuppressWarnings("unchecked")
-    public void setValueFromDescriptor(
-            Object value, Scriptable owner, Scriptable start, boolean isThrow) {
-        descriptor.setter.apply(((T) this.value), value, owner, start, isThrow);
+    static <T extends ScriptableObject> void setValueFromDescriptor(
+            BuiltInSlot<T> slot,
+            Object value,
+            Scriptable owner,
+            Scriptable start,
+            boolean isThrow) {
+        slot.descriptor.setter.apply(((T) slot.value), value, owner, start, isThrow);
+    }
+
+    static boolean isBuiltIn(Slot<?> slot) {
+        return slot instanceof CompactSlot<?, ?, ?> cs
+                && cs.descriptor instanceof BuiltInSlot.Descriptor;
     }
 
     @SuppressWarnings("unchecked")
-    boolean applyNewDescriptor(
-            Object id, DescriptorInfo info, boolean checkValid, Object key, int index) {
-        return descriptor.propDescSetter.apply(
-                ((T) this.value), this, id, info, checkValid, key, index);
+    static <T extends ScriptableObject> boolean applyNewDescriptor(
+            CompactSlot<BuiltInSlot.Descriptor<T>, Scriptable, T> slot,
+            Object id,
+            DescriptorInfo info,
+            boolean checkValid,
+            Object key,
+            int index) {
+        return slot.descriptor.propDescSetter.apply(
+                ((T) slot.value), slot, id, info, checkValid, key, index);
     }
 }
