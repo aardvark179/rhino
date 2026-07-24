@@ -8,6 +8,7 @@ package org.mozilla.javascript.xmlimpl;
 
 import static org.mozilla.javascript.BuiltInSlot.Descriptor.builtInDesc;
 import static org.mozilla.javascript.ClassDescriptor.Destination.PROTO;
+import static org.mozilla.javascript.SlotMapDescriptor.Builder.startingWith;
 
 import org.mozilla.javascript.ClassDescriptor;
 import org.mozilla.javascript.Context;
@@ -28,8 +29,7 @@ class Namespace extends ScriptableObject {
     private static final ClassDescriptor DESCRIPTOR;
 
     private static final SlotMapDescriptor<Scriptable, Namespace> INSTANCE_DESCRIPTOR =
-            new SlotMapDescriptor.Builder<Scriptable, Namespace>()
-                    .withSlot(builtInDesc("prefix", Namespace::getPrefix), PERMANENT | READONLY)
+            startingWith(builtInDesc("prefix", Namespace::getPrefix), PERMANENT | READONLY)
                     .withSlot(builtInDesc("uri", Namespace::getURI), PERMANENT | READONLY)
                     .build();
 

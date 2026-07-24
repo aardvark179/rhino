@@ -1515,7 +1515,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
 
         var aSlot = getMap().query(key, index);
 
-        if (aSlot instanceof BuiltInSlot) {
+        if (BuiltInSlot.isBuiltIn(aSlot)) {
             // 10.4.2.4 ArrayLengthSet requires we check that any new
             // value is valid and throw a range error if not before
             // checking attrributes. It also specifies subtly
@@ -1527,7 +1527,9 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
             // modify the current descriptor as part of operations
             // performed as part of applying the descriptor.
 
-            return ((BuiltInSlot<?>) aSlot).applyNewDescriptor(id, desc, checkValid, key, index);
+            @SuppressWarnings("unchecked")
+            var bis = (BuiltInSlot<ScriptableObject>) aSlot;
+            return BuiltInSlot.applyNewDescriptor(bis, id, desc, checkValid, key, index);
         } else {
             try (var map = startCompoundOp(true)) {
                 return defineOrdinaryProperty(
@@ -1760,9 +1762,11 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
                 fslot.setter = new AccessorSlot.FunctionSetter(info.setter);
             }
             fslot.value = Undefined.instance;
-        } else if (slot instanceof BuiltInSlot bis) {
+        } else if (BuiltInSlot.isBuiltIn(slot)) {
             if (info.value != NOT_FOUND) {
-                bis.setValueFromDescriptor(info.value, owner, owner, true);
+                @SuppressWarnings("unchecked")
+                var bis = (BuiltInSlot<ScriptableObject>) slot;
+                BuiltInSlot.setValueFromDescriptor(bis, info.value, owner, owner, true);
             }
         } else {
             if (!slot.isValueSlot() && info.isDataDescriptor()) {
@@ -1967,7 +1971,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
                     throw ScriptRuntime.typeErrorById(
                             "msg.change.enumerable.with.configurable.false", id);
                 boolean isData = info.isDataDescriptor();
-                boolean isBuiltIn = current instanceof BuiltInSlot;
+                boolean isBuiltIn = BuiltInSlot.isBuiltIn(current);
                 boolean isAccessor = info.accessorDescriptor;
                 if (!isData && !isAccessor) {
                     // no further validation required for generic descriptor
@@ -3092,7 +3096,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
 
     public static <T extends ScriptableObject> void defineBuiltInProperty(
             T owner, int attributes, BuiltInSlot.Descriptor<T> descriptor) {
-        owner.getMap().add(owner, new BuiltInSlot<T>(descriptor, attributes, owner));
+        owner.getMap().add(owner, descriptor.createSlot(owner, attributes));
     }
 
     @SuppressWarnings("unchecked")

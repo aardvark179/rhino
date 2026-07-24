@@ -562,7 +562,7 @@ public class NativeArray extends ScriptableObject implements List {
 
     protected static boolean arraySetLength(
             NativeArray builtIn,
-            BuiltInSlot<NativeArray> current,
+            CompactSlot<BuiltInSlot.Descriptor<NativeArray>, Scriptable, NativeArray> current,
             Object id,
             DescriptorInfo info,
             boolean checkValid,
