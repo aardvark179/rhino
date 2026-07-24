@@ -61,7 +61,11 @@ public class HashSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
     @Override
     public Slot<T> modify(SlotMapOwner<T> owner, Object key, int index, int attributes) {
         Object name = makeKey(key, index);
-        return map.computeIfAbsent(name, n -> new StandardSlot<T>(key, index, attributes));
+        return map.computeIfAbsent(
+                name,
+                n ->
+                        new SimpleDescriptor<T, SlotMapOwner<T>>(key, index)
+                                .createSlot(owner, attributes));
     }
 
     @SuppressWarnings("unchecked")

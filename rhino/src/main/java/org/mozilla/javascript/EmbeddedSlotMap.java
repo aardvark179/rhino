@@ -122,8 +122,8 @@ public class EmbeddedSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
                 }
             }
         }
-
-        var newSlot = new StandardSlot<T>(key, index, attributes);
+        var desc = new SimpleDescriptor<T, SlotMapOwner<T>>(key, index);
+        var newSlot = desc.createSlot(null, attributes);
         createNewSlot(owner, newSlot);
         return newSlot;
     }

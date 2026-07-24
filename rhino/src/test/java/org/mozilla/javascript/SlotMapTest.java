@@ -108,7 +108,7 @@ public class SlotMapTest {
         assertFalse(obj.getMap().isEmpty());
         var foundNewSlot = obj.getMap().query("foo", 0);
         assertNotNull(foundNewSlot);
-        assertTrue(foundNewSlot instanceof BuiltInSlot);
+        assertTrue(BuiltInDescriptor.isBuiltIn(foundNewSlot));
         assertEquals("foo_result", foundNewSlot.getValue(obj));
     }
 
