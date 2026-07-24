@@ -1,6 +1,6 @@
 package org.mozilla.javascript;
 
-import static org.mozilla.javascript.BuiltInSlot.Descriptor.builtInDesc;
+import static org.mozilla.javascript.BuiltInDescriptor.builtInDesc;
 import static org.mozilla.javascript.ScriptableObject.DONTENUM;
 import static org.mozilla.javascript.ScriptableObject.PERMANENT;
 import static org.mozilla.javascript.ScriptableObject.READONLY;
@@ -116,17 +116,17 @@ public class ClassDescriptor {
     }
 
     private static class BuiltInPropDesc<T extends ScriptableObject> extends PropDesc {
-        private final BuiltInSlot.Descriptor<T> desc;
+        private final BuiltInDescriptor<T> desc;
 
-        BuiltInPropDesc(Object name, BuiltInSlot.Getter<T> getter, int attributes) {
+        BuiltInPropDesc(Object name, BuiltInDescriptor.Getter<T> getter, int attributes) {
             super(name, attributes);
             desc = builtInDesc(name, getter);
         }
 
         BuiltInPropDesc(
                 Object name,
-                BuiltInSlot.Getter<T> getter,
-                BuiltInSlot.Setter<T> setter,
+                BuiltInDescriptor.Getter<T> getter,
+                BuiltInDescriptor.Setter<T> setter,
                 int attributes) {
             super(name, attributes);
             desc = builtInDesc(name, getter, setter);
@@ -134,9 +134,9 @@ public class ClassDescriptor {
 
         BuiltInPropDesc(
                 Object name,
-                BuiltInSlot.Getter<T> getter,
-                BuiltInSlot.Setter<T> setter,
-                BuiltInSlot.AttributeSetter<T> attrUpdater,
+                BuiltInDescriptor.Getter<T> getter,
+                BuiltInDescriptor.Setter<T> setter,
+                BuiltInDescriptor.AttributeSetter<T> attrUpdater,
                 int attributes) {
             super(name, attributes);
             desc = builtInDesc(name, getter, setter, attrUpdater);
@@ -144,10 +144,10 @@ public class ClassDescriptor {
 
         BuiltInPropDesc(
                 Object name,
-                BuiltInSlot.Getter<T> getter,
-                BuiltInSlot.Setter<T> setter,
-                BuiltInSlot.AttributeSetter<T> attrUpdater,
-                BuiltInSlot.PropDescriptionSetter<T> propDescSetter,
+                BuiltInDescriptor.Getter<T> getter,
+                BuiltInDescriptor.Setter<T> setter,
+                BuiltInDescriptor.AttributeSetter<T> attrUpdater,
+                BuiltInDescriptor.PropDescriptionSetter<T> propDescSetter,
                 int attributes) {
             super(name, attributes);
             desc = builtInDesc(name, getter, setter, attrUpdater, propDescSetter);
@@ -669,8 +669,8 @@ public class ClassDescriptor {
         public <T extends ScriptableObject> Builder withProp(
                 Destination dest,
                 String name,
-                BuiltInSlot.Getter<T> getter,
-                BuiltInSlot.Setter<T> setter,
+                BuiltInDescriptor.Getter<T> getter,
+                BuiltInDescriptor.Setter<T> setter,
                 int attributes) {
             dest.get(this).props.add(new BuiltInPropDesc<>(name, getter, setter, attributes));
             return this;
@@ -679,8 +679,8 @@ public class ClassDescriptor {
         public <T extends ScriptableObject> Builder withProp(
                 Destination dest,
                 SymbolKey name,
-                BuiltInSlot.Getter<T> getter,
-                BuiltInSlot.Setter<T> setter,
+                BuiltInDescriptor.Getter<T> getter,
+                BuiltInDescriptor.Setter<T> setter,
                 int attributes) {
             dest.get(this).props.add(new BuiltInPropDesc<>(name, getter, setter, attributes));
             return this;

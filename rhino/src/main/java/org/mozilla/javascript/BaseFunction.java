@@ -6,7 +6,7 @@
 
 package org.mozilla.javascript;
 
-import static org.mozilla.javascript.BuiltInSlot.Descriptor.builtInDesc;
+import static org.mozilla.javascript.BuiltInDescriptor.builtInDesc;
 import static org.mozilla.javascript.ClassDescriptor.Builder.value;
 import static org.mozilla.javascript.ClassDescriptor.Destination.PROTO;
 import static org.mozilla.javascript.SlotMapDescriptor.Builder.extending;
@@ -68,7 +68,7 @@ public class BaseFunction extends ScriptableObject implements Function {
                             PERMANENT | DONTENUM)
                     .build();
 
-    private static final BuiltInSlot.Descriptor<BaseFunction> PROTOTYPE_DESCRIPTOR =
+    private static final BuiltInDescriptor<BaseFunction> PROTOTYPE_DESCRIPTOR =
             builtInDesc(
                     PROTOTYPE_PROPERTY_NAME,
                     BaseFunction::prototypeGetter,
@@ -279,7 +279,7 @@ public class BaseFunction extends ScriptableObject implements Function {
 
     protected static boolean prototypeDescSetter(
             BaseFunction builtIn,
-            CompactSlot<BuiltInSlot.Descriptor<BaseFunction>, Scriptable, BaseFunction> current,
+            CompactSlot<BuiltInDescriptor<BaseFunction>, Scriptable, BaseFunction> current,
             Object id,
             ScriptableObject.DescriptorInfo info,
             boolean checkValid,

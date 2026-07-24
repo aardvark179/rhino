@@ -6,7 +6,7 @@
 
 package org.mozilla.javascript.xmlimpl;
 
-import static org.mozilla.javascript.BuiltInSlot.Descriptor.builtInDesc;
+import static org.mozilla.javascript.BuiltInDescriptor.builtInDesc;
 import static org.mozilla.javascript.ClassDescriptor.Destination.PROTO;
 import static org.mozilla.javascript.SlotMapDescriptor.Builder.startingWith;
 

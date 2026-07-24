@@ -7,7 +7,7 @@
 package org.mozilla.javascript;
 
 import static org.mozilla.javascript.ArrayLikeAbstractOperations.getRawElem;
-import static org.mozilla.javascript.BuiltInSlot.Descriptor.builtInDesc;
+import static org.mozilla.javascript.BuiltInDescriptor.builtInDesc;
 import static org.mozilla.javascript.ClassDescriptor.Builder.alias;
 import static org.mozilla.javascript.ClassDescriptor.Destination.CTOR;
 import static org.mozilla.javascript.ClassDescriptor.Destination.PROTO;
@@ -76,7 +76,7 @@ public class NativeArray extends ScriptableObject implements List {
 
     private static final ClassDescriptor DESCRIPTOR;
     public static final JSDescriptor<JSFunction> ITERATOR_DESCRIPTOR;
-    private static final BuiltInSlot.Descriptor<NativeArray> LENGTH_DESCRIPTOR =
+    private static final BuiltInDescriptor<NativeArray> LENGTH_DESCRIPTOR =
             builtInDesc(
                     "length",
                     NativeArray::lengthGetter,
@@ -562,7 +562,7 @@ public class NativeArray extends ScriptableObject implements List {
 
     protected static boolean arraySetLength(
             NativeArray builtIn,
-            CompactSlot<BuiltInSlot.Descriptor<NativeArray>, Scriptable, NativeArray> current,
+            CompactSlot<BuiltInDescriptor<NativeArray>, Scriptable, NativeArray> current,
             Object id,
             DescriptorInfo info,
             boolean checkValid,

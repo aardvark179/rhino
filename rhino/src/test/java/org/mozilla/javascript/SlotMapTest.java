@@ -1,7 +1,7 @@
 package org.mozilla.javascript;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mozilla.javascript.BuiltInSlot.Descriptor.builtInDesc;
+import static org.mozilla.javascript.BuiltInDescriptor.builtInDesc;
 import static org.mozilla.javascript.ScriptableObject.DONTENUM;
 
 import java.util.Collection;
