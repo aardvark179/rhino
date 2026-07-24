@@ -961,13 +961,14 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
         return slot == null ? null : new DescriptorInfo(slot.value, slot.getAttributes(), true);
     }
 
-    private Slot<?> getBuiltInSlot(String name) {
+    private Slot<Scriptable> getBuiltInSlot(String name) {
         int info = findInstanceIdInfo(name);
         if (info != 0) {
             int id = (info & 0xFFFF);
             Object value = getInstanceIdValue(id);
             int attr = (info >>> 16);
-            var slot = new StandardSlot(name, 0, attr);
+            var desc = new SimpleDescriptor<Scriptable, ScriptableObject>(name, 0);
+            var slot = desc.createSlot(getThis(), attr);
             slot.value = value;
             return slot;
         }
@@ -976,7 +977,8 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
             if (id != 0) {
                 Object value = prototypeValues.get(id);
                 int attr = prototypeValues.getAttributes(id);
-                var slot = new StandardSlot(name, 0, attr);
+                var desc = new SimpleDescriptor<Scriptable, ScriptableObject>(name, 0);
+                var slot = desc.createSlot(getThis(), attr);
                 slot.value = value;
                 return slot;
             }
@@ -989,13 +991,14 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
         return slot == null ? null : new DescriptorInfo(slot.value, slot.getAttributes(), true);
     }
 
-    private StandardSlot getBuiltInSlot(Symbol key) {
+    private Slot<Scriptable> getBuiltInSlot(Symbol key) {
         if (prototypeValues != null) {
             int id = prototypeValues.findId(key);
             if (id != 0) {
                 Object value = prototypeValues.get(id);
                 int attr = prototypeValues.getAttributes(id);
-                var slot = new StandardSlot(key, 0, attr);
+                var desc = new SimpleDescriptor<Scriptable, ScriptableObject>(value, 0);
+                var slot = desc.createSlot(getThis(), attr);
                 slot.value = value;
                 return slot;
             }

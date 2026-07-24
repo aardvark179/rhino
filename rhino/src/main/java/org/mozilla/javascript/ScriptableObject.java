@@ -1528,7 +1528,9 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
             // performed as part of applying the descriptor.
 
             @SuppressWarnings("unchecked")
-            var bis = (BuiltInSlot<ScriptableObject>) aSlot;
+            var bis =
+                    (CompactSlot<BuiltInDescriptor<ScriptableObject>, Scriptable, ScriptableObject>)
+                            aSlot;
             return BuiltInDescriptor.applyNewDescriptor(bis, id, desc, checkValid, key, index);
         } else {
             try (var map = startCompoundOp(true)) {
@@ -1698,7 +1700,9 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
                     int attributes;
 
                     if (existing == null) {
-                        slot = new StandardSlot<>(k, ix, 0);
+                        slot =
+                                new SimpleDescriptor<Scriptable, ScriptableObject>(k, ix)
+                                        .createSlot(owner, 0);
                         attributes =
                                 applyDescriptorToAttributeBitset(
                                         DONTENUM | READONLY | PERMANENT,
@@ -1776,7 +1780,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
         } else {
             if (!slot.isValueSlot() && info.isDataDescriptor()) {
                 // Replace a non-base slot with a regular slot
-                slot = new StandardSlot<>(slot);
+                slot = SimpleDescriptor.slotFrom(slot);
             }
 
             if (info.value != NOT_FOUND) {
@@ -1986,10 +1990,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
                             throw ScriptRuntime.typeErrorById(
                                     "msg.change.writable.false.to.true.with.configurable.false",
                                     id);
-                        var currentValue =
-                                isBuiltIn
-                                        ? ((BuiltInSlot<?>) current).getValue(null)
-                                        : current.value;
+                        var currentValue = isBuiltIn ? current.getValue(null) : current.value;
                         if (!sameValue(info.value, currentValue))
                             throw ScriptRuntime.typeErrorById(
                                     "msg.change.value.with.writable.false", id);
