@@ -35,10 +35,25 @@ public class CompactSlot<
 
         public abstract CompactSlot<T, U, O> createSlot(O owner, int attr);
 
-        public abstract Object getValue(CompactSlot<T, U, O> slot, U start);
+        public Object getValue(CompactSlot<T, U, O> slot, U start) {
+            return slot.getRawValue();
+        }
 
-        public abstract boolean setValue(
-                CompactSlot<T, U, O> slot, Object value, U owner, U start, boolean isThrow);
+        public boolean setValue(
+                CompactSlot<T, U, O> slot, Object value, U owner, U start, boolean isThrow) {
+            if ((slot.getAttributes() & ScriptableObject.READONLY) != 0) {
+                if (isThrow) {
+                    throw ScriptRuntime.typeErrorById("msg.modify.readonly", getName());
+                }
+                return true;
+            }
+            if (owner == start) {
+                slot.setRawValue(value);
+                ;
+                return true;
+            }
+            return false;
+        }
 
         public void setAttributes(CompactSlot<T, U, O> slot, int value) {
             ScriptableObject.checkValidAttributes(value);

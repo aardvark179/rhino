@@ -30,30 +30,4 @@ public class SimpleDescriptor<U extends PropHolder<U>, O extends SlotMapOwner<U>
             CompactSlot<SimpleDescriptor<U, O>, U, O> slot, Context cx, U start) {
         return ScriptableObject.buildDataDescriptor(slot.getRawValue(), slot.getAttributes());
     }
-
-    @Override
-    public Object getValue(CompactSlot<SimpleDescriptor<U, O>, U, O> slot, U start) {
-        return slot.getRawValue();
-    }
-
-    @Override
-    public boolean setValue(
-            CompactSlot<SimpleDescriptor<U, O>, U, O> slot,
-            Object value,
-            U owner,
-            U start,
-            boolean isThrow) {
-        if ((slot.getAttributes() & ScriptableObject.READONLY) != 0) {
-            if (isThrow) {
-                throw ScriptRuntime.typeErrorById("msg.modify.readonly", getName());
-            }
-            return true;
-        }
-        if (owner == start) {
-            slot.setRawValue(value);
-            ;
-            return true;
-        }
-        return false;
-    }
 }
