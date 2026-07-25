@@ -24,6 +24,7 @@ public class StandardSlot<T extends PropHolder<T>> extends Slot<T> {
         this.indexOrHash = name == null ? index : name.hashCode();
     }
 
+    @Override
     StandardSlot<T> copySlot() {
         var newSlot = new StandardSlot<T>(this);
         return newSlot;
@@ -33,6 +34,7 @@ public class StandardSlot<T extends PropHolder<T>> extends Slot<T> {
      * Return true if this is a base-class "Slot". Sadly too much code breaks if we try to do this
      * any other way.
      */
+    @Override
     boolean isValueSlot() {
         return true;
     }
@@ -40,6 +42,7 @@ public class StandardSlot<T extends PropHolder<T>> extends Slot<T> {
     /**
      * Return true if this is a "setter slot" which, which we need to know for some legacy support.
      */
+    @Override
     boolean isSetterSlot() {
         return false;
     }
@@ -89,6 +92,7 @@ public class StandardSlot<T extends PropHolder<T>> extends Slot<T> {
         attributes = (short) value;
     }
 
+    @Override
     protected void throwNoSetterException(T start, Object newValue) {
         Context cx = Context.getContext();
         if (cx.isStrictMode()
@@ -110,11 +114,13 @@ public class StandardSlot<T extends PropHolder<T>> extends Slot<T> {
      * Return a JavaScript function that represents the "setter". This is used by some legacy
      * functionality. Return null if there is no setter.
      */
+    @Override
     Function getSetterFunction(String name, T scope) {
         return null;
     }
 
     /** Same for the "getter." */
+    @Override
     Function getGetterFunction(String name, T scope) {
         return null;
     }
@@ -125,27 +131,33 @@ public class StandardSlot<T extends PropHolder<T>> extends Slot<T> {
      * if we have a cached funciion object that has not yet been generated then we don't have to
      * generate it because it cannot be the same as the provided function.
      */
+    @Override
     boolean isSameSetterFunction(Object function) {
         return false;
     }
 
     /** Same for the "getter" function. */
+    @Override
     boolean isSameGetterFunction(Object function) {
         return false;
     }
 
+    @Override
     public final boolean keyMatches(Object key, int indexOrHash) {
         return indexOrHash == this.indexOrHash && Objects.equals(this.name, key);
     }
 
+    @Override
     public final Object getKey() {
         return name != null ? name : indexOrHash;
     }
 
+    @Override
     public final Object getName() {
         return name;
     }
 
+    @Override
     public final int getIndexOrHash() {
         return indexOrHash;
     }
