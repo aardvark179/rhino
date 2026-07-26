@@ -174,7 +174,8 @@ public class BuiltInDescriptor<T extends ScriptableObject>
     }
 
     @Override
-    public CompactSlot<BuiltInDescriptor<T>, Scriptable, T> createSlot(T owner, int attr) {
+    public CompactSlot<BuiltInDescriptor<T>, Scriptable, T> createSlot(
+            VarScope scope, T owner, int attr) {
         var slot = new CompactSlot<>(this, attr);
         slot.setRawValue(owner);
         return slot;

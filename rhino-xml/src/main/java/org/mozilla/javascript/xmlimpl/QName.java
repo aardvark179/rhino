@@ -83,12 +83,12 @@ final class QName extends ScriptableObject {
         rv.prototype = prototype;
         rv.setPrototype(prototype);
         rv.delegate = delegate;
-        rv.createNSProps();
+        rv.createNSProps(scope);
         return rv;
     }
 
-    private void createNSProps() {
-        INSTANCE_DESCRIPTOR.installMap(this);
+    private void createNSProps(VarScope scope) {
+        INSTANCE_DESCRIPTOR.installMap(scope, this);
     }
 
     private static Object getLocalName(QName qn, Scriptable start) {

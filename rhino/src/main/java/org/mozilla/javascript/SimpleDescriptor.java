@@ -9,10 +9,10 @@ public class SimpleDescriptor<U extends PropHolder<U>, O extends SlotMapOwner<U>
     static <U extends PropHolder<U>, O extends SlotMapOwner<U>>
             CompactSlot<SimpleDescriptor<U, O>, U, O> slotFrom(Slot<U> oldSlot) {
         if (oldSlot instanceof CompactSlot cs && cs.descriptor instanceof SimpleDescriptor desc) {
-            return desc.createSlot(null, oldSlot.getAttributes());
+            return desc.createSlot(null, null, oldSlot.getAttributes());
         } else {
             return new SimpleDescriptor<U, O>(oldSlot.getName(), oldSlot.getIndexOrHash())
-                    .createSlot(null, oldSlot.getAttributes());
+                    .createSlot(null, null, oldSlot.getAttributes());
         }
     }
 
@@ -21,7 +21,7 @@ public class SimpleDescriptor<U extends PropHolder<U>, O extends SlotMapOwner<U>
     }
 
     @Override
-    public CompactSlot<SimpleDescriptor<U, O>, U, O> createSlot(O owner, int attr) {
+    public CompactSlot<SimpleDescriptor<U, O>, U, O> createSlot(VarScope scope, O owner, int attr) {
         return new CompactSlot<SimpleDescriptor<U, O>, U, O>(this, attr);
     }
 

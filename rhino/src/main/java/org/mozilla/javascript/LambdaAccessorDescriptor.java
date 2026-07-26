@@ -46,8 +46,32 @@ public class LambdaAccessorDescriptor<T extends ScriptableObject>
     }
 
     @Override
-    public CompactSlot<LambdaAccessorDescriptor<T>, Scriptable, T> createSlot(T owner, int attr) {
+    public CompactSlot<LambdaAccessorDescriptor<T>, Scriptable, T> createSlot(
+            VarScope scope, T owner, int attr) {
         var slot = new CompactSlot3<>(this, attr);
+        if (getter != null) {
+            slot.setRawValue2(
+                    new LambdaFunction(
+                            scope,
+                            "set " + super.getName(),
+                            1,
+                            (cx1, scope1, thisObj, args) -> {
+                                setter.accept(
+                                        (Scriptable) thisObj,
+                                        args.length > 0 ? args[0] : Undefined.instance);
+                                return Undefined.instance;
+                            },
+                            false));
+        }
+        if (setter != null) {
+            slot.setRawValue3(
+                    new LambdaFunction(
+                            scope,
+                            "get " + super.getName(),
+                            0,
+                            (cx1, scope1, thisObj, args) -> getter.apply((Scriptable) thisObj),
+                            false));
+        }
         return slot;
     }
 }

@@ -156,7 +156,7 @@ public class ClassDescriptor {
         @Override
         @SuppressWarnings("unchecked")
         void makeProp(Context cx, VarScope scope, ScriptableObject obj) {
-            obj.getMap().add(obj, desc.createSlot((T) obj, attributes));
+            obj.getMap().add(obj, desc.createSlot(null, (T) obj, attributes));
         }
     }
 

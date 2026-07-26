@@ -33,7 +33,7 @@ public class CompactSlot<
             return indexOrHash;
         }
 
-        public abstract CompactSlot<T, U, O> createSlot(O owner, int attr);
+        public abstract CompactSlot<T, U, O> createSlot(VarScope scope, O owner, int attr);
 
         public Object getValue(CompactSlot<T, U, O> slot, U start) {
             return slot.getRawValue();

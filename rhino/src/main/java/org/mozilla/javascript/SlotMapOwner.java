@@ -69,7 +69,7 @@ public abstract class SlotMapOwner<T extends PropHolder<T>> implements PropHolde
         @Override
         public Slot<T> modify(SlotMapOwner<T> owner, Object key, int index, int attributes) {
             var desc = new SimpleDescriptor<T, SlotMapOwner<T>>(key, index);
-            var newSlot = desc.createSlot(null, attributes);
+            var newSlot = desc.createSlot(null, null, attributes);
             var map = new SingleEntrySlotMap<T>(newSlot);
             owner.setMap(map);
             return newSlot;
@@ -116,7 +116,7 @@ public abstract class SlotMapOwner<T extends PropHolder<T>> implements PropHolde
         @Override
         public Slot<T> modify(SlotMapOwner<T> owner, Object key, int index, int attributes) {
             var desc = new SimpleDescriptor<T, SlotMapOwner<T>>(key, index);
-            var newSlot = desc.createSlot(owner, attributes);
+            var newSlot = desc.createSlot(null, owner, attributes);
             var currentMap = replaceMapAndAddSlot(owner, newSlot);
             if (currentMap != this) {
                 return currentMap.modify(owner, key, index, attributes);
@@ -219,7 +219,7 @@ public abstract class SlotMapOwner<T extends PropHolder<T>> implements PropHolde
                 return slot;
             }
             var desc = new SimpleDescriptor<T, SlotMapOwner<T>>(key, index);
-            var newSlot = desc.createSlot(owner, attributes);
+            var newSlot = desc.createSlot(null, owner, attributes);
             add(owner, newSlot);
             return newSlot;
         }

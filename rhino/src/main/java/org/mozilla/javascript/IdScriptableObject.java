@@ -968,7 +968,7 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
             Object value = getInstanceIdValue(id);
             int attr = (info >>> 16);
             var desc = new SimpleDescriptor<Scriptable, ScriptableObject>(name, 0);
-            var slot = desc.createSlot(getThis(), attr);
+            var slot = desc.createSlot(null, getThis(), attr);
             slot.value = value;
             return slot;
         }
@@ -978,7 +978,7 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
                 Object value = prototypeValues.get(id);
                 int attr = prototypeValues.getAttributes(id);
                 var desc = new SimpleDescriptor<Scriptable, ScriptableObject>(name, 0);
-                var slot = desc.createSlot(getThis(), attr);
+                var slot = desc.createSlot(null, getThis(), attr);
                 slot.value = value;
                 return slot;
             }
@@ -998,7 +998,7 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
                 Object value = prototypeValues.get(id);
                 int attr = prototypeValues.getAttributes(id);
                 var desc = new SimpleDescriptor<Scriptable, ScriptableObject>(value, 0);
-                var slot = desc.createSlot(getThis(), attr);
+                var slot = desc.createSlot(null, getThis(), attr);
                 slot.value = value;
                 return slot;
             }

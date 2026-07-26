@@ -60,12 +60,12 @@ class Namespace extends ScriptableObject {
         rv.prototype = prototype;
         rv.setPrototype(prototype);
         rv.ns = namespace;
-        rv.createNSProps();
+        rv.createNSProps(scope);
         return rv;
     }
 
-    private void createNSProps() {
-        INSTANCE_DESCRIPTOR.installMap(this);
+    private void createNSProps(VarScope scope) {
+        INSTANCE_DESCRIPTOR.installMap(scope, this);
     }
 
     private static Object getPrefix(Namespace ns, Scriptable start) {

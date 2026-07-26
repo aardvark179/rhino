@@ -65,7 +65,7 @@ public class HashSlotMap<T extends PropHolder<T>> implements SlotMap<T> {
                 name,
                 n ->
                         new SimpleDescriptor<T, SlotMapOwner<T>>(key, index)
-                                .createSlot(owner, attributes));
+                                .createSlot(null, owner, attributes));
     }
 
     @SuppressWarnings("unchecked")

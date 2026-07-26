@@ -1702,7 +1702,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
                     if (existing == null) {
                         slot =
                                 new SimpleDescriptor<Scriptable, ScriptableObject>(k, ix)
-                                        .createSlot(owner, 0);
+                                        .createSlot(null, owner, 0);
                         attributes =
                                 applyDescriptorToAttributeBitset(
                                         DONTENUM | READONLY | PERMANENT,
@@ -3102,7 +3102,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
 
     public static <T extends ScriptableObject> void defineBuiltInProperty(
             T owner, int attributes, BuiltInDescriptor<T> descriptor) {
-        owner.getMap().add(owner, descriptor.createSlot(owner, attributes));
+        owner.getMap().add(owner, descriptor.createSlot(null, owner, attributes));
     }
 
     @SuppressWarnings("unchecked")

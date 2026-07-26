@@ -195,7 +195,7 @@ public class BaseFunction extends ScriptableObject implements Function {
             }
         }
 
-        desc.installMap(this);
+        desc.installMap(null, this);
     }
 
     private static Object lengthGetter(BaseFunction function, Scriptable start) {
@@ -253,7 +253,8 @@ public class BaseFunction extends ScriptableObject implements Function {
                 0,
                 (k, i, s, m, o) -> {
                     if (s == null) {
-                        return PROTOTYPE_DESCRIPTOR.createSlot(this, prototypePropertyAttributes);
+                        return PROTOTYPE_DESCRIPTOR.createSlot(
+                                null, this, prototypePropertyAttributes);
                     }
                     return s;
                 });

@@ -13,16 +13,16 @@ public class SlotMapDescriptor<T extends PropHolder<T>, O extends SlotMapOwner<T
         this.attributes = attributes;
     }
 
-    SlotMap<T> buildMap(O owner) {
+    SlotMap<T> buildMap(VarScope scope, O owner) {
         return SlotMapOwner.createSlotMap(
-                slots.size() > 0 ? slots.get(0).createSlot(owner, attributes[0]) : null,
-                slots.size() > 1 ? slots.get(1).createSlot(owner, attributes[1]) : null,
-                slots.size() > 2 ? slots.get(2).createSlot(owner, attributes[2]) : null,
-                slots.size() > 3 ? slots.get(3).createSlot(owner, attributes[3]) : null);
+                slots.size() > 0 ? slots.get(0).createSlot(scope, owner, attributes[0]) : null,
+                slots.size() > 1 ? slots.get(1).createSlot(scope, owner, attributes[1]) : null,
+                slots.size() > 2 ? slots.get(2).createSlot(scope, owner, attributes[2]) : null,
+                slots.size() > 3 ? slots.get(3).createSlot(scope, owner, attributes[3]) : null);
     }
 
-    public void installMap(O owner) {
-        owner.setMap(buildMap(owner));
+    public void installMap(VarScope scope, O owner) {
+        owner.setMap(buildMap(scope, owner));
     }
 
     public static class Builder<T extends PropHolder<T>, O extends SlotMapOwner<T>> {
