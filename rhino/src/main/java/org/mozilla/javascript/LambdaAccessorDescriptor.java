@@ -1,5 +1,7 @@
 package org.mozilla.javascript;
 
+import org.mozilla.javascript.ScriptableObject.DescriptorInfo;
+
 public class LambdaAccessorDescriptor<T extends ScriptableObject>
         extends CompactSlot.Descriptor<LambdaAccessorDescriptor<T>, Scriptable, T> {
 
@@ -33,44 +35,56 @@ public class LambdaAccessorDescriptor<T extends ScriptableObject>
             Scriptable start,
             boolean isThrow) {
         if (setter == null) {
-            if (getter != null) {
-                slot.throwNoSetterException(start, value);
-                return true;
-            }
+            slot.throwNoSetterException(start, value);
         } else {
             setter.accept(start, value);
-            return true;
         }
+        return true;
+    }
 
-        return super.setValue(slot, value, start, start, isThrow);
+    @Override
+    public DescriptorInfo getPropertyDescriptor(CompactSlot<LambdaAccessorDescriptor<T>, Scriptable, T> slot, Context cx,
+            Scriptable start) {
+        var cs3 = (CompactSlot3<LambdaAccessorDescriptor<T>, Scriptable, T>) slot;
+        int attr = slot.getAttributes();
+        DescriptorInfo desc;
+        boolean es6 = cx.getLanguageVersion() >= Context.VERSION_ES6;
+
+        desc = new DescriptorInfo(ScriptableObject.NOT_FOUND, attr, false);
+        desc.getter = cs3.getRawValue2();
+        desc.setter = setter != null ? cs3.getRawValue3() : Undefined.instance;
+
+        if (es6) {
+            desc.enumerable = (attr & ScriptableObject.DONTENUM) == 0;
+            desc.configurable = (attr & ScriptableObject.PERMANENT) == 0;
+        }
+        return desc;
     }
 
     @Override
     public CompactSlot<LambdaAccessorDescriptor<T>, Scriptable, T> createSlot(
             VarScope scope, T owner, int attr) {
         var slot = new CompactSlot3<>(this, attr);
-        if (getter != null) {
-            slot.setRawValue2(
-                    new LambdaFunction(
-                            scope,
-                            "set " + super.getName(),
-                            1,
-                            (cx1, scope1, thisObj, args) -> {
-                                setter.accept(
-                                        (Scriptable) thisObj,
-                                        args.length > 0 ? args[0] : Undefined.instance);
-                                return Undefined.instance;
-                            },
-                            false));
-        }
+        slot.setRawValue2(
+            new LambdaFunction(
+                scope,
+                "set " + super.getName(),
+                1,
+                (cx1, scope1, thisObj, args) -> {
+                    setter.accept(
+                        (Scriptable) thisObj,
+                        args.length > 0 ? args[0] : Undefined.instance);
+                    return Undefined.instance;
+                },
+                false));
         if (setter != null) {
             slot.setRawValue3(
-                    new LambdaFunction(
-                            scope,
-                            "get " + super.getName(),
-                            0,
-                            (cx1, scope1, thisObj, args) -> getter.apply((Scriptable) thisObj),
-                            false));
+                new LambdaFunction(
+                    scope,
+                    "get " + super.getName(),
+                    0,
+                    (cx1, scope1, thisObj, args) -> getter.apply((Scriptable) thisObj),
+                    false));
         }
         return slot;
     }
