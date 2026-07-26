@@ -1893,31 +1893,9 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
                         key,
                         0,
                         (id, index, existing, compoundOpMap, o) -> {
-                            if (existing != null) {
-                                // it's dangerous to use `this` as scope inside slotMap.compute.
-                                // It can cause deadlock when ThreadSafeSlotMapContainer is used
-
-                                return replaceExistingLambdaSlot(cx, key, existing, newSlot);
-                            }
-                            checkPropertyChangeForSlot(key, null, newDesc);
+                            checkPropertyChangeForSlot(key, existing, newDesc);
                             return newSlot;
                         });
-    }
-
-    private LambdaAccessorSlot replaceExistingLambdaSlot(
-            Context cx, Object key, Slot<Scriptable> existing, LambdaAccessorSlot newSlot) {
-        LambdaAccessorSlot replacedSlot;
-        if (existing instanceof LambdaAccessorSlot) {
-            replacedSlot = (LambdaAccessorSlot) existing;
-        } else {
-            replacedSlot = new LambdaAccessorSlot(existing);
-        }
-
-        replacedSlot.replaceWith(newSlot);
-        var replacedDesc = replacedSlot.buildPropertyDescriptor(cx);
-
-        checkPropertyChangeForSlot(key, existing, replacedDesc);
-        return replacedSlot;
     }
 
     private LambdaAccessorSlot createLambdaAccessorSlot(
