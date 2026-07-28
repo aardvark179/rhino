@@ -14,6 +14,8 @@ import java.util.Objects;
 public class StandardSlot<T extends PropHolder<T>> extends Slot<T> {
     @Serial private static final long serialVersionUID = -6090581677123995491L;
     private final Object name;
+    Object value;
+
     private int indexOrHash;
     private short attributes;
 
@@ -81,6 +83,13 @@ public class StandardSlot<T extends PropHolder<T>> extends Slot<T> {
         return false;
     }
 
+    public void setRawValue(Object value) {
+        this.value = value;
+    }
+
+    public Object getRawValue() {
+        return this.value;
+    }
     @Override
     int getAttributes() {
         return attributes;

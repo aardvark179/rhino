@@ -958,7 +958,7 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
 
     private DescriptorInfo getBuiltInDataDescriptor(String name) {
         var slot = getBuiltInSlot(name);
-        return slot == null ? null : new DescriptorInfo(slot.value, slot.getAttributes(), true);
+        return slot == null ? null : new DescriptorInfo(slot.getRawValue(), slot.getAttributes(), true);
     }
 
     private Slot<Scriptable> getBuiltInSlot(String name) {
@@ -969,7 +969,7 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
             int attr = (info >>> 16);
             var desc = new SimpleDescriptor<Scriptable, ScriptableObject>(name, 0);
             var slot = desc.createSlot(null, getThis(), attr);
-            slot.value = value;
+            slot.setRawValue(value);;
             return slot;
         }
         if (prototypeValues != null) {
@@ -979,7 +979,7 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
                 int attr = prototypeValues.getAttributes(id);
                 var desc = new SimpleDescriptor<Scriptable, ScriptableObject>(name, 0);
                 var slot = desc.createSlot(null, getThis(), attr);
-                slot.value = value;
+                slot.setRawValue(value);
                 return slot;
             }
         }
@@ -988,7 +988,7 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
 
     private DescriptorInfo getBuiltInDataDescriptor(Symbol key) {
         var slot = getBuiltInSlot(key);
-        return slot == null ? null : new DescriptorInfo(slot.value, slot.getAttributes(), true);
+        return slot == null ? null : new DescriptorInfo(slot.getRawValue(), slot.getAttributes(), true);
     }
 
     private Slot<Scriptable> getBuiltInSlot(Symbol key) {
@@ -999,7 +999,7 @@ public abstract class IdScriptableObject extends ScriptableObject implements IdF
                 int attr = prototypeValues.getAttributes(id);
                 var desc = new SimpleDescriptor<Scriptable, ScriptableObject>(value, 0);
                 var slot = desc.createSlot(null, getThis(), attr);
-                slot.value = value;
+                slot.setRawValue(value);;
                 return slot;
             }
         }

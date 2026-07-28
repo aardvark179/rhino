@@ -30,4 +30,14 @@ public class SimpleDescriptor<U extends PropHolder<U>, O extends SlotMapOwner<U>
             CompactSlot<SimpleDescriptor<U, O>, U, O> slot, Context cx, U start) {
         return ScriptableObject.buildDataDescriptor(slot.getRawValue(), slot.getAttributes());
     }
+
+    @Override
+    public boolean isValueDescriptor() {
+        return true;
+    }
+
+    @Override
+    public boolean isSetterDescriptor() {
+        return false;
+    }
 }

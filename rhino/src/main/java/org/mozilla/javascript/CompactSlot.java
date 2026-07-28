@@ -71,15 +71,25 @@ public class CompactSlot<
                 indexOrHash = name.hashCode();
             }
         }
+
+        public boolean isValueDescriptor() {
+            return true;
+        }
+
+        public boolean isSetterDescriptor() {
+            return false;
+        }
     }
 
-    private short attributes;
     protected final T descriptor;
+    private short attributes;
+    private Object value;
 
     CompactSlot(T descriptor, int attr) {
         super();
         this.attributes = (short) attr;
         this.descriptor = descriptor;
+
     }
 
     CompactSlot(CompactSlot<T, U, O> oldSlot) {
@@ -93,11 +103,11 @@ public class CompactSlot<
         return new CompactSlot<>(this);
     }
 
-    protected final Object getRawValue() {
+    public final Object getRawValue() {
         return value;
     }
 
-    protected final void setRawValue(Object value) {
+    public final void setRawValue(Object value) {
         this.value = value;
     }
 

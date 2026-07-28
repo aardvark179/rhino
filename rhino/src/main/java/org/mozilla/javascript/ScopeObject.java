@@ -348,7 +348,7 @@ public class ScopeObject extends SlotMapOwner<VarScope> implements VarScope, Ser
             if ((attr & READONLY) == 0)
                 throw Context.reportRuntimeErrorById("msg.var.redecl", name);
             if ((attr & UNINITIALIZED_CONST) != 0) {
-                slot.value = value;
+                slot.setRawValue(value);
                 // clear the bit on const initialization
                 if (constFlag != UNINITIALIZED_CONST)
                     slot.setAttributes(attr & ~UNINITIALIZED_CONST);

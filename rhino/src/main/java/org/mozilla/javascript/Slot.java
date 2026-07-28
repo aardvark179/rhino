@@ -10,8 +10,6 @@ import org.mozilla.javascript.ScriptableObject.DescriptorInfo;
  * various types of getter and setter methods.
  */
 public abstract class Slot<T extends PropHolder<T>> implements Serializable {
-    Object value;
-
     Slot() {}
 
     abstract Slot<T> copySlot();
@@ -32,7 +30,7 @@ public abstract class Slot<T extends PropHolder<T>> implements Serializable {
     }
 
     protected Slot(Slot<T> oldSlot) {
-        value = oldSlot.value;
+        setRawValue(oldSlot.getRawValue());
     }
 
     public final boolean setValue(Object value, T owner, T start) {
@@ -41,16 +39,18 @@ public abstract class Slot<T extends PropHolder<T>> implements Serializable {
 
     public abstract boolean setValue(Object value, T owner, T start, boolean isThrow);
 
-    public Object getValue(T start) {
-        return value;
-    }
+    public abstract Object getValue(T start);
+
+    public abstract Object getRawValue();
+
+    public abstract void setRawValue(Object value);
 
     abstract int getAttributes();
 
     abstract void setAttributes(int value);
 
     DescriptorInfo getPropertyDescriptor(Context cx, T scope) {
-        return ScriptableObject.buildDataDescriptor(value, getAttributes());
+        return ScriptableObject.buildDataDescriptor(getRawValue(), getAttributes());
     }
 
     protected abstract void throwNoSetterException(T start, Object newValue);

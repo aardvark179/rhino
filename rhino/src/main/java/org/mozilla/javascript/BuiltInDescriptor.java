@@ -77,7 +77,7 @@ public class BuiltInDescriptor<T extends ScriptableObject>
             Scriptable owner,
             Scriptable start,
             boolean isThrow) {
-        slot.descriptor.setter.apply(((T) slot.value), value, owner, start, isThrow);
+        slot.descriptor.setter.apply(((T) slot.getRawValue()), value, owner, start, isThrow);
     }
 
     static boolean isBuiltIn(Slot<?> slot) {
@@ -94,7 +94,7 @@ public class BuiltInDescriptor<T extends ScriptableObject>
             Object key,
             int index) {
         return slot.descriptor.propDescSetter.apply(
-                ((T) slot.value), slot, id, info, checkValid, key, index);
+                ((T) slot.getRawValue()), slot, id, info, checkValid, key, index);
     }
 
     private static <T extends ScriptableObject> boolean defaultSetter(

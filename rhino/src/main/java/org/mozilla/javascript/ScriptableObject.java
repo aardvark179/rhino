@@ -454,7 +454,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
             }
         }
 
-        aSlot.value = Undefined.instance;
+        aSlot.setRawValue(Undefined.instance);
     }
 
     /**
@@ -525,7 +525,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
         checkNotSealed(name, index);
         LazyLoadSlot lslot = getMap().compute(this, name, index, ScriptableObject::ensureLazySlot);
         lslot.setAttributes(attributes);
-        lslot.value = init;
+        lslot.setRawValue(init);
     }
 
     @Override
@@ -534,7 +534,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
         checkNotSealed(key, index);
         LazyLoadSlot lslot = getMap().compute(this, key, index, ScriptableObject::ensureLazySlot);
         lslot.setAttributes(attributes);
-        lslot.value = init;
+        lslot.setRawValue(init);
     }
 
     /**
@@ -1765,7 +1765,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
             if (info.setter != NOT_FOUND) {
                 fslot.setter = new AccessorSlot.FunctionSetter(info.setter);
             }
-            fslot.value = Undefined.instance;
+            fslot.setRawValue(Undefined.instance);;
         } else if (BuiltInDescriptor.isBuiltIn(slot)) {
             if (info.value != NOT_FOUND) {
                 @SuppressWarnings("unchecked")
@@ -1784,10 +1784,10 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
             }
 
             if (info.value != NOT_FOUND) {
-                slot.value = info.value;
+                slot.setRawValue(info.value);
             } else if (existing == null) {
                 // Ensure we don't get a zombie value if we have switched a lot
-                slot.value = Undefined.instance;
+                slot.setRawValue(Undefined.instance);
             }
         }
 
@@ -1964,7 +1964,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
                             throw ScriptRuntime.typeErrorById(
                                     "msg.change.writable.false.to.true.with.configurable.false",
                                     id);
-                        var currentValue = isBuiltIn ? current.getValue(null) : current.value;
+                        var currentValue = isBuiltIn ? current.getValue(null) : current.getRawValue();
                         if (!sameValue(info.value, currentValue))
                             throw ScriptRuntime.typeErrorById(
                                     "msg.change.value.with.writable.false", id);
@@ -2271,13 +2271,13 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
             for (var slot : toInitialize) {
                 // Need to check the type again, because initializing one slot _could_ have
                 // initialized another one
-                Object value = slot.value;
+                Object value = slot.getRawValue();
                 if (value instanceof LazilyLoadedCtor) {
                     LazilyLoadedCtor initializer = (LazilyLoadedCtor) value;
                     try {
                         initializer.init();
                     } finally {
-                        slot.value = initializer.getValue();
+                        slot.setRawValue(initializer.getValue());
                     }
                 }
             }
@@ -2285,7 +2285,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
 
             try (var map = startCompoundOp(false)) {
                 for (var slot : map) {
-                    Object value = slot.value;
+                    Object value = slot.getRawValue();
                     if (value instanceof LazilyLoadedCtor) {
                         toInitialize.add(slot);
                     }
@@ -2880,7 +2880,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
             if ((attr & READONLY) == 0)
                 throw Context.reportRuntimeErrorById("msg.var.redecl", name);
             if ((attr & UNINITIALIZED_CONST) != 0) {
-                slot.value = value;
+                slot.setRawValue(value);
                 // clear the bit on const initialization
                 if (constFlag != UNINITIALIZED_CONST)
                     slot.setAttributes(attr & ~UNINITIALIZED_CONST);
