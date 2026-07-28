@@ -1860,8 +1860,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
         if (getter == null && setter == null)
             throw ScriptRuntime.typeError("at least one of {getter, setter} is required");
 
-        LambdaAccessorSlot newSlot =
-                createLambdaAccessorSlot(name, 0, getter, setter, attributes, scope);
+        var newSlot = createLambdaAccessorSlot(name, 0, getter, setter, attributes, scope);
         replaceLambdaAccessorSlot(cx, name, newSlot);
     }
 
@@ -1880,13 +1879,13 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
         if (getter == null && setter == null)
             throw ScriptRuntime.typeError("at least one of {getter, setter} is required");
 
-        LambdaAccessorSlot newSlot =
+        Slot<Scriptable> newSlot =
                 createLambdaAccessorSlot(key, 0, getter, setter, attributes, scope);
         replaceLambdaAccessorSlot(cx, key, newSlot);
     }
 
-    private void replaceLambdaAccessorSlot(Context cx, Object key, LambdaAccessorSlot newSlot) {
-        var newDesc = newSlot.buildPropertyDescriptor(cx);
+    private void replaceLambdaAccessorSlot(Context cx, Object key, Slot<Scriptable> newSlot) {
+        var newDesc = newSlot.getPropertyDescriptor(cx, null);
         checkPropertyDefinition(newDesc);
         getMap().compute(
                         this,
@@ -1898,18 +1897,15 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
                         });
     }
 
-    private LambdaAccessorSlot createLambdaAccessorSlot(
+    private Slot<Scriptable> createLambdaAccessorSlot(
             Object name,
             int index,
             LambdaGetterFunction getter,
             LambdaSetterFunction setter,
             int attributes,
             VarScope scope) {
-        LambdaAccessorSlot slot = new LambdaAccessorSlot(name, index);
-        slot.setGetter(scope, getter);
-        slot.setSetter(scope, setter);
-        slot.setAttributes(attributes);
-        return slot;
+        var desc = new LambdaAccessorDescriptor<>(name, index, getter, setter);
+        return desc.createSlot(scope, getThis(), attributes);
     }
 
     protected static void checkPropertyDefinition(ScriptableObject desc) {

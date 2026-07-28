@@ -43,7 +43,9 @@ public class LambdaAccessorDescriptor<T extends ScriptableObject>
     }
 
     @Override
-    public DescriptorInfo getPropertyDescriptor(CompactSlot<LambdaAccessorDescriptor<T>, Scriptable, T> slot, Context cx,
+    public DescriptorInfo getPropertyDescriptor(
+            CompactSlot<LambdaAccessorDescriptor<T>, Scriptable, T> slot,
+            Context cx,
             Scriptable start) {
         var cs3 = (CompactSlot3<LambdaAccessorDescriptor<T>, Scriptable, T>) slot;
         int attr = slot.getAttributes();
@@ -62,29 +64,39 @@ public class LambdaAccessorDescriptor<T extends ScriptableObject>
     }
 
     @Override
+    public boolean isValueDescriptor() {
+        return false;
+    }
+
+    @Override
+    public boolean isSetterDescriptor() {
+        return true;
+    }
+
+    @Override
     public CompactSlot<LambdaAccessorDescriptor<T>, Scriptable, T> createSlot(
             VarScope scope, T owner, int attr) {
         var slot = new CompactSlot3<>(this, attr);
         slot.setRawValue2(
-            new LambdaFunction(
-                scope,
-                "set " + super.getName(),
-                1,
-                (cx1, scope1, thisObj, args) -> {
-                    setter.accept(
-                        (Scriptable) thisObj,
-                        args.length > 0 ? args[0] : Undefined.instance);
-                    return Undefined.instance;
-                },
-                false));
+                new LambdaFunction(
+                        scope,
+                        "get " + super.getName(),
+                        0,
+                        (cx1, scope1, thisObj, args) -> getter.apply((Scriptable) thisObj),
+                        false));
         if (setter != null) {
             slot.setRawValue3(
-                new LambdaFunction(
-                    scope,
-                    "get " + super.getName(),
-                    0,
-                    (cx1, scope1, thisObj, args) -> getter.apply((Scriptable) thisObj),
-                    false));
+                    new LambdaFunction(
+                            scope,
+                            "set " + super.getName(),
+                            1,
+                            (cx1, scope1, thisObj, args) -> {
+                                setter.accept(
+                                        (Scriptable) thisObj,
+                                        args.length > 0 ? args[0] : Undefined.instance);
+                                return Undefined.instance;
+                            },
+                            false));
         }
         return slot;
     }

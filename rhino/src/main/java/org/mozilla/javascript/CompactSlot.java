@@ -127,6 +127,16 @@ public class CompactSlot<
     }
 
     @Override
+    boolean isValueSlot() {
+        return descriptor.isValueDescriptor();
+    }
+
+    @Override
+    boolean isSetterSlot() {
+        return descriptor.isSetterDescriptor();
+    }
+
+    @Override
     public final boolean keyMatches(Object key, int indexOrHash) {
         return indexOrHash == this.descriptor.getIndexOrHash()
                 && Objects.equals(this.descriptor.getName(), key);
