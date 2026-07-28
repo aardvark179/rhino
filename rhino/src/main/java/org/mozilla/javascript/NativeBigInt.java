@@ -23,7 +23,7 @@ final class NativeBigInt extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeBigInt>(
                                 CLASS_NAME,
                                 1,
                                 NativeBigInt::js_constructorFunc,

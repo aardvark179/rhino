@@ -77,6 +77,10 @@ public class ClassDescriptor {
             this.attributes = attributes;
             this.stdAttrs = stdAttrs;
         }
+
+        CompactSlot.Descriptor<?, Scriptable, ? extends ScriptableObject> makeSlotDescriptor() {
+            return new SimpleDescriptor<>(name, 0);
+        }
     }
 
     private abstract static class PropDesc {
@@ -89,6 +93,8 @@ public class ClassDescriptor {
         }
 
         abstract void makeProp(Context cx, VarScope scope, ScriptableObject object);
+
+        abstract CompactSlot.Descriptor<?, Scriptable, ? extends ScriptableObject> makeSlotDescriptor();
     }
 
     private static class LambdaGetSetPropDesc extends PropDesc {
@@ -112,6 +118,10 @@ public class ClassDescriptor {
             } else {
                 obj.defineProperty(cx, scope, (SymbolKey) name, getter, setter, attributes);
             }
+        }
+
+        CompactSlot.Descriptor<?, Scriptable, ScriptableObject> makeSlotDescriptor() {
+            return new LambdaAccessorDescriptor<>(name, 0, getter, setter);
         }
     }
 
@@ -158,6 +168,10 @@ public class ClassDescriptor {
         void makeProp(Context cx, VarScope scope, ScriptableObject obj) {
             obj.getMap().add(obj, desc.createSlot(null, (T) obj, attributes));
         }
+
+        CompactSlot.Descriptor<?, Scriptable, ? extends ScriptableObject> makeSlotDescriptor() {
+            return desc;
+        }
     }
 
     public interface ValueCreator {
@@ -179,6 +193,10 @@ public class ClassDescriptor {
             } else {
                 obj.defineOwnProperty(cx, name, creator.apply(cx, scope, obj), false);
             }
+        }
+
+        CompactSlot.Descriptor<?, Scriptable, ScriptableObject> makeSlotDescriptor() {
+            return null;
         }
     }
 
@@ -351,13 +369,15 @@ public class ClassDescriptor {
         public abstract Props get(Builder builder);
     }
 
-    private static class Props {
+    private static class Props <O extends ScriptableObject> {
         final List<FuncPropDesc> funcs = new ArrayList<>();
         final List<PropDesc> props = new ArrayList<>();
+        final CompactDescriptorMap.Builder<Scriptable, O> map;
         final int attrs;
 
         Props(int attrs) {
             this.attrs = attrs;
+            map = new CompactDescriptorMap.Builder<>();
         }
     }
 
@@ -366,24 +386,24 @@ public class ClassDescriptor {
      * methods can be added before finally calling {@link Builder#build()} to create the final
      * descriptor.
      */
-    public static class Builder {
+    public static class Builder <P extends ScriptableObject> {
         private final JSDescriptor<JSFunction> ctor;
-        private final Props ctorProps;
-        private final Props protoProps;
+        private final Props<JSFunction> ctorProps;
+        private final Props<P> protoProps;
         private final Object name;
 
         public Builder(String name) {
             this.name = name;
             this.ctor = null;
-            this.ctorProps = new Props(DONTENUM);
-            this.protoProps = new Props(DONTENUM | READONLY | PERMANENT);
+            this.ctorProps = new Props<>(DONTENUM);
+            this.protoProps = new Props<>(DONTENUM | READONLY | PERMANENT);
         }
 
         public Builder(SymbolKey name) {
             this.name = name;
             this.ctor = null;
-            this.ctorProps = new Props(DONTENUM);
-            this.protoProps = new Props(DONTENUM | READONLY | PERMANENT);
+            this.ctorProps = new Props<>(DONTENUM);
+            this.protoProps = new Props<>(DONTENUM | READONLY | PERMANENT);
         }
 
         /**
@@ -398,15 +418,15 @@ public class ClassDescriptor {
         public Builder(String name, int length, BuiltInJSCodeExec<JSFunction> ctor) {
             this.name = name;
             this.ctor = buildDescriptor(name, length, JSCode.NOT_CALLABLE, buildOptJSCode(ctor));
-            this.ctorProps = new Props(DONTENUM);
-            this.protoProps = new Props(DONTENUM | READONLY | PERMANENT);
+            this.ctorProps = new Props<>(DONTENUM);
+            this.protoProps = new Props<>(DONTENUM | READONLY | PERMANENT);
         }
 
         public Builder(SymbolKey name, int length, BuiltInJSCodeExec<JSFunction> ctor) {
             this.name = name;
             this.ctor = buildDescriptor(name, length, JSCode.NOT_CALLABLE, buildOptJSCode(ctor));
-            this.ctorProps = new Props(DONTENUM);
-            this.protoProps = new Props(DONTENUM | READONLY | PERMANENT);
+            this.ctorProps = new Props<>(DONTENUM);
+            this.protoProps = new Props<>(DONTENUM | READONLY | PERMANENT);
         }
 
         /**
@@ -428,8 +448,8 @@ public class ClassDescriptor {
                 int protoAttrs) {
             this.name = name;
             this.ctor = buildDescriptor(name, length, buildOptJSCode(ctor));
-            this.ctorProps = new Props(ctorAttrs);
-            this.protoProps = new Props(protoAttrs);
+            this.ctorProps = new Props<>(ctorAttrs);
+            this.protoProps = new Props<>(protoAttrs);
         }
 
         /**
@@ -503,8 +523,8 @@ public class ClassDescriptor {
             this.name = name;
             this.ctor =
                     buildDescriptor(name, length, buildOptJSCode(call), buildOptJSCode(construct));
-            this.ctorProps = new Props(ctorAttrs);
-            this.protoProps = new Props(protoAttrs);
+            this.ctorProps = new Props<>(ctorAttrs);
+            this.protoProps = new Props<>(protoAttrs);
         }
 
         public Builder(
@@ -517,8 +537,8 @@ public class ClassDescriptor {
             this.name = name;
             this.ctor =
                     buildDescriptor(name, length, buildOptJSCode(call), buildOptJSCode(construct));
-            this.ctorProps = new Props(ctorAttrs);
-            this.protoProps = new Props(protoAttrs);
+            this.ctorProps = new Props<>(ctorAttrs);
+            this.protoProps = new Props<>(protoAttrs);
         }
 
         public Builder(
@@ -533,8 +553,8 @@ public class ClassDescriptor {
             this.ctor =
                     buildDescriptor(
                             ctorName, length, buildOptJSCode(call), buildOptJSCode(construct));
-            this.ctorProps = new Props(ctorAttrs);
-            this.protoProps = new Props(protoAttrs);
+            this.ctorProps = new Props<>(ctorAttrs);
+            this.protoProps = new Props<>(protoAttrs);
         }
 
         /**
@@ -548,7 +568,7 @@ public class ClassDescriptor {
          *     JSCodeExec<JSFunction>}. This is what will be executed when the method is called.
          * @return this {@link Builder}
          */
-        public Builder withMethod(
+        public Builder<P> withMethod(
                 Destination dest, SymbolKey name, int length, BuiltInJSCodeExec<JSFunction> code) {
             return withMethod(dest, name, length, code, DONTENUM, DONTENUM | READONLY);
         }
@@ -565,7 +585,7 @@ public class ClassDescriptor {
          * @param stdAttrs the attributes for the method's standard properties
          * @return this {@link Builder}
          */
-        public Builder withMethod(
+        public Builder<P> withMethod(
                 Destination dest,
                 SymbolKey name,
                 int length,
@@ -586,7 +606,7 @@ public class ClassDescriptor {
          *     JSCodeExec<JSFunction>}. This is what will be executed when the method is called.
          * @return this {@link Builder}
          */
-        public Builder withMethod(
+        public Builder<P> withMethod(
                 Destination dest, String name, int length, BuiltInJSCodeExec<JSFunction> code) {
             return withMethod(dest, name, length, code, DONTENUM, DONTENUM | READONLY);
         }
@@ -602,7 +622,7 @@ public class ClassDescriptor {
          * @param stdAttrs the attributes for the method's standard properties
          * @return this {@link Builder}
          */
-        public Builder withMethod(
+        public Builder<P> withMethod(
                 Destination dest,
                 String name,
                 int length,
@@ -612,7 +632,7 @@ public class ClassDescriptor {
             return withMethodInt(dest, name, name, length, code, attributes, stdAttrs);
         }
 
-        private Builder withMethodInt(
+        private Builder<P> withMethodInt(
                 Destination dest,
                 Object name,
                 String descName,
@@ -620,14 +640,13 @@ public class ClassDescriptor {
                 BuiltInJSCodeExec<JSFunction> code,
                 int attributes,
                 int stdAttrs) {
-            dest.get(this)
-                    .funcs
-                    .add(
-                            new FuncPropDesc(
+            var prop = new FuncPropDesc(
                                     name,
                                     buildDescriptor(name, length, buildOptJSCode(code)),
                                     attributes,
-                                    stdAttrs));
+                    stdAttrs);
+            dest.get(this).funcs.add(prop);
+            dest.get(this).map.withDescriptor(prop.makeSlotDescriptor());
             return this;
         }
 
@@ -642,13 +661,15 @@ public class ClassDescriptor {
          * @param attributes the attributes for the property on the prototype
          * @return this {@link Builder}
          */
-        public Builder withProp(
+        public Builder<P> withProp(
                 Destination dest,
                 String name,
                 LambdaGetterFunction getter,
                 LambdaSetterFunction setter,
-                int attributes) {
-            dest.get(this).props.add(new LambdaGetSetPropDesc(name, getter, setter, attributes));
+            int attributes) {
+            var prop = new LambdaGetSetPropDesc(name, getter, setter, attributes);
+            dest.get(this).props.add(prop);
+            dest.get(this).map.withDescriptor(prop.makeSlotDescriptor());
             return this;
         }
 
@@ -656,33 +677,39 @@ public class ClassDescriptor {
          * Version of {@link #withProp(Destination, String, LambdaGetterFunction,
          * LambdaSetterFunction, int)} that takes a {@link SymbolKey} as the name.
          */
-        public Builder withProp(
+        public Builder<P> withProp(
                 Destination dest,
                 SymbolKey name,
                 LambdaGetterFunction getter,
                 LambdaSetterFunction setter,
-                int attributes) {
-            dest.get(this).props.add(new LambdaGetSetPropDesc(name, getter, setter, attributes));
+            int attributes) {
+            var prop = new LambdaGetSetPropDesc(name, getter, setter, attributes);
+            dest.get(this).props.add(prop);
+            dest.get(this).map.withDescriptor(prop.makeSlotDescriptor());
             return this;
         }
 
-        public <T extends ScriptableObject> Builder withProp(
+        public <T extends ScriptableObject> Builder<P> withProp(
                 Destination dest,
                 String name,
                 BuiltInDescriptor.Getter<T> getter,
                 BuiltInDescriptor.Setter<T> setter,
-                int attributes) {
-            dest.get(this).props.add(new BuiltInPropDesc<>(name, getter, setter, attributes));
+            int attributes) {
+            var prop = new BuiltInPropDesc<>(name, getter, setter, attributes);
+            dest.get(this).props.add(prop);
+            dest.get(this).map.withDescriptor(prop.makeSlotDescriptor());
             return this;
         }
 
-        public <T extends ScriptableObject> Builder withProp(
+        public <T extends ScriptableObject> Builder<P> withProp(
                 Destination dest,
                 SymbolKey name,
                 BuiltInDescriptor.Getter<T> getter,
                 BuiltInDescriptor.Setter<T> setter,
                 int attributes) {
-            dest.get(this).props.add(new BuiltInPropDesc<>(name, getter, setter, attributes));
+            var prop = new BuiltInPropDesc<>(name, getter, setter, attributes);
+            dest.get(this).props.add(prop);
+            dest.get(this).map.withDescriptor(prop.makeSlotDescriptor());
             return this;
         }
 
@@ -691,7 +718,7 @@ public class ClassDescriptor {
          * LambdaSetterFunction, int)} that takes a {@link ValueCreator} rather than a getter and
          * setter.
          */
-        public Builder withProp(Destination dest, String name, ValueCreator creator) {
+        public Builder<P> withProp(Destination dest, String name, ValueCreator creator) {
             dest.get(this).props.add(new CreateValuePropDesc(name, creator));
             return this;
         }
@@ -701,7 +728,7 @@ public class ClassDescriptor {
          * LambdaSetterFunction, int)} that takes a {@link ValueCreator} rather than a getter and
          * setter.
          */
-        public Builder withProp(Destination dest, SymbolKey name, ValueCreator creator) {
+        public Builder<P> withProp(Destination dest, SymbolKey name, ValueCreator creator) {
             dest.get(this).props.add(new CreateValuePropDesc(name, creator));
             return this;
         }

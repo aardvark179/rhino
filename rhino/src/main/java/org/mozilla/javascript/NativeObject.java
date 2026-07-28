@@ -42,7 +42,7 @@ public class NativeObject extends ScriptableObject implements Map {
 
     static {
         var builder =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeObject>(
                         CLASS_NAME,
                         1,
                         NativeObject::js_constructorCall,

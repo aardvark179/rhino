@@ -39,7 +39,7 @@ final class NativeError extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeError>(
                                 ERROR_TAG,
                                 1,
                                 NativeError::js_constructor,

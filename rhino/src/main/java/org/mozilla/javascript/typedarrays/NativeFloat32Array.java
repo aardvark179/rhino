@@ -34,7 +34,7 @@ public class NativeFloat32Array extends NativeTypedArrayView<Float> {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeFloat32Array>(
                                 CLASS_NAME,
                                 3,
                                 NativeTypedArrayView::typeError,

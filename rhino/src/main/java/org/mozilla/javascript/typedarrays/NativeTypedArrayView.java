@@ -61,7 +61,7 @@ public abstract class NativeTypedArrayView<T> extends NativeArrayBufferView
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeTypedArrayView<?>>(
                                 TYPED_ARRAY,
                                 "TypedArray",
                                 0,

@@ -41,7 +41,7 @@ final class NativeDate extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeDate>(
                                 CLASS_NAME,
                                 7,
                                 NativeDate::js_constructorFunc,

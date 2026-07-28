@@ -30,7 +30,7 @@ public class NativeWeakSet extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeWeakSet>(
                                 CLASS_NAME,
                                 0,
                                 ClassDescriptor.typeError(),

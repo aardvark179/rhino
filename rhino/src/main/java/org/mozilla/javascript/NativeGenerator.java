@@ -25,7 +25,7 @@ public final class NativeGenerator extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(GENERATOR_TAG)
+                new ClassDescriptor.Builder<NativeGenerator>(GENERATOR_TAG)
                         .withMethod(CTOR, "close", 1, NativeGenerator::js_close)
                         .withMethod(CTOR, "next", 1, NativeGenerator::js_next)
                         .withMethod(CTOR, "send", 0, NativeGenerator::js_send)

@@ -37,7 +37,7 @@ public class NativeDataView extends NativeArrayBufferView {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeDataView>(
                                 CLASS_NAME,
                                 1,
                                 NativeTypedArrayView::typeError,

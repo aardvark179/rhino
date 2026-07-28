@@ -28,7 +28,7 @@ final class NativeReflect extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(REFLECT_TAG)
+                new ClassDescriptor.Builder<NativeReflect>(REFLECT_TAG)
                         .withMethod(CTOR, "apply", 3, NativeReflect::apply)
                         .withMethod(CTOR, "construct", 2, NativeReflect::construct)
                         .withMethod(CTOR, "defineProperty", 3, NativeReflect::defineProperty)

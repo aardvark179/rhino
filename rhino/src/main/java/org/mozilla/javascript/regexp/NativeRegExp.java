@@ -264,9 +264,9 @@ public class NativeRegExp extends ScriptableObject {
         return DESCRIPTOR.buildConstructor(cx, scope, proto, sealed);
     }
 
-    static ClassDescriptor.Builder makeCtorBuilder() {
+    static ClassDescriptor.Builder<NativeRegExp> makeCtorBuilder() {
         var builder =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeRegExp>(
                                 "RegExp",
                                 2,
                                 NativeRegExp::js_constructCall,

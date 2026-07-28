@@ -32,7 +32,7 @@ public class NativeGlobal implements Serializable {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder("globalThis")
+                new ClassDescriptor.Builder<NativeObject>("globalThis")
                         .withMethod(CTOR, "decodeURI", 1, NativeGlobal::js_decodeURI)
                         .withMethod(
                                 CTOR, "decodeURIComponent", 1, NativeGlobal::js_decodeURIComponent)
@@ -58,17 +58,17 @@ public class NativeGlobal implements Serializable {
                 new EnumMap<TopLevel.NativeErrors, ClassDescriptor>(TopLevel.NativeErrors.class);
         for (var e : TopLevel.NativeErrors.values()) {
             if (e == TopLevel.NativeErrors.Error) continue;
-            ClassDescriptor.Builder builder;
+            ClassDescriptor.Builder<NativeError> builder;
             if (e != TopLevel.NativeErrors.AggregateError) {
                 builder =
-                        new ClassDescriptor.Builder(
+                        new ClassDescriptor.Builder<NativeError>(
                                 e.name(),
                                 1,
                                 NativeError::js_constructor,
                                 NativeError::js_constructor);
             } else {
                 builder =
-                        new ClassDescriptor.Builder(
+                        new ClassDescriptor.Builder<NativeError>(
                                 e.name(),
                                 2,
                                 (c, f, nt, s, thisObj, args) ->

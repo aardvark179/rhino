@@ -34,7 +34,7 @@ public class NativeInt32Array extends NativeTypedArrayView<Integer> {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeInt32Array>(
                                 CLASS_NAME,
                                 3,
                                 NativeTypedArrayView::typeError,

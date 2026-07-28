@@ -27,7 +27,7 @@ final class NativeMath extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(MATH_TAG)
+                new ClassDescriptor.Builder<NativeMath>(MATH_TAG)
                         .withProp(CTOR, "toSource", value("Math"))
                         .withMethod(CTOR, "abs", 1, NativeMath::abs)
                         .withMethod(CTOR, "acos", 1, NativeMath::acos)

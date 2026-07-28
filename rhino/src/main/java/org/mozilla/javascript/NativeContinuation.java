@@ -19,7 +19,7 @@ public final class NativeContinuation extends ScriptableObject implements Functi
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeContinuation>(
                                 CLASS_NAME,
                                 0,
                                 NativeContinuation::js_constructor,

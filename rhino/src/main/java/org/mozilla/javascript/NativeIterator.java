@@ -33,7 +33,7 @@ public final class NativeIterator extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeIterator>(
                                 CLASS_NAME,
                                 2,
                                 NativeIterator::jsConstructorCall,

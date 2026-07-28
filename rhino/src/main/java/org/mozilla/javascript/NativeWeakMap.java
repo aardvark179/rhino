@@ -32,7 +32,7 @@ public class NativeWeakMap extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeWeakMap>(
                                 CLASS_NAME,
                                 0,
                                 ClassDescriptor.typeError(),

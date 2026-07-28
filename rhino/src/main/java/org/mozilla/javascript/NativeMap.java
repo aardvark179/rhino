@@ -26,7 +26,7 @@ public class NativeMap extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeMap>(
                                 CLASS_NAME,
                                 0,
                                 ClassDescriptor.typeError(),

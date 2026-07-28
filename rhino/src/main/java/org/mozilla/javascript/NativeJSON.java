@@ -38,7 +38,7 @@ public final class NativeJSON extends ScriptableObject {
 
     static {
         DESCRIPTION =
-                new ClassDescriptor.Builder(JSON_TAG)
+                new ClassDescriptor.Builder<NativeJSON>(JSON_TAG)
                         .withMethod(CTOR, "parse", 2, NativeJSON::parse)
                         .withMethod(CTOR, "stringify", 3, NativeJSON::stringify)
                         .withProp(CTOR, "toSource", value("JSON"))

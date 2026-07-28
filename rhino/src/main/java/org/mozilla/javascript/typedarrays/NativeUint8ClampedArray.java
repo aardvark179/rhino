@@ -34,7 +34,7 @@ public class NativeUint8ClampedArray extends NativeTypedArrayView<Integer> {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeUint8ClampedArray>(
                                 CLASS_NAME,
                                 3,
                                 NativeTypedArrayView::typeError,

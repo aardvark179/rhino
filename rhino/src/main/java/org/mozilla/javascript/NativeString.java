@@ -47,7 +47,7 @@ final class NativeString extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeString>(
                                 CLASS_NAME,
                                 1,
                                 NativeString::js_constructorFunc,

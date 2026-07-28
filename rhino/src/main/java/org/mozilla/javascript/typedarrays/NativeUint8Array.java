@@ -32,7 +32,7 @@ public class NativeUint8Array extends NativeTypedArrayView<Integer> {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeUint8Array>(
                                 CLASS_NAME,
                                 3,
                                 NativeTypedArrayView::typeError,

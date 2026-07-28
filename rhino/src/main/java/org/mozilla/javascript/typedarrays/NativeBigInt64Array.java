@@ -35,7 +35,7 @@ public class NativeBigInt64Array extends NativeBigIntArrayView {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeBigInt64Array>(
                                 CLASS_NAME,
                                 3,
                                 NativeTypedArrayView::typeError,

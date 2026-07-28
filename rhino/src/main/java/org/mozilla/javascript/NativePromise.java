@@ -28,7 +28,7 @@ public class NativePromise extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativePromise>(
                                 "Promise",
                                 1,
                                 ClassDescriptor.typeError(),

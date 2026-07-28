@@ -44,7 +44,7 @@ final class NativeNumber extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeNumber>(
                                 CLASS_NAME,
                                 1,
                                 NativeNumber::js_constructorFunc,

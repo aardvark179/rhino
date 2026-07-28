@@ -42,7 +42,7 @@ class NativeProxy extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeProxy>(
                                 PROXY_TAG,
                                 2,
                                 ClassDescriptor.typeError(),

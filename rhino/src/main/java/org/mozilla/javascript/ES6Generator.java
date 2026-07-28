@@ -21,7 +21,7 @@ public final class ES6Generator extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(GENERATOR_TAG)
+                new ClassDescriptor.Builder<ES6Generator>(GENERATOR_TAG)
                         .withMethod(CTOR, "next", 1, ES6Generator::js_next)
                         .withMethod(CTOR, "return", 1, ES6Generator::js_return)
                         .withMethod(CTOR, "throw", 1, ES6Generator::js_throw)

@@ -26,7 +26,7 @@ public class NativeSet extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeSet>(
                                 CLASS_NAME,
                                 0,
                                 ClassDescriptor.typeError(),

@@ -23,7 +23,7 @@ public class NativeCallSite extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeCallSite>(
                                 "CallSite",
                                 0,
                                 NativeCallSite::js_constructor,

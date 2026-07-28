@@ -41,7 +41,7 @@ public class NativeArrayBuffer extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder("ArrayBuffer", 1, NativeArrayBuffer::js_constructor)
+                new ClassDescriptor.Builder<NativeArrayBuffer>("ArrayBuffer", 1, NativeArrayBuffer::js_constructor)
                         .withMethod(CTOR, "isView", 1, NativeArrayBuffer::js_isView)
                         .withMethod(PROTO, "slice", 2, NativeArrayBuffer::js_slice)
                         .withMethod(PROTO, "transfer", 0, NativeArrayBuffer::js_transfer)

@@ -34,7 +34,7 @@ public class NativeFloat64Array extends NativeTypedArrayView<Double> {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeFloat64Array>(
                                 CLASS_NAME,
                                 3,
                                 NativeTypedArrayView::typeError,

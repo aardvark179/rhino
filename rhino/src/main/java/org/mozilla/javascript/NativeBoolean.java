@@ -24,7 +24,7 @@ final class NativeBoolean extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeBoolean>(
                                 CLASS_NAME,
                                 1,
                                 NativeBoolean::js_constructorFunc,

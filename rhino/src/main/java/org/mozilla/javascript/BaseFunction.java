@@ -78,7 +78,7 @@ public class BaseFunction extends ScriptableObject implements Function {
 
     static {
         var builder =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<BaseFunction>(
                                 FUNCTION_CLASS,
                                 1,
                                 BaseFunction::js_constructor,
@@ -110,7 +110,7 @@ public class BaseFunction extends ScriptableObject implements Function {
         CALL_DESCRIPTOR = DESCRIPTOR.findProtoDesc("call");
 
         GENERATOR_DESCRIPTOR =
-                new ClassDescriptor.Builder(
+              new ClassDescriptor.Builder<BaseFunction>(
                                 GENERATOR_FUNCTION_CLASS,
                                 "GeneratorFunction",
                                 1,

@@ -25,7 +25,7 @@ public abstract class ES6Iterator extends ScriptableObject {
         // Need a way to associate the built object with the tag. We
         // kind of need this in general, and at the top level, but we
         // can bodge it for now.
-        return new ClassDescriptor.Builder(name)
+        return new ClassDescriptor.Builder<ES6Iterator>(name)
                 .withMethod(CTOR, "next", 0, ES6Iterator::js_next)
                 .withMethod(CTOR, SymbolKey.ITERATOR, 1, ES6Iterator::js_iterator)
                 .withProp(CTOR, SymbolKey.TO_STRING_TAG, value(tag, DONTENUM | READONLY))

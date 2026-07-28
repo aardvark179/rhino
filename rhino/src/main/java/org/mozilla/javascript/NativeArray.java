@@ -86,7 +86,7 @@ public class NativeArray extends ScriptableObject implements List {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeArray>(
                                 CLASS_NAME,
                                 1,
                                 NativeArray::jsConstructor,

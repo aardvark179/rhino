@@ -22,7 +22,7 @@ public class NativeWeakRef extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(CLASS_NAME, 1, NativeWeakRef::js_constructor)
+                new ClassDescriptor.Builder<NativeWeakRef>(CLASS_NAME, 1, NativeWeakRef::js_constructor)
                         .withMethod(PROTO, "deref", 0, NativeWeakRef::deref)
                         .withProp(
                                 PROTO,

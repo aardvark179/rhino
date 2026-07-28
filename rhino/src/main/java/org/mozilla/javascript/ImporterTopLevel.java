@@ -55,7 +55,7 @@ public class ImporterTopLevel extends TopLevel {
 
     static {
         var builder =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeObject>(
                                 "JavaImporter",
                                 0,
                                 ImporterTopLevel::js_construct,

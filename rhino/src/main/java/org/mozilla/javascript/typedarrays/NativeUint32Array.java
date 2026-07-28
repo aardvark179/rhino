@@ -33,7 +33,7 @@ public class NativeUint32Array extends NativeTypedArrayView<Long> {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeUint32Array>(
                                 CLASS_NAME,
                                 3,
                                 NativeTypedArrayView::typeError,

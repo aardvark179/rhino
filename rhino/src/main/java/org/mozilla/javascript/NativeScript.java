@@ -32,7 +32,7 @@ class NativeScript extends BaseFunction {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeScript>(
                                 SCRIPT_TAG,
                                 1,
                                 NativeScript::js_constructorCall,
