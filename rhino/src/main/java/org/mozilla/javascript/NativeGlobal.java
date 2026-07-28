@@ -26,9 +26,9 @@ import org.mozilla.javascript.xml.XMLLib;
 public class NativeGlobal implements Serializable {
     static final long serialVersionUID = 6080442165748707530L;
 
-    private static final ClassDescriptor DESCRIPTOR;
+    private static final ClassDescriptor<NativeObject> DESCRIPTOR;
     private static final JSDescriptor<JSFunction> EVAL_DESCRIPTOR;
-    private static final Map<TopLevel.NativeErrors, ClassDescriptor> ERROR_DESCRIPTORS;
+    private static final Map<TopLevel.NativeErrors, ClassDescriptor<NativeError>> ERROR_DESCRIPTORS;
 
     static {
         DESCRIPTOR =
@@ -55,7 +55,7 @@ public class NativeGlobal implements Serializable {
         EVAL_DESCRIPTOR = DESCRIPTOR.findCtorDesc("eval");
 
         var errorDescs =
-                new EnumMap<TopLevel.NativeErrors, ClassDescriptor>(TopLevel.NativeErrors.class);
+                new EnumMap<TopLevel.NativeErrors, ClassDescriptor<NativeError>>(TopLevel.NativeErrors.class);
         for (var e : TopLevel.NativeErrors.values()) {
             if (e == TopLevel.NativeErrors.Error) continue;
             ClassDescriptor.Builder<NativeError> builder;
@@ -114,7 +114,7 @@ public class NativeGlobal implements Serializable {
                     errorProto,
                     sealed,
                     (c, ctor) -> {
-                        ctor.setPrototype(nativeError);
+                        ((JSFunction)ctor).setPrototype(nativeError);
                         errorProto.setPrototype(nativeErrorProto);
                     });
         }

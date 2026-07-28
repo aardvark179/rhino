@@ -59,13 +59,13 @@ import org.mozilla.javascript.ScriptableObject.LambdaSetterFunction;
  * can be handled by methods similar to {@link NativeArray#makeUnscopables(Context, VarScope,
  * ScriptableObject)}.
  */
-public class ClassDescriptor {
+public class ClassDescriptor<T extends ScriptableObject> {
 
     /**
      * Holds the information required to turn a function descriptor into a property on an object or
      * scope.
      */
-    private static class FuncPropDesc {
+    private static class FuncPropDesc<T extends ScriptableObject> {
         private final Object name;
         private final JSDescriptor<JSFunction> funcDesc;
         private final int attributes;
@@ -78,12 +78,12 @@ public class ClassDescriptor {
             this.stdAttrs = stdAttrs;
         }
 
-        CompactSlot.Descriptor<?, Scriptable, ? extends ScriptableObject> makeSlotDescriptor() {
+        CompactSlot.Descriptor<?, Scriptable, T> makeSlotDescriptor() {
             return new SimpleDescriptor<>(name, 0);
         }
     }
 
-    private abstract static class PropDesc {
+    private abstract static class PropDesc<T extends ScriptableObject> {
         final Object name;
         final int attributes;
 
@@ -94,10 +94,10 @@ public class ClassDescriptor {
 
         abstract void makeProp(Context cx, VarScope scope, ScriptableObject object);
 
-        abstract CompactSlot.Descriptor<?, Scriptable, ? extends ScriptableObject> makeSlotDescriptor();
+        abstract CompactSlot.Descriptor<?, Scriptable, T> makeSlotDescriptor();
     }
 
-    private static class LambdaGetSetPropDesc extends PropDesc {
+    private static class LambdaGetSetPropDesc<T extends ScriptableObject> extends PropDesc<T> {
         private final ScriptableObject.LambdaGetterFunction getter;
         private final ScriptableObject.LambdaSetterFunction setter;
 
@@ -120,12 +120,12 @@ public class ClassDescriptor {
             }
         }
 
-        CompactSlot.Descriptor<?, Scriptable, ScriptableObject> makeSlotDescriptor() {
+        CompactSlot.Descriptor<?, Scriptable, T> makeSlotDescriptor() {
             return new LambdaAccessorDescriptor<>(name, 0, getter, setter);
         }
     }
 
-    private static class BuiltInPropDesc<T extends ScriptableObject> extends PropDesc {
+    private static class BuiltInPropDesc<T extends ScriptableObject> extends PropDesc<T> {
         private final BuiltInDescriptor<T> desc;
 
         BuiltInPropDesc(Object name, BuiltInDescriptor.Getter<T> getter, int attributes) {
@@ -169,7 +169,7 @@ public class ClassDescriptor {
             obj.getMap().add(obj, desc.createSlot(null, (T) obj, attributes));
         }
 
-        CompactSlot.Descriptor<?, Scriptable, ? extends ScriptableObject> makeSlotDescriptor() {
+        CompactSlot.Descriptor<?, Scriptable, T> makeSlotDescriptor() {
             return desc;
         }
     }
@@ -178,7 +178,7 @@ public class ClassDescriptor {
         DescriptorInfo apply(Context cx, VarScope scope, ScriptableObject obj);
     }
 
-    private static class CreateValuePropDesc extends PropDesc {
+    private static class CreateValuePropDesc<T extends ScriptableObject> extends PropDesc<T> {
         private final ValueCreator creator;
 
         CreateValuePropDesc(Object name, ValueCreator creator) {
@@ -195,23 +195,23 @@ public class ClassDescriptor {
             }
         }
 
-        CompactSlot.Descriptor<?, Scriptable, ScriptableObject> makeSlotDescriptor() {
+        CompactSlot.Descriptor<?, Scriptable, T> makeSlotDescriptor() {
             return null;
         }
     }
 
-    private final FuncPropDesc ctorDesc;
-    private final List<FuncPropDesc> ctorDescs;
-    private final List<PropDesc> ctorProps;
-    private final List<FuncPropDesc> protoDescs;
-    private final List<PropDesc> protoProps;
+    private final FuncPropDesc<JSFunction> ctorDesc;
+    private final List<FuncPropDesc<JSFunction>> ctorDescs;
+    private final List<PropDesc<JSFunction>> ctorProps;
+    private final List<FuncPropDesc<T>> protoDescs;
+    private final List<PropDesc<T>> protoProps;
 
     private ClassDescriptor(
-            FuncPropDesc ctorDesc,
-            List<FuncPropDesc> ctorDescs,
-            List<PropDesc> ctorProps,
-            List<FuncPropDesc> protoDescs,
-            List<PropDesc> protoProps) {
+            FuncPropDesc<JSFunction> ctorDesc,
+            List<FuncPropDesc<JSFunction>> ctorDescs,
+            List<PropDesc<JSFunction>> ctorProps,
+            List<FuncPropDesc<T>> protoDescs,
+            List<PropDesc<T>> protoProps) {
         this.ctorDesc = ctorDesc;
         this.ctorDescs = ctorDescs;
         this.ctorProps = ctorProps;
@@ -355,29 +355,40 @@ public class ClassDescriptor {
     public enum Destination {
         CTOR {
             @Override
-            public Props get(Builder builder) {
+            public Props<JSFunction> get(Builder<?> builder) {
                 return builder.ctorProps;
             }
         },
         PROTO {
             @Override
-            public Props get(Builder builder) {
+            public Props<?> get(Builder<?> builder) {
                 return builder.protoProps;
             }
+
         };
 
-        public abstract Props get(Builder builder);
+        public abstract Props<?> get(Builder<?> builder);
     }
 
     private static class Props <O extends ScriptableObject> {
-        final List<FuncPropDesc> funcs = new ArrayList<>();
-        final List<PropDesc> props = new ArrayList<>();
+        final List<FuncPropDesc<O>> funcs = new ArrayList<>();
+        final List<PropDesc<O>> props = new ArrayList<>();
         final CompactDescriptorMap.Builder<Scriptable, O> map;
         final int attrs;
 
         Props(int attrs) {
             this.attrs = attrs;
             map = new CompactDescriptorMap.Builder<>();
+        }
+
+        void addFunction(FuncPropDesc<O> func) {
+            funcs.add(func);
+            map.withDescriptor(func.makeSlotDescriptor());
+        }
+
+        void addProp(PropDesc<O> prop) {
+            props.add(prop);
+            map.withDescriptor(prop.makeSlotDescriptor());
         }
     }
 
@@ -640,13 +651,15 @@ public class ClassDescriptor {
                 BuiltInJSCodeExec<JSFunction> code,
                 int attributes,
                 int stdAttrs) {
-            var prop = new FuncPropDesc(
-                                    name,
-                                    buildDescriptor(name, length, buildOptJSCode(code)),
-                                    attributes,
-                    stdAttrs);
-            dest.get(this).funcs.add(prop);
-            dest.get(this).map.withDescriptor(prop.makeSlotDescriptor());
+            var props = switch(dest) {
+                case CTOR -> this.ctorProps;
+                case PROTO -> this.protoProps;
+            };
+            props.addFunction(new FuncPropDesc<>(
+                name,
+                buildDescriptor(name, length, buildOptJSCode(code)),
+                attributes,
+                stdAttrs));
             return this;
         }
 
@@ -667,9 +680,11 @@ public class ClassDescriptor {
                 LambdaGetterFunction getter,
                 LambdaSetterFunction setter,
             int attributes) {
-            var prop = new LambdaGetSetPropDesc(name, getter, setter, attributes);
-            dest.get(this).props.add(prop);
-            dest.get(this).map.withDescriptor(prop.makeSlotDescriptor());
+            var props = switch(dest) {
+                case CTOR -> this.ctorProps;
+                case PROTO -> this.protoProps;
+            };
+            props.addProp(new LambdaGetSetPropDesc<>(name, getter, setter, attributes));
             return this;
         }
 
@@ -683,33 +698,37 @@ public class ClassDescriptor {
                 LambdaGetterFunction getter,
                 LambdaSetterFunction setter,
             int attributes) {
-            var prop = new LambdaGetSetPropDesc(name, getter, setter, attributes);
-            dest.get(this).props.add(prop);
-            dest.get(this).map.withDescriptor(prop.makeSlotDescriptor());
+            var props = switch(dest) {
+                case CTOR -> this.ctorProps;
+                case PROTO -> this.protoProps;
+            };
+            props.addProp(new LambdaGetSetPropDesc<>(name, getter, setter, attributes));
             return this;
         }
 
-        public <T extends ScriptableObject> Builder<P> withProp(
+        public Builder<P> withProp(
                 Destination dest,
                 String name,
-                BuiltInDescriptor.Getter<T> getter,
-                BuiltInDescriptor.Setter<T> setter,
+                BuiltInDescriptor.Getter<P> getter,
+                BuiltInDescriptor.Setter<P> setter,
             int attributes) {
-            var prop = new BuiltInPropDesc<>(name, getter, setter, attributes);
-            dest.get(this).props.add(prop);
-            dest.get(this).map.withDescriptor(prop.makeSlotDescriptor());
+            if (dest == Destination.CTOR) {
+                throw new IllegalStateException();
+            }
+            this.protoProps.addProp(new BuiltInPropDesc<>(name, getter, setter, attributes));
             return this;
         }
 
-        public <T extends ScriptableObject> Builder<P> withProp(
+        public  Builder<P> withProp(
                 Destination dest,
                 SymbolKey name,
-                BuiltInDescriptor.Getter<T> getter,
-                BuiltInDescriptor.Setter<T> setter,
+                BuiltInDescriptor.Getter<P> getter,
+                BuiltInDescriptor.Setter<P> setter,
                 int attributes) {
-            var prop = new BuiltInPropDesc<>(name, getter, setter, attributes);
-            dest.get(this).props.add(prop);
-            dest.get(this).map.withDescriptor(prop.makeSlotDescriptor());
+            if (dest == Destination.CTOR) {
+                throw new IllegalStateException();
+            }
+            this.protoProps.addProp(new BuiltInPropDesc<>(name, getter, setter, attributes));
             return this;
         }
 
@@ -719,7 +738,7 @@ public class ClassDescriptor {
          * setter.
          */
         public Builder<P> withProp(Destination dest, String name, ValueCreator creator) {
-            dest.get(this).props.add(new CreateValuePropDesc(name, creator));
+            dest.get(this).props.add(new CreateValuePropDesc<>(name, creator));
             return this;
         }
 
@@ -729,7 +748,7 @@ public class ClassDescriptor {
          * setter.
          */
         public Builder<P> withProp(Destination dest, SymbolKey name, ValueCreator creator) {
-            dest.get(this).props.add(new CreateValuePropDesc(name, creator));
+            dest.get(this).props.add(new CreateValuePropDesc<>(name, creator));
             return this;
         }
 
@@ -800,9 +819,9 @@ public class ClassDescriptor {
             return builder.build(desc -> {});
         }
 
-        public ClassDescriptor build() {
-            return new ClassDescriptor(
-                    new FuncPropDesc(name, ctor, ctorProps.attrs, protoProps.attrs),
+        public ClassDescriptor<P> build() {
+            return new ClassDescriptor<P>(
+                    new FuncPropDesc<JSFunction>(name, ctor, ctorProps.attrs, protoProps.attrs),
                     List.copyOf(ctorProps.funcs),
                     List.copyOf(ctorProps.props),
                     List.copyOf(protoProps.funcs),

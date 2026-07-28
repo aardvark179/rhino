@@ -38,9 +38,9 @@ public class BaseFunction extends ScriptableObject implements Function {
     private static final String CALL_TAG = "CALL_TAG";
     private static final String PROTOTYPE_PROPERTY_NAME = "prototype";
 
-    private static final ClassDescriptor DESCRIPTOR;
-    private static final ClassDescriptor ES6_DESCRIPTOR;
-    private static final ClassDescriptor GENERATOR_DESCRIPTOR;
+    private static final ClassDescriptor<BaseFunction> DESCRIPTOR;
+    private static final ClassDescriptor<BaseFunction> ES6_DESCRIPTOR;
+    private static final ClassDescriptor<BaseFunction> GENERATOR_DESCRIPTOR;
     private static final JSDescriptor<JSFunction> APPLY_DESCRIPTOR;
     private static final JSDescriptor<JSFunction> CALL_DESCRIPTOR;
 

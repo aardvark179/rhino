@@ -74,7 +74,7 @@ public class NativeArray extends ScriptableObject implements List {
         "values"
     };
 
-    private static final ClassDescriptor DESCRIPTOR;
+    private static final ClassDescriptor<NativeArray> DESCRIPTOR;
     public static final JSDescriptor<JSFunction> ITERATOR_DESCRIPTOR;
     private static final BuiltInDescriptor<NativeArray> LENGTH_DESCRIPTOR =
             builtInDesc(

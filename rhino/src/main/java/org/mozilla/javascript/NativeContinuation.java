@@ -14,7 +14,7 @@ public final class NativeContinuation extends ScriptableObject implements Functi
 
     private static final String CLASS_NAME = "Continuation";
 
-    private static final ClassDescriptor DESCRIPTOR;
+    private static final ClassDescriptor<NativeContinuation> DESCRIPTOR;
     private static final JSDescriptor<JSFunction> CTOR_DESCRIPTOR;
 
     static {

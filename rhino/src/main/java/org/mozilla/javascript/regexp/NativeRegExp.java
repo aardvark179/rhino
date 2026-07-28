@@ -158,7 +158,7 @@ public class NativeRegExp extends ScriptableObject {
 
     private static final int ANCHOR_BOL = -2;
 
-    private static final ClassDescriptor DESCRIPTOR;
+    private static final ClassDescriptor<NativeRegExp> DESCRIPTOR;
     private static final JSDescriptor<JSFunction> EXEC_DESCRIPTOR;
 
     private static final BuiltInDescriptor<NativeRegExp> LASTINDEX_DESCRIPTOR =
