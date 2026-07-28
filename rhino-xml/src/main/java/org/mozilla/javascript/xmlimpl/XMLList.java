@@ -29,13 +29,13 @@ class XMLList extends XMLObjectImpl implements Function {
     private XMLObjectImpl targetObject = null;
     private XmlNode.QName targetProperty = null;
 
-    private static final ClassDescriptor DESCRIPTOR;
+    private static final ClassDescriptor<XMLList> DESCRIPTOR;
     private static final SymbolKey LIB_KEY = new SymbolKey("__xml_lib__", REGULAR);
 
     static {
         DESCRIPTOR =
                 XMLObjectImpl.populatePrototypeDescriptor(
-                                new ClassDescriptor.Builder(
+                                new ClassDescriptor.Builder<XMLList>(
                                         "XMLList",
                                         1,
                                         XMLList::js_constructorCall,

@@ -26,7 +26,7 @@ final class QName extends ScriptableObject {
 
     private static final String QNAME_TAG = "QName";
 
-    private static final ClassDescriptor DESCRIPTOR;
+    private static final ClassDescriptor<QName> DESCRIPTOR;
 
     private static final SlotMapDescriptor<Scriptable, QName> INSTANCE_DESCRIPTOR =
             startingWith(builtInDesc("localName", QName::getLocalName), PERMANENT | READONLY)
@@ -35,7 +35,7 @@ final class QName extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<QName>(
                                 QNAME_TAG, 0, QName::js_constructorCall, QName::js_constructor)
                         .withMethod(PROTO, "toString", 0, QName::js_toString)
                         .withMethod(PROTO, "toSource", 0, QName::js_toSource)

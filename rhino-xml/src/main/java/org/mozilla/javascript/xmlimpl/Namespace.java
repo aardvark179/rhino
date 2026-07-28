@@ -26,7 +26,7 @@ class Namespace extends ScriptableObject {
 
     private static final String NAMESPACE_TAG = "Namespace";
 
-    private static final ClassDescriptor DESCRIPTOR;
+    private static final ClassDescriptor<Namespace> DESCRIPTOR;
 
     private static final SlotMapDescriptor<Scriptable, Namespace> INSTANCE_DESCRIPTOR =
             startingWith(builtInDesc("prefix", Namespace::getPrefix), PERMANENT | READONLY)
@@ -35,7 +35,7 @@ class Namespace extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<Namespace>(
                                 NAMESPACE_TAG,
                                 2,
                                 Namespace::js_constructorCall,

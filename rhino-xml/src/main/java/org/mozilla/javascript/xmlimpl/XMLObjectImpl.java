@@ -36,14 +36,14 @@ abstract class XMLObjectImpl extends XMLObject {
     private XMLLibImpl lib;
     private boolean prototypeFlag;
 
-    private static final ClassDescriptor DESCRIPTOR;
+    private static final ClassDescriptor<XMLObjectImpl> DESCRIPTOR;
 
     static {
-        DESCRIPTOR = new ClassDescriptor.Builder(XMLOBJECT_TAG).build();
+        DESCRIPTOR = new ClassDescriptor.Builder<XMLObjectImpl>(XMLOBJECT_TAG).build();
     }
 
-    public static ClassDescriptor.Builder populatePrototypeDescriptor(
-            ClassDescriptor.Builder builder) {
+    public static <T extends XMLObjectImpl> ClassDescriptor.Builder<T> populatePrototypeDescriptor(
+            ClassDescriptor.Builder<T> builder) {
         return builder.withMethod(PROTO, "addNamespace", 1, XMLObjectImpl::js_addNamespace)
                 .withMethod(PROTO, "appendChild", 1, XMLObjectImpl::js_appendChild)
                 .withMethod(PROTO, "attribute", 1, XMLObjectImpl::js_attribute)
