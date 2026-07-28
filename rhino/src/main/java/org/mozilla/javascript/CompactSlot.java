@@ -89,7 +89,6 @@ public class CompactSlot<
         super();
         this.attributes = (short) attr;
         this.descriptor = descriptor;
-
     }
 
     CompactSlot(CompactSlot<T, U, O> oldSlot) {

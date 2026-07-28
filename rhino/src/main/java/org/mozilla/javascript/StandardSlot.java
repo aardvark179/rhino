@@ -90,6 +90,7 @@ public class StandardSlot<T extends PropHolder<T>> extends Slot<T> {
     public Object getRawValue() {
         return this.value;
     }
+
     @Override
     int getAttributes() {
         return attributes;

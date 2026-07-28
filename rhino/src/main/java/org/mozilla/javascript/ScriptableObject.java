@@ -1765,7 +1765,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
             if (info.setter != NOT_FOUND) {
                 fslot.setter = new AccessorSlot.FunctionSetter(info.setter);
             }
-            fslot.setRawValue(Undefined.instance);;
+            fslot.setRawValue(Undefined.instance);
         } else if (BuiltInDescriptor.isBuiltIn(slot)) {
             if (info.value != NOT_FOUND) {
                 @SuppressWarnings("unchecked")
@@ -1964,7 +1964,8 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
                             throw ScriptRuntime.typeErrorById(
                                     "msg.change.writable.false.to.true.with.configurable.false",
                                     id);
-                        var currentValue = isBuiltIn ? current.getValue(null) : current.getRawValue();
+                        var currentValue =
+                                isBuiltIn ? current.getValue(null) : current.getRawValue();
                         if (!sameValue(info.value, currentValue))
                             throw ScriptRuntime.typeErrorById(
                                     "msg.change.value.with.writable.false", id);
