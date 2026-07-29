@@ -205,18 +205,24 @@ public class ClassDescriptor<T extends ScriptableObject> {
     private final List<PropDesc<JSFunction>> ctorProps;
     private final List<FuncPropDesc<T>> protoDescs;
     private final List<PropDesc<T>> protoProps;
+    private final CompactDescriptorMap<Scriptable, JSFunction> ctorMap;
+    private final CompactDescriptorMap<Scriptable, T> protoMap;
 
     private ClassDescriptor(
             FuncPropDesc<JSFunction> ctorDesc,
             List<FuncPropDesc<JSFunction>> ctorDescs,
             List<PropDesc<JSFunction>> ctorProps,
             List<FuncPropDesc<T>> protoDescs,
-            List<PropDesc<T>> protoProps) {
+            List<PropDesc<T>> protoProps,
+            CompactDescriptorMap<Scriptable, JSFunction> ctorMap,
+            CompactDescriptorMap<Scriptable, T> protoMap) {
         this.ctorDesc = ctorDesc;
         this.ctorDescs = ctorDescs;
         this.ctorProps = ctorProps;
         this.protoDescs = protoDescs;
         this.protoProps = protoProps;
+        this.ctorMap = ctorMap;
+        this.protoMap = protoMap;
     }
 
     /** Build a constructor from this descriptor. */
@@ -820,12 +826,25 @@ public class ClassDescriptor<T extends ScriptableObject> {
         }
 
         public ClassDescriptor<P> build() {
+            var ctorMap = new CompactDescriptorMap.Builder<Scriptable, JSFunction>();
+            var ctorIter = ctorProps.map.build().iterator();
+            while (ctorIter.hasNext()) {
+                ctorMap.withDescriptor(ctorIter.next());
+            }
+            var protoMap = new CompactDescriptorMap.Builder<Scriptable, P>();
+            var protoIter = protoProps.map.build().iterator();
+            while (protoIter.hasNext()) {
+                protoMap.withDescriptor(protoIter.next());
+            }
+
             return new ClassDescriptor<P>(
                     new FuncPropDesc<JSFunction>(name, ctor, ctorProps.attrs, protoProps.attrs),
                     List.copyOf(ctorProps.funcs),
                     List.copyOf(ctorProps.props),
                     List.copyOf(protoProps.funcs),
-                    List.copyOf(protoProps.props));
+                    List.copyOf(protoProps.props),
+                    ctorMap.build(),
+                    protoMap.build());
         }
     }
 
