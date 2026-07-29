@@ -139,7 +139,10 @@ final class InterpreterData<T extends ScriptOrFn<T>> extends ACompilerData<T, In
 
         int firstLinePC = -1; // PC for the first LINE icode
 
-        public Builder() {
+        private final Deduplicator dedup;
+
+        public Builder(Deduplicator dedup) {
+            this.dedup = dedup;
             itsICode = new byte[INITIAL_MAX_ICODE_LENGTH];
             itsStringTable = new String[INITIAL_STRINGTABLE_SIZE];
             itsBigIntTable = new BigInteger[INITIAL_BIGINTTABLE_SIZE];
@@ -151,12 +154,12 @@ final class InterpreterData<T extends ScriptOrFn<T>> extends ACompilerData<T, In
                 var jumpMap = longJumps != null ? Map.copyOf(longJumps) : null;
                 built =
                         new InterpreterData<T>(
-                                itsStringTable,
+                                dedup.deduplicate(itsStringTable),
                                 itsDoubleTable,
                                 itsBigIntTable,
                                 itsRegExpLiterals,
                                 itsTemplateLiterals,
-                                itsICode,
+                                dedup.deduplicate(itsICode),
                                 exceptionTable,
                                 maxVars,
                                 maxLocals,
