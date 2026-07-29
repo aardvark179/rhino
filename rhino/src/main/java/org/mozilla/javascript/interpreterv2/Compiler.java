@@ -12,6 +12,7 @@ import org.mozilla.javascript.CompilerEnvirons;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.JSDescriptor;
 import org.mozilla.javascript.JSFunction;
+import org.mozilla.javascript.JSScript;
 import org.mozilla.javascript.Kit;
 import org.mozilla.javascript.Node;
 import org.mozilla.javascript.NodeTransformer;
@@ -251,11 +252,15 @@ public class Compiler<T extends ScriptOrFn<T>> {
         descBuilder.code = builder;
         // Generate instructions from the IR tree
         if (returnFunction) {
+            @SuppressWarnings("unchecked")
+            var funcBuilder = (JSDescriptor.Builder<JSFunction>) descBuilder;
             CodeGenUtils.fillInForTopLevelFunction(
-                    descBuilder, (FunctionNode) scriptOrFn, rawSource, compilerEnv);
+                    funcBuilder, (FunctionNode) scriptOrFn, rawSource, compilerEnv);
             generateFunctionCode();
         } else {
-            CodeGenUtils.fillInForScript(descBuilder, scriptOrFn, rawSource, compilerEnv);
+            @SuppressWarnings("unchecked")
+            var scriptBuilder = (JSDescriptor.Builder<JSScript>) descBuilder;
+            CodeGenUtils.fillInForScript(scriptBuilder, scriptOrFn, rawSource, compilerEnv);
             CodeGenUtils.setConstructor(descBuilder, scriptOrFn);
             generateInstructions(tree);
         }
@@ -316,7 +321,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
             gen.builder = new CompilerData.Builder<>(this.builder);
             gen.descBuilder = descBuilder.createChildBuilder();
             gen.descBuilder.code = gen.builder;
-            CodeGenUtils.fillInForNestedFunction(gen.descBuilder, descBuilder, fn);
+            CodeGenUtils.fillInForNestedFunction(gen.descBuilder, descBuilder, fn, compilerEnv);
             CodeGenUtils.setConstructor(gen.descBuilder, fn);
             gen.generateFunctionCode();
             array[i] = gen.builder.build();

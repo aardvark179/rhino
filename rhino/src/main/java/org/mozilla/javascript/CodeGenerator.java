@@ -81,15 +81,19 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
         }
 
         builder = new JSDescriptor.Builder<T>();
-        itsData = new InterpreterData.Builder<T>();
+        itsData = new InterpreterData.Builder<T>(compilerEnv.getDeduplicator());
         builder.code = itsData;
 
         if (returnFunction) {
+            @SuppressWarnings("unchecked")
+            var funcBuilder = (JSDescriptor.Builder<JSFunction>) builder;
             CodeGenUtils.fillInForTopLevelFunction(
-                    builder, (FunctionNode) scriptOrFn, rawSource, compilerEnv);
+                    funcBuilder, (FunctionNode) scriptOrFn, rawSource, compilerEnv);
             generateFunctionICode();
         } else {
-            CodeGenUtils.fillInForScript(builder, scriptOrFn, rawSource, compilerEnv);
+            @SuppressWarnings("unchecked")
+            var scriptBuilder = (JSDescriptor.Builder<JSScript>) builder;
+            CodeGenUtils.fillInForScript(scriptBuilder, scriptOrFn, rawSource, compilerEnv);
             CodeGenUtils.setConstructor(builder, scriptOrFn);
             generateICodeFromTree(scriptOrFn);
         }
@@ -215,9 +219,9 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
             gen.compilerEnv = compilerEnv;
             gen.scriptOrFn = fn;
             gen.builder = builder.createChildBuilder();
-            gen.itsData = new InterpreterData.Builder<JSFunction>();
+            gen.itsData = new InterpreterData.Builder<JSFunction>(compilerEnv.getDeduplicator());
             gen.builder.code = gen.itsData;
-            CodeGenUtils.fillInForNestedFunction(gen.builder, builder, fn);
+            CodeGenUtils.fillInForNestedFunction(gen.builder, builder, fn, compilerEnv);
             gen.generateFunctionICode();
         }
     }

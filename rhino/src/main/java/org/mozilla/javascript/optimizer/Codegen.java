@@ -216,11 +216,15 @@ public class Codegen implements Evaluator {
         }
 
         if (returnFunction) {
+            @SuppressWarnings("unchecked")
+            var funcBuilder = (JSDescriptor.Builder<JSFunction>) builder;
             CodeGenUtils.fillInForTopLevelFunction(
-                    builder, scriptOrFn.getFunctionNode(0), rawSource, compilerEnv);
+                funcBuilder, scriptOrFn.getFunctionNode(0), rawSource, compilerEnv);
             scriptOrFn = scriptOrFn.getFunctionNode(0);
         } else {
-            CodeGenUtils.fillInForScript(builder, scriptOrFn, rawSource, compilerEnv);
+            @SuppressWarnings("unchecked")
+            var scriptBuilder = (JSDescriptor.Builder<JSScript>) builder;
+            CodeGenUtils.fillInForScript(scriptBuilder, scriptOrFn, rawSource, compilerEnv);
         }
 
         this.mainClassName = mainClassName;
@@ -329,7 +333,7 @@ public class Codegen implements Evaluator {
         for (int i = 0; i != nestedCount; ++i) {
             var f = n.getFunctionNode(i);
             var fb = builder.createChildBuilder();
-            CodeGenUtils.fillInForNestedFunction(fb, builder, f);
+            CodeGenUtils.fillInForNestedFunction(fb, builder, f, compilerEnv);
             collectScriptNodes_r(f, fb, builderEnv, x, b);
         }
     }

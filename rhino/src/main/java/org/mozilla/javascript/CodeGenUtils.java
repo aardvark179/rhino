@@ -19,7 +19,8 @@ public class CodeGenUtils {
     public static void fillInForNestedFunction(
             JSDescriptor.Builder<JSFunction> builder,
             JSDescriptor.Builder<?> parent,
-            FunctionNode fn) {
+            FunctionNode fn,
+            CompilerEnvirons compilerEnv) {
         final AstNode fnParent = fn.getParent();
         if (!(fnParent instanceof AstRoot
                 || fnParent instanceof Scope
@@ -39,15 +40,15 @@ public class CodeGenUtils {
             builder.constructor = builder.code;
         }
 
-        fillInForFunction(builder, fn);
+        fillInForFunction(builder, fn, compilerEnv);
     }
 
-    private static void fillInForFunction(JSDescriptor.Builder builder, FunctionNode fn) {
+    private static void fillInForFunction(JSDescriptor.Builder<JSFunction> builder, FunctionNode fn, CompilerEnvirons compilerEnv) {
         builder.functionType = fn.getFunctionType();
         builder.requiresActivationFrame = fn.requiresActivation();
         builder.requiresArgumentObject = fn.requiresArgumentObject();
         if (fn.getFunctionName() != null) {
-            builder.name = fn.getName();
+            builder.name = compilerEnv.getDeduplicator().deduplicate(fn.getName());
         }
         if (fn.isInStrictMode()) {
             builder.isStrict = true;
@@ -58,12 +59,12 @@ public class CodeGenUtils {
         if (fn.isShorthand()) {
             builder.isShorthand = true;
         }
-        fillInCommon(builder, fn);
+        fillInCommon(builder, fn, compilerEnv);
     }
 
     /** Populate builder data for a top level function. */
     public static void fillInForTopLevelFunction(
-            JSDescriptor.Builder builder,
+            JSDescriptor.Builder<JSFunction> builder,
             FunctionNode fn,
             String rawSource,
             CompilerEnvirons compilerEnv) {
@@ -71,27 +72,27 @@ public class CodeGenUtils {
         builder.hasPrototype = true;
 
         fillInTopLevelCommon(builder, fn, rawSource, compilerEnv);
-        fillInForFunction(builder, fn);
+        fillInForFunction(builder, fn, compilerEnv);
     }
 
     /** Populate builder data for a top level script. */
     public static void fillInForScript(
-            JSDescriptor.Builder builder,
+            JSDescriptor.Builder<JSScript> builder,
             ScriptNode scriptOrFn,
             String rawSource,
             CompilerEnvirons compilerEnv) {
         builder.hasPrototype = false;
 
         fillInTopLevelCommon(builder, scriptOrFn, rawSource, compilerEnv);
-        fillInCommon(builder, scriptOrFn);
+        fillInCommon(builder, scriptOrFn, compilerEnv);
     }
 
     private static void fillInTopLevelCommon(
-            JSDescriptor.Builder builder,
+            JSDescriptor.Builder<?> builder,
             ScriptNode scriptOrFn,
             String rawSource,
             CompilerEnvirons compilerEnv) {
-        builder.sourceFile = scriptOrFn.getSourceName();
+        builder.sourceFile = compilerEnv.getDeduplicator().deduplicate(scriptOrFn.getSourceName());
         builder.rawSource = rawSource;
         builder.isTopLevel = true;
         builder.isScript = true;
@@ -102,9 +103,10 @@ public class CodeGenUtils {
         builder.securityDomain = compilerEnv.securityDomain();
     }
 
-    private static void fillInCommon(JSDescriptor.Builder builder, ScriptNode scriptOrFn) {
+    private static void fillInCommon(JSDescriptor.Builder<?> builder, ScriptNode scriptOrFn, CompilerEnvirons compilerEnv) {
         builder.paramAndVarNames =
-                disambiguateNames(scriptOrFn.getParamAndVarNames(), scriptOrFn.getParamCount());
+                compilerEnv.getDeduplicator().deduplicate(
+                    disambiguateNames(scriptOrFn.getParamAndVarNames(), scriptOrFn.getParamCount()));
         builder.paramCount = scriptOrFn.getParamCount();
         builder.paramIsConst = scriptOrFn.getParamAndVarConst();
         builder.paramAndVarCount = scriptOrFn.getParamAndVarCount();
