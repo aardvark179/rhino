@@ -644,7 +644,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 {
                     int localIndex = getLocalBlockRef(node);
                     int scopeIndex = node.getExistingIntProp(Node.CATCH_SCOPE_PROP);
-                    String name = child.getType() == Token.NAME ? child.getString() : "";
+                    String name = child.getType() == Token.NAME ? dedup(child.getString()) : "";
                     child = child.getNext();
                     var exception = getOperand(child, 0); // load expression object
                     addInstruction(new CatchScope(exception, name, localIndex, scopeIndex));
@@ -911,13 +911,13 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 visitTypeofName(node);
                 return;
             case Token.BINDNAME:
-                addInstruction(new BindName(node.getString()));
+                addInstruction(new BindName(dedup(node.getString())));
                 return;
             case Token.NAME:
                 visitName(node);
                 return;
             case Token.STRING:
-                addInstruction(new PushConstant(node.getString()));
+                addInstruction(new PushConstant(dedup(node.getString())));
                 return;
             case Token.INC:
             case Token.DEC:
@@ -1096,7 +1096,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
     private void visitSetProp(int op, Node node, Node child) {
         var lhs = getOperand(child, 0, true);
         child = child.getNext();
-        String property = child.getString();
+        String property = dedup(child.getString());
         child = child.getNext();
         if (op == Token.SETPROP_OP) {
             addInstruction(new GetProp(lhs, property, false));
@@ -1145,17 +1145,17 @@ public class Compiler<T extends ScriptOrFn<T>> {
     }
 
     private void visitSetName(Node child) {
-        String name = child.getString();
+        String name = dedup(child.getString());
         visitBinaryOperation(child, (l, r) -> new SetName(l, name, r));
     }
 
     private void visitStrictSetName(Node child) {
-        String name = child.getString();
+        String name = dedup(child.getString());
         visitBinaryOperation(child, (l, r) -> new StrictSetName(l, name, r));
     }
 
     private void visitSetConst(Node child) {
-        String name = child.getString();
+        String name = dedup(child.getString());
         visitBinaryOperation(child, (l, r) -> new SetConst(l, name, r));
     }
 
@@ -1166,7 +1166,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
         if (inFunction && !descBuilder.requiresActivationFrame)
             index = scriptOrFn.getIndexForNameNode(node);
         if (index == -1) {
-            addInstruction(new TypeofName(node.getString()));
+            addInstruction(new TypeofName(dedup(node.getString())));
         } else {
             addInstruction(new Typeof(GetVarOperand.createOperand(index)));
         }
@@ -1174,7 +1174,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
 
     private void visitName(Node node) {
         updateLineNumber(node);
-        addInstruction(new Name(node.getString()));
+        addInstruction(new Name(dedup(node.getString())));
     }
 
     private void visitNumber(Node node) {
@@ -1363,7 +1363,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
 
             // Access property
             addInstruction(
-                    new RefSpecial(lhs.convertToConsume(), (String) node.getProp(Node.NAME_PROP)));
+                    new RefSpecial(lhs.convertToConsume(), dedup((String) node.getProp(Node.NAME_PROP))));
             int afterLabel = instructions.size();
             addInstruction(new Goto());
 
@@ -1373,7 +1373,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
             addInstruction(PushConstant.pushUndefined);
             resolveForwardGoto(afterLabel);
         } else {
-            var name = (String) node.getProp(Node.NAME_PROP);
+            var name = dedup((String) node.getProp(Node.NAME_PROP));
             visitUnaryOperation(child, obj -> new RefSpecial(obj, name));
         }
     }
@@ -1761,7 +1761,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     return new DoubleOperand(num);
                 }
             case Token.STRING:
-                return new StringOperand(node.getString());
+                return new StringOperand(dedup(node.getString()));
             case Token.NULL:
                 return NullOperand.instance;
             case Token.UNDEFINED:
@@ -1810,7 +1810,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     return new DoubleOperand(num);
                 }
             case Token.STRING:
-                return new StringOperand(node.getString());
+                return new StringOperand(dedup(node.getString()));
             case Token.NULL:
                 return NullOperand.instance;
             case Token.UNDEFINED:
@@ -1985,7 +1985,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
         Node c = child;
         for (int i = 0; i < count; i++, c = c.getNext()) {
             Object pid = propertyIds[i];
-            keys[i] = (pid instanceof Node) ? null : pid;
+            keys[i] = (pid instanceof Node) ? null : dedupIfString(pid);
 
             int ct = c.getType();
             boolean valueIsLiteral =
@@ -2312,7 +2312,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
             case Token.GETPROP:
                 addInstruction(
                         new GetPropSuper(
-                                superObject, object.getNext().getString(), false)); // stack: [p]
+                            superObject, dedup(object.getNext().getString()), false)); // stack: [p]
                 break;
 
             case Token.GETELEM:
@@ -2352,7 +2352,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
             case Token.GETPROP:
                 addInstruction(
                         new SetPropSuper(
-                                superObject, object.getNext().getString(), PopOperand.instance));
+                            superObject, dedup(object.getNext().getString()), PopOperand.instance));
                 // stack: prefix [p+-1], postfix: [p, p+-1]
                 break;
 
@@ -2393,7 +2393,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 }
             case Token.NAME:
                 {
-                    String name = child.getString();
+                    String name = dedup(child.getString());
                     addInstruction(new NameIncDec(name, incrDecrMask));
                     break;
                 }
@@ -2401,7 +2401,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 {
                     Node object = child.getFirstChild();
                     var objOperand = getOperand(object, 0);
-                    String property = object.getNext().getString();
+                    String property = dedup(object.getNext().getString());
                     addInstruction(new PropIncDec(objOperand, property, incrDecrMask));
                     break;
                 }
@@ -2450,7 +2450,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
         switch (type) {
             case Token.NAME:
                 {
-                    String name = left.getString();
+                    String name = dedup(left.getString());
                     // stack: ... -> ... function thisObj
                     if (isOptionalChainingCall) {
                         addInstruction(new NameAndThisOptional(name));
@@ -2467,7 +2467,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                     var obj = getOperand(target, 0);
                     Node id = target.getNext();
                     if (type == Token.GETPROP) {
-                        String property = id.getString();
+                        String property = dedup(id.getString());
                         // stack: ... target -> ... function thisObj
                         if (isOptionalChainingCall) {
                             addInstruction(new PropAndThisOptional(obj, property));
@@ -2514,5 +2514,13 @@ public class Compiler<T extends ScriptOrFn<T>> {
         addInstruction(new Goto());
 
         return new CompleteOptionalCallJump(putArgsAndDoCallLabel, afterLabel);
+    }
+
+    private String dedup(String x) {
+        return compilerEnv.getDeduplicator().deduplicate(x);
+    }
+
+    private Object dedupIfString(Object obj) {
+        return obj instanceof String ? dedup((String) obj) : obj;
     }
 }
