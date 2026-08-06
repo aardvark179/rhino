@@ -16,9 +16,7 @@ import java.util.Objects;
  * into the hash table rather than creating an intermediate object, and the definition order of
  * the descriptors is preserved via a linked list. Only add and query are supported.
  */
-public class CompactDescriptorMap<
-        U extends PropHolder<U>,
-        O extends SlotMapOwner<U>> {
+public class CompactDescriptorMap<U extends PropHolder<U>, O extends SlotMapOwner<U>> {
 
     private static class DescriptorHolder<U extends PropHolder<U>, O extends SlotMapOwner<U>> {
         private final CompactSlot.Descriptor<?, U, O> descriptor;
@@ -68,8 +66,8 @@ public class CompactDescriptorMap<
 
     private CompactDescriptorMap(
             DescriptorHolder<U, O>[] descriptors,
-            DescriptorHolder<U,O> first,
-            DescriptorHolder<U,O> last,
+            DescriptorHolder<U, O> first,
+            DescriptorHolder<U, O> last,
             int count,
             boolean hasIndex) {
         this.descriptors = descriptors;
@@ -153,7 +151,8 @@ public class CompactDescriptorMap<
             // Check if the table is not too full before inserting.
             if (4 * (count + 1) > 3 * descriptors.length) {
                 // table size must be a power of 2 -- always grow by x2!
-                DescriptorHolder<U, O>[] newDescriptors = new DescriptorHolder[descriptors.length * 2];
+                DescriptorHolder<U, O>[] newDescriptors =
+                        new DescriptorHolder[descriptors.length * 2];
                 copyTable(descriptors, newDescriptors);
                 descriptors = newDescriptors;
             }

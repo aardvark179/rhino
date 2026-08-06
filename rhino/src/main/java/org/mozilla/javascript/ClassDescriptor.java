@@ -370,13 +370,12 @@ public class ClassDescriptor<T extends ScriptableObject> {
             public Props<?> get(Builder<?> builder) {
                 return builder.protoProps;
             }
-
         };
 
         public abstract Props<?> get(Builder<?> builder);
     }
 
-    private static class Props <O extends ScriptableObject> {
+    private static class Props<O extends ScriptableObject> {
         final List<FuncPropDesc<O>> funcs = new ArrayList<>();
         final List<PropDesc<O>> props = new ArrayList<>();
         final CompactDescriptorMap.Builder<Scriptable, O> map;
@@ -403,7 +402,7 @@ public class ClassDescriptor<T extends ScriptableObject> {
      * methods can be added before finally calling {@link Builder#build()} to create the final
      * descriptor.
      */
-    public static class Builder <P extends ScriptableObject> {
+    public static class Builder<P extends ScriptableObject> {
         private final JSDescriptor<JSFunction> ctor;
         private final Props<JSFunction> ctorProps;
         private final Props<P> protoProps;
@@ -657,15 +656,17 @@ public class ClassDescriptor<T extends ScriptableObject> {
                 BuiltInJSCodeExec<JSFunction> code,
                 int attributes,
                 int stdAttrs) {
-            var props = switch(dest) {
-                case CTOR -> this.ctorProps;
-                case PROTO -> this.protoProps;
-            };
-            props.addFunction(new FuncPropDesc<>(
-                name,
-                buildDescriptor(name, length, buildOptJSCode(code)),
-                attributes,
-                stdAttrs));
+            var props =
+                    switch (dest) {
+                        case CTOR -> this.ctorProps;
+                        case PROTO -> this.protoProps;
+                    };
+            props.addFunction(
+                    new FuncPropDesc<>(
+                            name,
+                            buildDescriptor(name, length, buildOptJSCode(code)),
+                            attributes,
+                            stdAttrs));
             return this;
         }
 
@@ -685,11 +686,12 @@ public class ClassDescriptor<T extends ScriptableObject> {
                 String name,
                 LambdaGetterFunction getter,
                 LambdaSetterFunction setter,
-            int attributes) {
-            var props = switch(dest) {
-                case CTOR -> this.ctorProps;
-                case PROTO -> this.protoProps;
-            };
+                int attributes) {
+            var props =
+                    switch (dest) {
+                        case CTOR -> this.ctorProps;
+                        case PROTO -> this.protoProps;
+                    };
             props.addProp(new LambdaGetSetPropDesc<>(name, getter, setter, attributes));
             return this;
         }
@@ -703,11 +705,12 @@ public class ClassDescriptor<T extends ScriptableObject> {
                 SymbolKey name,
                 LambdaGetterFunction getter,
                 LambdaSetterFunction setter,
-            int attributes) {
-            var props = switch(dest) {
-                case CTOR -> this.ctorProps;
-                case PROTO -> this.protoProps;
-            };
+                int attributes) {
+            var props =
+                    switch (dest) {
+                        case CTOR -> this.ctorProps;
+                        case PROTO -> this.protoProps;
+                    };
             props.addProp(new LambdaGetSetPropDesc<>(name, getter, setter, attributes));
             return this;
         }
@@ -717,7 +720,7 @@ public class ClassDescriptor<T extends ScriptableObject> {
                 String name,
                 BuiltInDescriptor.Getter<P> getter,
                 BuiltInDescriptor.Setter<P> setter,
-            int attributes) {
+                int attributes) {
             if (dest == Destination.CTOR) {
                 throw new IllegalStateException();
             }
@@ -725,7 +728,7 @@ public class ClassDescriptor<T extends ScriptableObject> {
             return this;
         }
 
-        public  Builder<P> withProp(
+        public Builder<P> withProp(
                 Destination dest,
                 SymbolKey name,
                 BuiltInDescriptor.Getter<P> getter,

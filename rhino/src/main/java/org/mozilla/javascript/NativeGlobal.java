@@ -55,7 +55,8 @@ public class NativeGlobal implements Serializable {
         EVAL_DESCRIPTOR = DESCRIPTOR.findCtorDesc("eval");
 
         var errorDescs =
-                new EnumMap<TopLevel.NativeErrors, ClassDescriptor<NativeError>>(TopLevel.NativeErrors.class);
+                new EnumMap<TopLevel.NativeErrors, ClassDescriptor<NativeError>>(
+                        TopLevel.NativeErrors.class);
         for (var e : TopLevel.NativeErrors.values()) {
             if (e == TopLevel.NativeErrors.Error) continue;
             ClassDescriptor.Builder<NativeError> builder;
@@ -114,7 +115,7 @@ public class NativeGlobal implements Serializable {
                     errorProto,
                     sealed,
                     (c, ctor) -> {
-                        ((JSFunction)ctor).setPrototype(nativeError);
+                        ((JSFunction) ctor).setPrototype(nativeError);
                         errorProto.setPrototype(nativeErrorProto);
                     });
         }

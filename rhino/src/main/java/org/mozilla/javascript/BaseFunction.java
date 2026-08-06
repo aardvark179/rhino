@@ -110,7 +110,7 @@ public class BaseFunction extends ScriptableObject implements Function {
         CALL_DESCRIPTOR = DESCRIPTOR.findProtoDesc("call");
 
         GENERATOR_DESCRIPTOR =
-              new ClassDescriptor.Builder<BaseFunction>(
+                new ClassDescriptor.Builder<BaseFunction>(
                                 GENERATOR_FUNCTION_CLASS,
                                 "GeneratorFunction",
                                 1,

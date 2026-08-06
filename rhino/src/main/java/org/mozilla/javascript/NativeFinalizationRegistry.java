@@ -31,7 +31,7 @@ public class NativeFinalizationRegistry extends ScriptableObject {
     private static final long serialVersionUID = 1L;
     private static final String CLASS_NAME = "FinalizationRegistry";
 
-    private static final ClassDescriptor DESCRIPTOR;
+    private static final ClassDescriptor<NativeFinalizationRegistry> DESCRIPTOR;
 
     private final Callable cleanupCallback;
     private final VarScope parentScope;
@@ -51,7 +51,7 @@ public class NativeFinalizationRegistry extends ScriptableObject {
 
     static {
         DESCRIPTOR =
-                new ClassDescriptor.Builder(
+                new ClassDescriptor.Builder<NativeFinalizationRegistry>(
                                 CLASS_NAME, 1, NativeFinalizationRegistry::jsConstructor)
                         .withMethod(PROTO, "register", 2, NativeFinalizationRegistry::register)
                         .withMethod(PROTO, "unregister", 1, NativeFinalizationRegistry::unregister)
