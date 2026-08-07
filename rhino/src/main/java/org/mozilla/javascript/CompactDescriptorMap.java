@@ -20,11 +20,13 @@ public class CompactDescriptorMap<U extends PropHolder<U>, O extends SlotMapOwne
 
     private static class DescriptorHolder<U extends PropHolder<U>, O extends SlotMapOwner<U>> {
         private final CompactSlot.Descriptor<?, U, O> descriptor;
+        private final short offset;
         private DescriptorHolder<U, O> next;
         private DescriptorHolder<U, O> orderedNext;
 
-        private DescriptorHolder(CompactSlot.Descriptor<?, U, O> descriptor) {
+        private DescriptorHolder(CompactSlot.Descriptor<?, U, O> descriptor, short offset) {
             this.descriptor = descriptor;
+            this.offset = offset;
         }
     }
 
@@ -167,7 +169,8 @@ public class CompactDescriptorMap<U extends PropHolder<U>, O extends SlotMapOwne
         private void insertNewDescriptor(CompactSlot.Descriptor<?, U, O> descriptor) {
             ++count;
             // add new descriptor to the ordered linked list
-            var newHolder = new DescriptorHolder<U, O>(descriptor);
+            short offset = (lastAdded == null) ? 0 : (short) (lastAdded.offset + 1);
+            var newHolder = new DescriptorHolder<U, O>(descriptor, offset);
             if (lastAdded != null) {
                 lastAdded.orderedNext = newHolder;
             }
