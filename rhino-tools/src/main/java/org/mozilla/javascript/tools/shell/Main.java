@@ -71,6 +71,8 @@ public class Main {
     static Require require;
     private static SecurityProxy securityImpl;
     private static final ScriptCache scriptCache = new ScriptCache(32);
+    private static int backgroundContextCount = 0;
+    private static BackgroundContexts backgroundContexts;
 
     static {
         global.initQuitAction(new IProxy(IProxy.SYSTEM_EXIT));
@@ -148,6 +150,9 @@ public class Main {
             result = exec(args);
         } finally {
             global.cleanup();
+            if (backgroundContexts != null) {
+                backgroundContexts.shutdown();
+            }
         }
         if (result != 0) {
             System.exit(result);
@@ -168,6 +173,7 @@ public class Main {
         if (!global.initialized) {
             global.init(shellContextFactory);
         }
+        ensureBackgroundContexts();
         IProxy iproxy = new IProxy(IProxy.PROCESS_FILES);
         iproxy.args = args;
         shellContextFactory.call(iproxy);
@@ -211,6 +217,7 @@ public class Main {
             if (script != null) {
                 VarScope scope = getShellScope();
                 script.exec(cx, scope, ScriptableObject.getTopLevelScope(scope).getGlobalThis());
+                runInBackgroundContexts(script);
             }
         } catch (RhinoException rex) {
             ToolErrorReporter.reportException(cx.getErrorReporter(), rex);
@@ -226,6 +233,23 @@ public class Main {
 
     public static Global getGlobal() {
         return global;
+    }
+
+    private static void ensureBackgroundContexts() {
+        if (backgroundContexts == null && backgroundContextCount > 0) {
+            backgroundContexts =
+                    new BackgroundContexts(shellContextFactory, backgroundContextCount);
+        }
+    }
+
+    /**
+     * Submit a script for execution in every background context created via {@code -contexts}, in
+     * addition to the primary context. A no-op if no background contexts were requested.
+     */
+    static void runInBackgroundContexts(Script script) {
+        if (backgroundContexts != null) {
+            backgroundContexts.runInAll(script);
+        }
     }
 
     static VarScope getShellScope() {
@@ -334,6 +358,25 @@ public class Main {
                 shellContextFactory.setWarningAsError(true);
                 continue;
             }
+            if (arg.equals("-contexts")) {
+                if (++i == args.length) {
+                    usageError = arg;
+                    break goodUsage;
+                }
+                int count;
+                try {
+                    count = Integer.parseInt(args[i]);
+                } catch (NumberFormatException ex) {
+                    usageError = args[i];
+                    break goodUsage;
+                }
+                if (count < 0) {
+                    usageError = args[i];
+                    break goodUsage;
+                }
+                backgroundContextCount = count;
+                continue;
+            }
             if (arg.equals("-e")) {
                 processStdin = false;
                 if (++i == args.length) {
@@ -343,6 +386,7 @@ public class Main {
                 if (!global.initialized) {
                     global.init(shellContextFactory);
                 }
+                ensureBackgroundContexts();
                 IProxy iproxy = new IProxy(IProxy.EVAL_INLINE_SCRIPT);
                 iproxy.scriptText = args[i];
                 shellContextFactory.call(iproxy);
@@ -506,6 +550,7 @@ public class Main {
                         }
                         NativeArray h = global.history;
                         h.put((int) h.getLength(), h, source);
+                        runInBackgroundContexts(script);
                     }
                     printPromiseWarnings(cx, false);
                 } catch (RhinoException rex) {
@@ -593,6 +638,7 @@ public class Main {
         if (script != null) {
             Scriptable global = ScriptableObject.getTopLevelScope(scope).getGlobalThis();
             script.exec(cx, scope, global);
+            runInBackgroundContexts(script);
         }
     }
 

@@ -9,6 +9,8 @@ import java.nio.charset.Charset;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.NativeConsole;
 import org.mozilla.javascript.ScriptStackElement;
+import org.mozilla.javascript.ScriptableObject;
+import org.mozilla.javascript.TopLevel;
 import org.mozilla.javascript.VarScope;
 
 /** Provide a printer use in console API */
@@ -27,7 +29,9 @@ class ShellConsolePrinter implements NativeConsole.ConsolePrinter {
         }
 
         String msg = NativeConsole.format(cx, scope, args);
-        var console = Main.getGlobal().getConsole(Charset.defaultCharset());
+        TopLevel top = ScriptableObject.getTopLevelScope(scope);
+        Global owner = (top instanceof Global) ? (Global) top : Main.getGlobal();
+        var console = owner.getConsole(Charset.defaultCharset());
         console.println(level + " " + msg);
 
         if (stack != null) {
