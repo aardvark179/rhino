@@ -180,4 +180,8 @@ public class BuiltInDescriptor<T extends ScriptableObject>
         slot.setRawValue(owner);
         return slot;
     }
+
+    public int reuiqredStorage() {
+        return 0;
+    }
 }

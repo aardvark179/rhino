@@ -40,4 +40,8 @@ public class SimpleDescriptor<U extends PropHolder<U>, O extends SlotMapOwner<U>
     public boolean isSetterDescriptor() {
         return false;
     }
+
+    public int reuiqredStorage() {
+        return 1;
+    }
 }

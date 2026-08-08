@@ -79,6 +79,8 @@ public class CompactSlot<
         public boolean isSetterDescriptor() {
             return false;
         }
+
+        public abstract int reuiqredStorage();
     }
 
     protected final T descriptor;

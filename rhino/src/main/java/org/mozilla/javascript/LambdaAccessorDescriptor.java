@@ -100,4 +100,8 @@ public class LambdaAccessorDescriptor<T extends ScriptableObject>
         }
         return slot;
     }
+
+    public int reuiqredStorage() {
+        return 3;
+    }
 }
