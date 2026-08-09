@@ -18,7 +18,8 @@ public class StandardSlot<T extends PropHolder<T>> extends Slot<T> {
     private short attributes;
 
     StandardSlot(Object name, int index, int attributes) {
-        super(attributes);
+        super();
+        this.attributes = (short) attributes;
         this.name = name;
         this.indexOrHash = name == null ? index : name.hashCode();
     }
@@ -47,6 +48,7 @@ public class StandardSlot<T extends PropHolder<T>> extends Slot<T> {
 
     protected StandardSlot(Slot<T> oldSlot) {
         super(oldSlot);
+        attributes = (short) oldSlot.getAttributes();
         name = oldSlot.getName();
         indexOrHash = oldSlot.getIndexOrHash();
     }
@@ -58,8 +60,35 @@ public class StandardSlot<T extends PropHolder<T>> extends Slot<T> {
         }
     }
 
+    @Override
     public Object getValue(T start) {
         return value;
+    }
+
+    @Override
+    public boolean setValue(Object value, T owner, T start, boolean isThrow) {
+        if ((attributes & ScriptableObject.READONLY) != 0) {
+            if (isThrow) {
+                throw ScriptRuntime.typeErrorById("msg.modify.readonly", getName());
+            }
+            return true;
+        }
+        if (owner == start) {
+            this.value = value;
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    int getAttributes() {
+        return attributes;
+    }
+
+    @Override
+    void setAttributes(int value) {
+        ScriptableObject.checkValidAttributes(value);
+        attributes = (short) value;
     }
 
     protected void throwNoSetterException(T start, Object newValue) {
