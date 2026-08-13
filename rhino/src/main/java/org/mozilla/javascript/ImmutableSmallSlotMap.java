@@ -51,7 +51,7 @@ public class ImmutableSmallSlotMap<T extends PropHolder<T>> implements SlotMap<T
 
     @Override
     public boolean isEmpty() {
-        return false;
+        return slot0 == null;
     }
 
     @Override
