@@ -1481,6 +1481,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
         return defineOwnProperty(cx, id, new PropertyDescriptor(desc), true);
     }
 
+    @Override
     public boolean defineOwnProperty(Context cx, Object id, PropertyDescriptor desc) {
         return defineOwnProperty(cx, id, desc, true);
     }
@@ -2889,6 +2890,7 @@ public abstract class ScriptableObject extends SlotMapOwner<Scriptable>
         readMaps(in);
     }
 
+    @Override
     public PropertyDescriptor getOwnPropertyDescriptor(Context cx, Object id) {
         var slot = querySlot(cx, id);
         if (slot == null) return null;
