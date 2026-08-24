@@ -21,7 +21,6 @@ import java.lang.ref.ReferenceQueue;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.ArrayDeque;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -2508,8 +2507,7 @@ public class Context implements Closeable {
     }
 
     public final void setApplicationClassLoader(ClassLoader loader) {
-        if (sealed)
-            onSealedMutation();
+        if (sealed) onSealedMutation();
         if (loader == null) {
             // restore default behaviour
             applicationClassLoader = null;
@@ -2521,9 +2519,7 @@ public class Context implements Closeable {
         applicationClassLoader = loader;
     }
 
-    /**
-     * Capture any required state for running a microtask.
-     */
+    /** Capture any required state for running a microtask. */
     Runnable captureTaskState(Runnable task) {
         return task;
     }
