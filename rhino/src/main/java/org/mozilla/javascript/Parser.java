@@ -2916,13 +2916,15 @@ public class Parser {
             Symbol varSymbol,
             Scope currentScope,
             Scope definingScope) {
-        return ((symbol != null
-                                && currentScope == symbol.getDeclaredScope()
-                                && oldDeclType != Token.FUNCTION
-                                && newDeclType != Token.FUNCTION)
-                        || currentScope == currentScriptOrFn)
-                && !Symbol.isDeclTypeLexical(oldDeclType)
-                && !Symbol.isDeclTypeLexical(newDeclType);
+
+        return (symbol != null && symbol.getDeclType() == Token.VAR && newDeclType == Token.VAR)
+                || ((symbol != null
+                                        && currentScope == symbol.getDeclaredScope()
+                                        && oldDeclType != Token.FUNCTION
+                                        && newDeclType != Token.FUNCTION)
+                                || currentScope == currentScriptOrFn)
+                        && !Symbol.isDeclTypeLexical(oldDeclType)
+                        && !Symbol.isDeclTypeLexical(newDeclType);
     }
 
     private boolean maskingLexicalDefinition(
