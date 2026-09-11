@@ -1055,7 +1055,7 @@ public class Parser {
             syntheticType = FunctionNode.FUNCTION_EXPRESSION;
         }
 
-        defineFunctionSymbol(type, syntheticType, name);
+        defineFunctionSymbol(type, syntheticType, name, isGenerator);
 
         FunctionNode fnNode = new FunctionNode(functionSourceStart, name);
         fnNode.setMethodDefinition(isMethodDefiniton);
@@ -1129,14 +1129,14 @@ public class Parser {
         return fnNode;
     }
 
-    private void defineFunctionSymbol(int type, int syntheticType, Name name) {
+    private void defineFunctionSymbol(int type, int syntheticType, Name name, boolean isGenerator) {
         if (syntheticType != FunctionNode.FUNCTION_EXPRESSION
                 && name != null
                 && name.length() > 0) {
             if (type == FunctionNode.FUNCTION_BLOCK_SCOPED) {
                 // Block-scoped function in strict mode: define as let-like binding
                 if (inUseStrictDirective || currentScope != currentScriptOrFn) {
-                    defineSymbol(Type.LET, name.getIdentifier());
+                    defineSymbol(isGenerator ? Type.LET : Type.FUNCTION_LET, name.getIdentifier());
                     return;
                 }
             }
@@ -2896,8 +2896,10 @@ public class Parser {
             Scope currentScope,
             Scope definingScope) {
         return isSimpleRedefinition(
-                        newDeclType, oldDeclType, symbol, varSymbol, currentScope, definingScope)
-                || (!maskingLexicalDefinition(
+                newDeclType, oldDeclType, symbol, varSymbol, currentScope, definingScope)
+               || isAnnexBFunctionRedeclaration(
+                   newDeclType, oldDeclType, symbol, varSymbol, currentScope, definingScope)
+               || (!maskingLexicalDefinition(
                                 newDeclType,
                                 oldDeclType,
                                 symbol,
@@ -2924,6 +2926,18 @@ public class Parser {
                 && (oldDeclType == Type.CONST
                         || newDeclType == Type.CONST
                         || (definingScope == currentScope && oldDeclType == Type.LET)));
+    }
+
+    private boolean isAnnexBFunctionRedeclaration(
+            Type newDeclType,
+            Type oldDeclType,
+            Symbol symbol,
+            Symbol varSymbol,
+            Scope currentScope,
+            Scope definingScope) {
+        return (!inUseStrictDirective &&
+                (newDeclType == Type.FUNCTION_LET || newDeclType == Type.FUNCTION_VAR) &&
+                (oldDeclType == Type.FUNCTION_LET || oldDeclType == Type.FUNCTION_VAR));
     }
 
     private boolean isSimpleRedefinition(
