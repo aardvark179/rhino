@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mozilla.javascript.Token;
+import org.mozilla.javascript.ast.Symbol.Type;
 
 public class ScopeTest {
 
@@ -21,7 +22,7 @@ public class ScopeTest {
     }
 
     private static Symbol addSymbol(Scope scope, String name, int declType) {
-        Symbol sym = new Symbol(declType, name);
+        Symbol sym = new Symbol(Type.fromToken(declType), name);
         scope.putSymbol(sym);
         return sym;
     }
@@ -73,7 +74,7 @@ public class ScopeTest {
         Scope original = createScope(top);
         original.setParentScope(top);
 
-        Symbol varSym = new Symbol(Token.VAR, "v");
+        Symbol varSym = new Symbol(Type.VAR, "v");
         original.putSymbol(varSym);
         original.putVarSymbol(varSym);
 
@@ -94,14 +95,14 @@ public class ScopeTest {
         Scope original = createScope(top);
         original.setParentScope(top);
 
-        Symbol varSym = new Symbol(Token.VAR, "v");
+        Symbol varSym = new Symbol(Type.VAR, "v");
         original.putSymbol(varSym);
         original.putVarSymbol(varSym);
 
         Scope result = Scope.splitScope(original);
 
         // Mutating one should not affect the other
-        Symbol varSym2 = new Symbol(Token.VAR, "w");
+        Symbol varSym2 = new Symbol(Type.VAR, "w");
         original.putVarSymbol(varSym2);
 
         assertFalse(

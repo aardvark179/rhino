@@ -6,15 +6,37 @@
 
 package org.mozilla.javascript.ast;
 
+import static org.mozilla.javascript.ScriptableObject.CONST;
+
 import org.mozilla.javascript.Node;
 import org.mozilla.javascript.Token;
 
 /** Represents a symbol-table entry. */
 public class Symbol {
 
-    // One of Token.FUNCTION, Token.LP (for parameters), Token.VAR,
-    // Token.LET, or Token.CONST
-    private int declType;
+    public enum Type {
+        FUNCTION_VAR,
+        FUNCTION_LET,
+        LP,
+        VAR,
+        LET,
+        CONST;
+
+        public static Type fromToken(int token) {
+            return switch (token) {
+                case Token.FUNCTION -> FUNCTION_VAR;
+                case Token.LP -> LP;
+                case Token.VAR -> VAR;
+                case Token.LET -> LET;
+                case Token.CONST -> CONST;
+                default -> {
+                    throw new IllegalArgumentException("Invalid declType: " + token);
+                }
+            };
+        }
+    }
+
+    private Type declType;
     private int index = -1;
     private String name;
     private Node node;
@@ -31,24 +53,18 @@ public class Symbol {
      * @param declType {@link Token#FUNCTION}, {@link Token#LP} (for params), {@link Token#VAR},
      *     {@link Token#LET} or {@link Token#CONST}
      */
-    public Symbol(int declType, String name) {
+    public Symbol(Type declType, String name) {
         setName(name);
         setDeclType(declType);
     }
 
     /** Returns symbol declaration type */
-    public int getDeclType() {
+    public Type getDeclType() {
         return declType;
     }
 
     /** Sets symbol declaration type */
-    public void setDeclType(int declType) {
-        if (!(declType == Token.FUNCTION
-                || declType == Token.LP
-                || declType == Token.VAR
-                || declType == Token.LET
-                || declType == Token.CONST))
-            throw new IllegalArgumentException("Invalid declType: " + declType);
+    public void setDeclType(Type declType) {
         this.declType = declType;
     }
 
@@ -107,15 +123,15 @@ public class Symbol {
     }
 
     public String getDeclTypeName() {
-        return Token.typeToName(declType);
+        return declType.name();
     }
 
     public boolean isDeclTypeLexical() {
-        return declType == Token.LET || declType == Token.CONST;
+        return declType == Type.FUNCTION_LET || declType == Type.LET || declType == Type.CONST;
     }
 
-    public static boolean isDeclTypeLexical(int declType) {
-        return declType == Token.LET || declType == Token.CONST;
+    public static boolean isDeclTypeLexical(Type declType) {
+        return declType == Type.FUNCTION_LET || declType == Type.LET || declType == Type.CONST;
     }
 
     @Override

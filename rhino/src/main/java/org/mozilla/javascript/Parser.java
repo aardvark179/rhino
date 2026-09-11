@@ -70,6 +70,7 @@ import org.mozilla.javascript.ast.StringLiteral;
 import org.mozilla.javascript.ast.SwitchCase;
 import org.mozilla.javascript.ast.SwitchStatement;
 import org.mozilla.javascript.ast.Symbol;
+import org.mozilla.javascript.ast.Symbol.Type;
 import org.mozilla.javascript.ast.TaggedTemplateLiteral;
 import org.mozilla.javascript.ast.TemplateCharacters;
 import org.mozilla.javascript.ast.TemplateLiteral;
@@ -1054,22 +1055,7 @@ public class Parser {
             syntheticType = FunctionNode.FUNCTION_EXPRESSION;
         }
 
-        if (syntheticType != FunctionNode.FUNCTION_EXPRESSION
-                && name != null
-                && name.length() > 0) {
-            if (type == FunctionNode.FUNCTION_BLOCK_SCOPED) {
-                // Block-scoped function in strict mode: define as let-like binding
-                if (inUseStrictDirective || currentScope != currentScriptOrFn) {
-                    defineSymbol(Token.LET, name.getIdentifier());
-                } else {
-                    // Function statements define a symbol in the enclosing scope
-                    defineSymbol(Token.FUNCTION, name.getIdentifier());
-                }
-            } else {
-                // Function statements define a symbol in the enclosing scope
-                defineSymbol(Token.FUNCTION, name.getIdentifier());
-            }
-        }
+        defineFunctionSymbol(type, syntheticType, name);
 
         FunctionNode fnNode = new FunctionNode(functionSourceStart, name);
         fnNode.setMethodDefinition(isMethodDefiniton);
@@ -1141,6 +1127,22 @@ public class Parser {
         }
         fnNode.doAnnexBHoisting();
         return fnNode;
+    }
+
+    private void defineFunctionSymbol(int type, int syntheticType, Name name) {
+        if (syntheticType != FunctionNode.FUNCTION_EXPRESSION
+                && name != null
+                && name.length() > 0) {
+            if (type == FunctionNode.FUNCTION_BLOCK_SCOPED) {
+                // Block-scoped function in strict mode: define as let-like binding
+                if (inUseStrictDirective || currentScope != currentScriptOrFn) {
+                    defineSymbol(Type.LET, name.getIdentifier());
+                    return;
+                }
+            }
+            // Function statements define a symbol in the enclosing scope
+            defineSymbol(Type.FUNCTION_VAR, name.getIdentifier());
+        }
     }
 
     private AstNode arrowFunction(AstNode params, int startLine, int startColumn)
@@ -2706,10 +2708,18 @@ public class Parser {
     }
 
     void defineSymbol(int declType, String name) {
+        defineSymbol(Type.fromToken(declType), name, false);
+    }
+
+    void defineSymbol(Type declType, String name) {
         defineSymbol(declType, name, false);
     }
 
     void defineSymbol(int declType, String name, boolean ignoreNotInBlock) {
+        defineSymbol(Type.fromToken(declType), name, ignoreNotInBlock);
+    }
+
+    void defineSymbol(Type declType, String name, boolean ignoreNotInBlock) {
         boolean isES6 = compilerEnv.getLanguageVersion() >= Context.VERSION_ES6;
 
         if (isES6) {
@@ -2719,7 +2729,7 @@ public class Parser {
         }
     }
 
-    void defineSymbolLegacy(int declType, String name, boolean ignoreNotInBlock) {
+    void defineSymbolLegacy(Type declType, String name, boolean ignoreNotInBlock) {
         if (name == null) {
             if (compilerEnv.isIdeMode()) { // be robust in IDE-mode
                 return;
@@ -2730,26 +2740,28 @@ public class Parser {
         }
         Scope definingScope = currentScope.getDefiningScope(name);
         Symbol symbol = definingScope != null ? definingScope.getSymbol(name) : null;
-        int symDeclType = symbol != null ? symbol.getDeclType() : -1;
+        Symbol.Type symDeclType = symbol != null ? symbol.getDeclType() : null;
         if (symbol != null
-                && (symDeclType == Token.CONST
-                        || declType == Token.CONST
-                        || (definingScope == currentScope && symDeclType == Token.LET))) {
+                && (symDeclType == Type.CONST
+                        || declType == Type.CONST
+                        || (definingScope == currentScope && symDeclType == Type.LET))) {
             addError(
-                    symDeclType == Token.CONST
+                    symDeclType == Type.CONST
                             ? "msg.const.redecl"
-                            : symDeclType == Token.LET
+                            : symDeclType == Type.LET
                                     ? "msg.let.redecl"
-                                    : symDeclType == Token.VAR
+                                    : symDeclType == Type.VAR
                                             ? "msg.var.redecl"
-                                            : symDeclType == Token.FUNCTION
+                                            : (symDeclType == Type.FUNCTION_VAR
+                                                            || symDeclType == Type.FUNCTION_LET)
                                                     ? "msg.fn.redecl"
                                                     : "msg.parm.redecl",
                     name);
             return;
         }
         switch (declType) {
-            case Token.LET:
+            case LET:
+            case FUNCTION_LET:
                 if (!ignoreNotInBlock
                         && ((currentScope.getType() == Token.IF) || currentScope instanceof Loop)) {
                     addError("msg.let.decl.not.in.block");
@@ -2758,12 +2770,12 @@ public class Parser {
                 currentScope.putSymbol(new Symbol(declType, name));
                 return;
 
-            case Token.VAR:
-            case Token.CONST:
-            case Token.FUNCTION:
+            case VAR:
+            case CONST:
+            case FUNCTION_VAR:
                 if (symbol != null) {
-                    if (symDeclType == Token.VAR) addStrictWarning("msg.var.redecl", name);
-                    else if (symDeclType == Token.LP) {
+                    if (symDeclType == Type.VAR) addStrictWarning("msg.var.redecl", name);
+                    else if (symDeclType == Type.LP) {
                         addStrictWarning("msg.var.hides.arg", name);
                     }
                 } else {
@@ -2771,7 +2783,7 @@ public class Parser {
                 }
                 return;
 
-            case Token.LP:
+            case LP:
                 if (symbol != null) {
                     // must be duplicate parameter. Second parameter hides the
                     // first, so go ahead and add the second parameter
@@ -2785,7 +2797,7 @@ public class Parser {
         }
     }
 
-    void defineSymbolES6(int declType, String name, boolean ignoreNotInBlock) {
+    void defineSymbolES6(Type declType, String name, boolean ignoreNotInBlock) {
         if (name == null) {
             if (compilerEnv.isIdeMode()) { // be robust in IDE-mode
                 return;
@@ -2797,24 +2809,26 @@ public class Parser {
         Scope definingScope = currentScope.getDefiningScope(name);
         Symbol symbol = definingScope != null ? definingScope.getSymbol(name) : null;
         Symbol varSymbol = currentScope.getVarSymbol(name);
-        int symDeclType = symbol != null ? symbol.getDeclType() : -1;
+        Type symDeclType = symbol != null ? symbol.getDeclType() : null;
         if (!isValidES6Redeclaration(
                 declType, symDeclType, symbol, varSymbol, currentScope, definingScope)) {
             addError(
-                    symDeclType == Token.CONST
+                    symDeclType == Type.CONST
                             ? "msg.const.redecl"
-                            : symDeclType == Token.LET
+                            : symDeclType == Type.LET
                                     ? "msg.let.redecl"
-                                    : symDeclType == Token.VAR
+                                    : symDeclType == Type.VAR
                                             ? "msg.var.redecl"
-                                            : symDeclType == Token.FUNCTION
+                                            : (symDeclType == Type.FUNCTION_VAR
+                                                            || symDeclType == Type.FUNCTION_LET)
                                                     ? "msg.fn.redecl"
                                                     : "msg.parm.redecl",
                     name);
             return;
         }
         switch (declType) {
-            case Token.LET:
+            case LET:
+            case FUNCTION_LET:
                 if (!ignoreNotInBlock
                         && (inSingleStatementContext || currentScope instanceof Loop)) {
                     addError("msg.let.decl.not.in.block");
@@ -2824,7 +2838,7 @@ public class Parser {
                 currentScope.putSymbol(sym);
                 return;
 
-            case Token.CONST:
+            case CONST:
                 if (!ignoreNotInBlock
                         && (inSingleStatementContext || currentScope instanceof Loop)) {
                     addError("msg.const.decl.not.in.block");
@@ -2833,17 +2847,17 @@ public class Parser {
                 currentScope.putSymbol(new Symbol(declType, name));
                 return;
             // fall through for pre-ES6: const is function-scoped like var
-            case Token.FUNCTION:
+            case FUNCTION_VAR:
                 if (!ignoreNotInBlock
                         && !inSingleStatementDeclContext
                         && (inSingleStatementContext || currentScope instanceof Loop)) {
                     addError("msg.function.decl.not.in.block");
                     return;
                 }
-            case Token.VAR:
+            case VAR:
                 if (symbol != null) {
-                    if (symDeclType == Token.VAR) addStrictWarning("msg.var.redecl", name);
-                    else if (symDeclType == Token.LP) {
+                    if (symDeclType == Type.VAR) addStrictWarning("msg.var.redecl", name);
+                    else if (symDeclType == Type.LP) {
                         addStrictWarning("msg.var.hides.arg", name);
                     }
                 } else {
@@ -2860,7 +2874,7 @@ public class Parser {
                 }
                 return;
 
-            case Token.LP:
+            case LP:
                 if (symbol != null) {
                     // must be duplicate parameter. Second parameter hides the
                     // first, so go ahead and add the second parameter
@@ -2875,8 +2889,8 @@ public class Parser {
     }
 
     private boolean isValidES6Redeclaration(
-            int newDeclType,
-            int oldDeclType,
+            Type newDeclType,
+            Type oldDeclType,
             Symbol symbol,
             Symbol varSymbol,
             Scope currentScope,
@@ -2900,39 +2914,39 @@ public class Parser {
     }
 
     private boolean isValidLegacyRedeclaration(
-            int newDeclType,
-            int oldDeclType,
+            Type newDeclType,
+            Type oldDeclType,
             Symbol symbol,
             Symbol varSymbol,
             Scope currentScope,
             Scope definingScope) {
         return !(symbol != null
-                && (oldDeclType == Token.CONST
-                        || newDeclType == Token.CONST
-                        || (definingScope == currentScope && oldDeclType == Token.LET)));
+                && (oldDeclType == Type.CONST
+                        || newDeclType == Type.CONST
+                        || (definingScope == currentScope && oldDeclType == Type.LET)));
     }
 
     private boolean isSimpleRedefinition(
-            int newDeclType,
-            int oldDeclType,
+            Type newDeclType,
+            Type oldDeclType,
             Symbol symbol,
             Symbol varSymbol,
             Scope currentScope,
             Scope definingScope) {
 
-        return (symbol != null && symbol.getDeclType() == Token.VAR && newDeclType == Token.VAR)
+        return (symbol != null && symbol.getDeclType() == Type.VAR && newDeclType == Type.VAR)
                 || ((symbol != null
                                         && currentScope == symbol.getDeclaredScope()
-                                        && oldDeclType != Token.FUNCTION
-                                        && newDeclType != Token.FUNCTION)
+                                        && oldDeclType != Type.FUNCTION_VAR
+                                        && newDeclType != Type.FUNCTION_VAR)
                                 || currentScope == currentScriptOrFn)
                         && !Symbol.isDeclTypeLexical(oldDeclType)
                         && !Symbol.isDeclTypeLexical(newDeclType);
     }
 
     private boolean maskingLexicalDefinition(
-            int newDeclType,
-            int oldDeclType,
+            Type newDeclType,
+            Type oldDeclType,
             Symbol symbol,
             Symbol varSymbol,
             Scope currentScope,
@@ -2945,8 +2959,8 @@ public class Parser {
     }
 
     private boolean maskingVarDefinition(
-            int newDeclType,
-            int oldDeclType,
+            Type newDeclType,
+            Type oldDeclType,
             Symbol symbol,
             Symbol varSymbol,
             Scope currentScope,

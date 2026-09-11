@@ -276,7 +276,7 @@ public class ScriptNode extends Scope {
 
     void addSymbol(Symbol symbol) {
         if (variableNames != null) codeBug();
-        if (symbol.getDeclType() == Token.LP) {
+        if (symbol.getDeclType() == Symbol.Type.LP) {
             paramCount++;
         }
         symbols.add(symbol);
@@ -309,7 +309,7 @@ public class ScriptNode extends Scope {
             FunctionNode fn = (FunctionNode) entry[1];
             if (!hasAnnexBConflict(letSym)) {
                 // No conflict: add var-hoisted slot and mark function.
-                Symbol varSym = new Symbol(Token.FUNCTION, letSym.getName());
+                Symbol varSym = new Symbol(Symbol.Type.FUNCTION_VAR, letSym.getName());
                 putSymbol(varSym);
                 fn.setAnnexBHoisted(true);
             }
@@ -335,8 +335,8 @@ public class ScriptNode extends Scope {
         for (Scope s = start; s != null; s = s.getParentScope()) {
             Symbol existing = s.getSymbol(name);
             if (existing != null && existing != sym) {
-                int dt = existing.getDeclType();
-                if (dt == Token.LET || dt == Token.CONST || dt == Token.LP) {
+                Symbol.Type dt = existing.getDeclType();
+                if (dt == Symbol.Type.LET || dt == Symbol.Type.CONST || dt == Symbol.Type.LP) {
                     return true;
                 }
             }
@@ -365,7 +365,7 @@ public class ScriptNode extends Scope {
         for (int i = 0; i < symbols.size(); i++) {
             Symbol symbol = symbols.get(i);
             variableNames[i] = symbol.getName();
-            isConsts[i] = symbol.getDeclType() == Token.CONST;
+            isConsts[i] = symbol.getDeclType() == Symbol.Type.CONST;
             symbol.setIndex(i);
         }
     }
