@@ -1061,6 +1061,9 @@ public class Parser {
                 // Block-scoped function in strict mode: define as let-like binding
                 if (inUseStrictDirective || currentScope != currentScriptOrFn) {
                     defineSymbol(Token.LET, name.getIdentifier());
+                } else {
+                    // Function statements define a symbol in the enclosing scope
+                    defineSymbol(Token.FUNCTION, name.getIdentifier());
                 }
             } else {
                 // Function statements define a symbol in the enclosing scope
