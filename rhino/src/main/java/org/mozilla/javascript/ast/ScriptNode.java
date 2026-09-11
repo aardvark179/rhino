@@ -337,7 +337,10 @@ public class ScriptNode extends Scope {
             Symbol existing = s.getSymbol(name);
             if (existing != null && existing != sym) {
                 Symbol.Type dt = existing.getDeclType();
-                if (dt == Type.FUNCTION_LET || dt == Type.LET || dt == Type.CONST || dt == Type.LP) {
+                if (dt == Type.FUNCTION_LET
+                        || dt == Type.LET
+                        || dt == Type.CONST
+                        || dt == Type.LP) {
                     return true;
                 }
             }

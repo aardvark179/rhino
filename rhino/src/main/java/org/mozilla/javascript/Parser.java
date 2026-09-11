@@ -2896,10 +2896,10 @@ public class Parser {
             Scope currentScope,
             Scope definingScope) {
         return isSimpleRedefinition(
-                newDeclType, oldDeclType, symbol, varSymbol, currentScope, definingScope)
-               || isAnnexBFunctionRedeclaration(
-                   newDeclType, oldDeclType, symbol, varSymbol, currentScope, definingScope)
-               || (!maskingLexicalDefinition(
+                        newDeclType, oldDeclType, symbol, varSymbol, currentScope, definingScope)
+                || isAnnexBFunctionRedeclaration(
+                        newDeclType, oldDeclType, symbol, varSymbol, currentScope, definingScope)
+                || (!maskingLexicalDefinition(
                                 newDeclType,
                                 oldDeclType,
                                 symbol,
@@ -2935,9 +2935,9 @@ public class Parser {
             Symbol varSymbol,
             Scope currentScope,
             Scope definingScope) {
-        return (!inUseStrictDirective &&
-                (newDeclType == Type.FUNCTION_LET || newDeclType == Type.FUNCTION_VAR) &&
-                (oldDeclType == Type.FUNCTION_LET || oldDeclType == Type.FUNCTION_VAR));
+        return (!inUseStrictDirective
+                && (newDeclType == Type.FUNCTION_LET || newDeclType == Type.FUNCTION_VAR)
+                && (oldDeclType == Type.FUNCTION_LET || oldDeclType == Type.FUNCTION_VAR));
     }
 
     private boolean isSimpleRedefinition(
