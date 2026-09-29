@@ -1409,8 +1409,10 @@ public class ClassFileWriter {
         itsStackTop = 1;
         markLabel(theLabel);
         if (itsFrameTracker != null) {
-            // The types of the locals depend on the code the handler covers
-            itsFrameState = FRAME_UNKNOWN;
+            // The types of the locals depend on the code the handler covers, but
+            // the stack only holds the exception.
+            loadUnknownLocals();
+            itsFrameTracker.push(TypeInfo.OBJECT("java/lang/Throwable", itsConstantPool));
         }
     }
 
@@ -1484,14 +1486,23 @@ public class ClassFileWriter {
         private final int[] locals;
         private final int[] stack;
         private final boolean unknown;
+        // Locals that have not been stored to since the types were last known are unknown
+        private final boolean localsUnknown;
 
         private Frame() {
             locals = stack = new int[0];
             unknown = true;
+            localsUnknown = true;
         }
 
         private Frame(int[] locals, int localsTop, int[] stack, int stackTop) {
+            this(locals, localsTop, stack, stackTop, false);
+        }
+
+        private Frame(
+                int[] locals, int localsTop, int[] stack, int stackTop, boolean localsUnknown) {
             this.unknown = false;
+            this.localsUnknown = localsUnknown;
             while (localsTop > 0 && locals[localsTop - 1] == TypeInfo.TOP) {
                 localsTop--;
             }
@@ -1503,6 +1514,7 @@ public class ClassFileWriter {
         public boolean equals(Object o) {
             return o instanceof Frame
                     && unknown == ((Frame) o).unknown
+                    && localsUnknown == ((Frame) o).localsUnknown
                     && Arrays.equals(locals, ((Frame) o).locals)
                     && Arrays.equals(stack, ((Frame) o).stack);
         }
@@ -1515,6 +1527,7 @@ public class ClassFileWriter {
 
     private StackMapTable itsFrameTracker;
     private int itsFrameState;
+    private int itsNoFrameLabelPC;
     private int itsTrackedPC;
     private boolean itsTrackedWide;
     // Types at labels and table switches, recorded from jumps to them that come first
@@ -1529,6 +1542,9 @@ public class ClassFileWriter {
 
     // Recorded for a jump target when a jump to it is made with unknown types
     private static final Frame UNKNOWN_FRAME = new Frame();
+
+    // The type of a local that is not known, or of a value loaded from one
+    private static final int UNKNOWN_TYPE = 0xFF;
 
     /**
      * Track the types of the local variables and operand stack while the code of the current method
@@ -1547,6 +1563,7 @@ public class ClassFileWriter {
         loadFrame(new Frame(initialLocals, initialLocals.length, new int[0], 0));
         itsTrackedPC = 0;
         itsTrackedWide = false;
+        itsNoFrameLabelPC = -1;
         itsLabelFrames = new HashMap<>();
         itsSwitchFrames = new HashMap<>();
     }
@@ -1570,7 +1587,91 @@ public class ClassFileWriter {
             // The stack depth has been set to something the tracked types don't match
             return null;
         }
-        return snapshotFrame();
+        Frame frame = snapshotFrame();
+        if (frame.localsUnknown) {
+            return null;
+        }
+        return frame;
+    }
+
+    /**
+     * Get the types of the values on the operand stack at the current point in the code, from the
+     * bottom of the stack to the top. These can be known where the types of the locals are not, for
+     * example in an exception handler.
+     *
+     * <p>Each type is the descriptor of a primitive type ({@code "I"}, {@code "F"}, {@code "J"} or
+     * {@code "D"}), the internal name of a class or array type, {@code "null"} for the type of
+     * {@code null}, or {@code null} if the type of the value is not known.
+     *
+     * @return the types, or null if the stack is not known
+     * @throws IllegalStateException if an object on the stack has not been initialized
+     */
+    public String[] getCurrentStackTypes() {
+        if (itsFrameTracker == null) throw new IllegalStateException("Frames are not tracked");
+        trackFrame();
+        if (itsFrameState != FRAME_KNOWN) {
+            return null;
+        }
+        StackMapTable t = itsFrameTracker;
+        String[] types = new String[t.stackTop];
+        int words = 0;
+        for (int i = 0; i < t.stackTop; i++) {
+            int type = t.stack[i];
+            words += TypeInfo.isTwoWords(type) ? 2 : 1;
+            types[i] = describeType(type);
+        }
+        if (words != itsStackTop) {
+            return null;
+        }
+        return types;
+    }
+
+    /**
+     * Get the types of local variables at the current point in the code. These are described as for
+     * {@link #getCurrentStackTypes()}, with {@code "top"} for a local that holds no value, or the
+     * second word of a long or double.
+     *
+     * @return the types, or null if they are not known
+     * @throws IllegalStateException if a local holds an object that has not been initialized
+     */
+    public String[] getCurrentLocalTypes(int[] localIndexes) {
+        if (itsFrameTracker == null) throw new IllegalStateException("Frames are not tracked");
+        trackFrame();
+        if (itsFrameState != FRAME_KNOWN) {
+            return null;
+        }
+        String[] types = new String[localIndexes.length];
+        for (int i = 0; i < localIndexes.length; i++) {
+            int index = localIndexes[i];
+            boolean secondWord =
+                    index > 0 && TypeInfo.isTwoWords(itsFrameTracker.getLocal(index - 1));
+            types[i] = secondWord ? "top" : describeType(itsFrameTracker.getLocal(index));
+        }
+        return types;
+    }
+
+    private String describeType(int type) {
+        if (type == UNKNOWN_TYPE) {
+            return null;
+        }
+        switch (TypeInfo.getTag(type)) {
+            case TypeInfo.TOP:
+                return "top";
+            case TypeInfo.INTEGER:
+                return "I";
+            case TypeInfo.FLOAT:
+                return "F";
+            case TypeInfo.LONG:
+                return "J";
+            case TypeInfo.DOUBLE:
+                return "D";
+            case TypeInfo.NULL:
+                return "null";
+            case TypeInfo.OBJECT_TAG:
+                return getSlashedForm(TypeInfo.getPayloadAsType(type, itsConstantPool));
+            default:
+                throw new IllegalStateException("Uninitialized object");
+        }
     }
 
     /** Set the types at the current point in the code, which must be known to be correct. */
@@ -1580,27 +1681,81 @@ public class ClassFileWriter {
         loadFrame(frame);
     }
 
-    /** Get a copy of a frame in which the given local variables hold Objects. */
-    public Frame frameWithObjectLocals(Frame frame, int[] localIndexes) {
+    /**
+     * Set the types at the current point in the code to an empty stack, and locals whose types are
+     * not known. This suits code only reached from an exception handler that has emptied the stack.
+     */
+    public void setCurrentFrameWithUnknownLocals() {
+        if (itsFrameTracker == null) throw new IllegalStateException("Frames are not tracked");
+        trackFrame();
+        loadUnknownLocals();
+    }
+
+    private void loadUnknownLocals() {
+        StackMapTable t = itsFrameTracker;
+        t.locals = new int[0];
+        t.localsTop = 0;
+        t.localsUnknown = true;
+        t.stack = new int[4];
+        t.stackTop = 0;
+        itsFrameState = FRAME_KNOWN;
+    }
+
+    /**
+     * Get a copy of a frame in which the given local variables hold values of the given types,
+     * described as for {@link #getCurrentLocalTypes}. A local whose type is not known holds an
+     * Object.
+     */
+    public Frame frameWithLocals(Frame frame, int[] localIndexes, String[] types) {
         int localsTop = frame.locals.length;
         for (int index : localIndexes) {
-            localsTop = Math.max(localsTop, index + 1);
+            localsTop = Math.max(localsTop, index + 2);
         }
         int[] locals = Arrays.copyOf(frame.locals, localsTop);
-        int objectType = TypeInfo.OBJECT("java/lang/Object", itsConstantPool);
-        for (int index : localIndexes) {
-            locals[index] = objectType;
+        for (int i = 0; i < localIndexes.length; i++) {
+            int index = localIndexes[i];
+            String type = types[i];
+            if (type == null) {
+                locals[index] = TypeInfo.OBJECT("java/lang/Object", itsConstantPool);
+                continue;
+            }
+            switch (type) {
+                case "top":
+                    locals[index] = TypeInfo.TOP;
+                    break;
+                case "I":
+                    locals[index] = TypeInfo.INTEGER;
+                    break;
+                case "F":
+                    locals[index] = TypeInfo.FLOAT;
+                    break;
+                case "J":
+                    locals[index] = TypeInfo.LONG;
+                    locals[index + 1] = TypeInfo.TOP;
+                    break;
+                case "D":
+                    locals[index] = TypeInfo.DOUBLE;
+                    locals[index + 1] = TypeInfo.TOP;
+                    break;
+                case "null":
+                    locals[index] = TypeInfo.NULL;
+                    break;
+                default:
+                    locals[index] = TypeInfo.OBJECT(type, itsConstantPool);
+                    break;
+            }
         }
         return new Frame(locals, localsTop, frame.stack, frame.stack.length);
     }
 
     private Frame snapshotFrame() {
         StackMapTable t = itsFrameTracker;
-        return new Frame(t.locals, t.localsTop, t.stack, t.stackTop);
+        return new Frame(t.locals, t.localsTop, t.stack, t.stackTop, t.localsUnknown);
     }
 
     private void loadFrame(Frame frame) {
         StackMapTable t = itsFrameTracker;
+        t.localsUnknown = frame.localsUnknown;
         t.locals = Arrays.copyOf(frame.locals, frame.locals.length);
         t.localsTop = frame.locals.length;
         t.stack = Arrays.copyOf(frame.stack, Math.max(frame.stack.length, 4));
@@ -1721,10 +1876,15 @@ public class ClassFileWriter {
     private void trackJumpTarget(Frame incoming) {
         if (itsFrameTracker == null) return;
         trackFrame();
+        if (itsFrameState == FRAME_UNKNOWN && itsNoFrameLabelPC == itsCodeBufferTop) {
+            // Another label here had no types for it, but this one may
+            itsFrameState = FRAME_NONE;
+        }
         if (incoming == null) {
             if (itsFrameState == FRAME_NONE) {
                 // Only reached by jumps that have not been added yet
                 itsFrameState = FRAME_UNKNOWN;
+                itsNoFrameLabelPC = itsCodeBufferTop;
             }
         } else if (itsFrameState == FRAME_NONE) {
             if (incoming.unknown) {
@@ -1740,6 +1900,15 @@ public class ClassFileWriter {
                 loadFrame(merged);
             }
         }
+    }
+
+    private int mergeTypes(int a, int b) {
+        if (a == UNKNOWN_TYPE || b == UNKNOWN_TYPE) {
+            return a == b || TypeInfo.isTwoWords(a) == TypeInfo.isTwoWords(b)
+                    ? UNKNOWN_TYPE
+                    : TypeInfo.TOP;
+        }
+        return TypeInfo.merge(a, b, itsConstantPool);
     }
 
     private void trackSwitchCase(int switchStart) {
@@ -1758,13 +1927,16 @@ public class ClassFileWriter {
             for (int i = 0; i < localsTop; i++) {
                 int aType = i < a.locals.length ? a.locals[i] : TypeInfo.TOP;
                 int bType = i < b.locals.length ? b.locals[i] : TypeInfo.TOP;
-                locals[i] = TypeInfo.merge(aType, bType, itsConstantPool);
+                if (i >= a.locals.length && a.localsUnknown) aType = UNKNOWN_TYPE;
+                if (i >= b.locals.length && b.localsUnknown) bType = UNKNOWN_TYPE;
+                locals[i] = mergeTypes(aType, bType);
             }
             int[] stack = new int[a.stack.length];
             for (int i = 0; i < stack.length; i++) {
-                stack[i] = TypeInfo.merge(a.stack[i], b.stack[i], itsConstantPool);
+                stack[i] = mergeTypes(a.stack[i], b.stack[i]);
             }
-            return new Frame(locals, localsTop, stack, stack.length);
+            return new Frame(
+                    locals, localsTop, stack, stack.length, a.localsUnknown || b.localsUnknown);
         } catch (RuntimeException e) {
             return UNKNOWN_FRAME;
         }
@@ -2789,7 +2961,8 @@ public class ClassFileWriter {
             if (tag == TypeInfo.OBJECT_TAG
                     || tag == TypeInfo.UNINITIALIZED_THIS
                     || tag == TypeInfo.UNINITIALIZED_VAR_TAG
-                    || tag == TypeInfo.NULL) {
+                    || tag == TypeInfo.NULL
+                    || type == UNKNOWN_TYPE) {
                 push(type);
             } else {
                 throw new IllegalStateException(
@@ -2827,13 +3000,16 @@ public class ClassFileWriter {
             if (localIndex < localsTop) {
                 return locals[localIndex];
             }
-            return TypeInfo.TOP;
+            return localsUnknown ? UNKNOWN_TYPE : TypeInfo.TOP;
         }
 
         private void setLocal(int localIndex, int typeInfo) {
             if (localIndex >= localsTop) {
                 int[] tmp = new int[localIndex + 1];
                 System.arraycopy(locals, 0, tmp, 0, localsTop);
+                if (localsUnknown) {
+                    Arrays.fill(tmp, localsTop, localIndex, UNKNOWN_TYPE);
+                }
                 locals = tmp;
                 localsTop = localIndex + 1;
             }
@@ -3061,6 +3237,9 @@ public class ClassFileWriter {
         private int localsTop;
         private int[] stack;
         private int stackTop;
+        // Only used when tracking types as code is emitted: locals past
+        // localsTop have unknown types, rather than being unset.
+        private boolean localsUnknown;
 
         private SuperBlock[] workList;
         private int workListTop;

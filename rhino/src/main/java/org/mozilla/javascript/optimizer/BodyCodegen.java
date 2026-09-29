@@ -6,6 +6,7 @@ import static org.mozilla.classfile.ClassFileWriter.ACC_STATIC;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
@@ -549,13 +550,20 @@ class BodyCodegen {
                 generatorSwitch = cfw.addTableSwitch(0, resumptionPoints.size() - 1);
                 for (ResumptionPoint point : resumptionPoints) {
                     cfw.markTableSwitchCase(generatorSwitch, point.state);
-                    if (point.liveLocals != null) {
+                    SavedLocals saved = point.liveLocals;
+                    if (saved != null) {
                         generateGetGeneratorLocalsState();
-                        for (int j = 0; j < point.liveLocals.length; j++) {
-                            cfw.add(ByteCode.DUP);
-                            cfw.addLoadConstant(j);
-                            cfw.add(ByteCode.AALOAD);
-                            cfw.addAStore(point.liveLocals[j]);
+                        for (int j = 0; j < saved.indexes.length; j++) {
+                            String type = saved.typeOf(j);
+                            if ("null".equals(type)) {
+                                cfw.add(ByteCode.ACONST_NULL);
+                            } else {
+                                cfw.add(ByteCode.DUP);
+                                cfw.addLoadConstant(j);
+                                cfw.add(ByteCode.AALOAD);
+                                addUnboxValue(type);
+                            }
+                            addStoreLocal(type, saved.indexes[j]);
                         }
                         cfw.add(ByteCode.POP);
                     }
@@ -1943,7 +1951,19 @@ class BodyCodegen {
         // save stack state from the top to the bottom
         final int top = cfw.getStackTop();
         maxStack = maxStack > top ? maxStack : top;
-        if (top != 0) {
+        // The types are needed to box primitives and cast values when they are restored
+        final String[] stackTypes = top == 0 ? null : cfw.getCurrentStackTypes();
+        if (stackTypes != null) {
+            for (int i = stackTypes.length - 1; i >= 0; i--) {
+                addBoxValue(stackTypes[i]);
+                generateGetGeneratorStackState();
+                cfw.add(ByteCode.SWAP);
+                cfw.addLoadConstant(i);
+                cfw.add(ByteCode.SWAP);
+                cfw.add(ByteCode.AASTORE);
+            }
+        } else if (top != 0) {
+            // Without the types, all the values are assumed to be Objects
             generateGetGeneratorStackState();
             for (int i = 0; i < top; i++) {
                 cfw.add(ByteCode.DUP_X1);
@@ -1979,7 +1999,7 @@ class BodyCodegen {
         int nextState = resumptionPoints.size();
         generateSetGeneratorResumptionPoint(nextState);
 
-        int[] liveLocals = generateSaveLocals();
+        SavedLocals liveLocals = generateSaveLocals();
 
         cfw.add(ByteCode.ARETURN);
 
@@ -1988,7 +2008,18 @@ class BodyCodegen {
         generateCheckForThrowOrClose(nextState, liveLocals);
 
         // reconstruct the stack from the bottom to the top
-        if (top != 0) {
+        if (stackTypes != null) {
+            for (int i = 0; i < stackTypes.length; i++) {
+                if ("null".equals(stackTypes[i])) {
+                    cfw.add(ByteCode.ACONST_NULL);
+                    continue;
+                }
+                generateGetGeneratorStackState();
+                cfw.addLoadConstant(i);
+                cfw.add(ByteCode.AALOAD);
+                addUnboxValue(stackTypes[i]);
+            }
+        } else if (top != 0) {
             generateGetGeneratorStackState();
             for (int i = (top - 1); i >= 0; i--) {
                 cfw.add(ByteCode.DUP);
@@ -2005,7 +2036,67 @@ class BodyCodegen {
         }
     }
 
-    private void generateCheckForThrowOrClose(int state, int[] liveLocals) {
+    /** Box the value on top of the stack, of the given type, to save it at a yield. */
+    private void addBoxValue(String type) {
+        if (type == null) {
+            return;
+        }
+        switch (type) {
+            case "I":
+                addBox("java/lang/Integer", "I");
+                break;
+            case "F":
+                addBox("java/lang/Float", "F");
+                break;
+            case "J":
+                addBox("java/lang/Long", "J");
+                break;
+            case "D":
+                addBox("java/lang/Double", "D");
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** Convert a value saved at a yield back to the given type. */
+    private void addUnboxValue(String type) {
+        if (type == null || type.equals("java/lang/Object")) {
+            return;
+        }
+        switch (type) {
+            case "I":
+                addUnbox("java/lang/Integer", "intValue", "I");
+                break;
+            case "F":
+                addUnbox("java/lang/Float", "floatValue", "F");
+                break;
+            case "J":
+                addUnbox("java/lang/Long", "longValue", "J");
+                break;
+            case "D":
+                addUnbox("java/lang/Double", "doubleValue", "D");
+                break;
+            default:
+                cfw.add(ByteCode.CHECKCAST, type);
+                break;
+        }
+    }
+
+    private void addBox(String boxClass, String primitive) {
+        cfw.addInvoke(
+                ByteCode.INVOKESTATIC,
+                boxClass,
+                "valueOf",
+                "(" + primitive + ")L" + boxClass + ";");
+    }
+
+    private void addUnbox(String boxClass, String method, String primitive) {
+        cfw.add(ByteCode.CHECKCAST, boxClass);
+        cfw.addInvoke(ByteCode.INVOKEVIRTUAL, boxClass, method, "()" + primitive);
+    }
+
+    private void generateCheckForThrowOrClose(int state, SavedLocals liveLocals) {
         if (state != resumptionPoints.size()) throw Kit.codeBug();
         int throwLabel = cfw.acquireLabel();
         int closeLabel = cfw.acquireLabel();
@@ -2030,7 +2121,10 @@ class BodyCodegen {
             cfw.setCurrentFrame(
                     liveLocals == null
                             ? generatorDispatchFrame
-                            : cfw.frameWithObjectLocals(generatorDispatchFrame, liveLocals));
+                            : cfw.frameWithLocals(
+                                    generatorDispatchFrame,
+                                    liveLocals.indexes,
+                                    liveLocals.restoredTypes()));
         }
         resumptionPoints.add(new ResumptionPoint(state, reentryLabel, liveLocals));
 
@@ -3424,6 +3518,10 @@ class BodyCodegen {
                 exceptionManager.removeHandler(THROWABLE_EXCEPTION, catchLabel);
             }
             generateStatement(child);
+            if (child == catchTarget && isGenerator) {
+                // Reached from the handlers below, with the exception stored
+                cfw.setCurrentFrameWithUnknownLocals();
+            }
             child = child.getNext();
         }
 
@@ -3835,7 +3933,7 @@ class BodyCodegen {
         throw Kit.codeBug("bad finally target");
     }
 
-    private int[] generateSaveLocals() {
+    private SavedLocals generateSaveLocals() {
         int count = 0;
         for (int i = 0; i < firstFreeLocal; i++) {
             if (locals[i] != 0) count++;
@@ -3844,9 +3942,6 @@ class BodyCodegen {
         if (count == 0) {
             return null;
         }
-
-        // calculate the max locals
-        maxLocals = maxLocals > count ? maxLocals : count;
 
         // create a locals list
         int[] ls = new int[count];
@@ -3858,18 +3953,83 @@ class BodyCodegen {
             }
         }
 
+        // The types are needed to box primitives and cast values when they are
+        // restored. Locals that hold no value, including the second words of
+        // longs and doubles, are not saved.
+        String[] types = cfw.getCurrentLocalTypes(ls);
+        if (types != null) {
+            count = 0;
+            for (int i = 0; i < ls.length; i++) {
+                if (!"top".equals(types[i])) {
+                    ls[count] = ls[i];
+                    types[count] = types[i];
+                    count++;
+                }
+            }
+            if (count == 0) {
+                return null;
+            }
+            ls = Arrays.copyOf(ls, count);
+            types = Arrays.copyOf(types, count);
+        }
+        SavedLocals saved = new SavedLocals(ls, types);
+
+        // calculate the max locals
+        maxLocals = maxLocals > count ? maxLocals : count;
+
         // save locals
         generateGetGeneratorLocalsState();
         for (int i = 0; i < count; i++) {
             cfw.add(ByteCode.DUP);
             cfw.addLoadConstant(i);
-            cfw.addALoad(ls[i]);
+            addLoadLocal(saved.typeOf(i), ls[i]);
+            addBoxValue(saved.typeOf(i));
             cfw.add(ByteCode.AASTORE);
         }
         // pop the array off the stack
         cfw.add(ByteCode.POP);
 
-        return ls;
+        return saved;
+    }
+
+    private void addLoadLocal(String type, int local) {
+        switch (type == null ? "" : type) {
+            case "I":
+                cfw.addILoad(local);
+                break;
+            case "F":
+                cfw.addFLoad(local);
+                break;
+            case "J":
+                cfw.addLLoad(local);
+                break;
+            case "D":
+                cfw.addDLoad(local);
+                break;
+            default:
+                cfw.addALoad(local);
+                break;
+        }
+    }
+
+    private void addStoreLocal(String type, int local) {
+        switch (type == null ? "" : type) {
+            case "I":
+                cfw.addIStore(local);
+                break;
+            case "F":
+                cfw.addFStore(local);
+                break;
+            case "J":
+                cfw.addLStore(local);
+                break;
+            case "D":
+                cfw.addDStore(local);
+                break;
+            default:
+                cfw.addAStore(local);
+                break;
+        }
     }
 
     private void visitSwitch(Jump switchNode, Node child) {
@@ -5213,12 +5373,32 @@ class BodyCodegen {
         }
     }
 
+    /** The locals saved at a yield, and their types if they are known. */
+    private static final class SavedLocals {
+        final int[] indexes;
+        final String[] types;
+
+        SavedLocals(int[] indexes, String[] types) {
+            this.indexes = indexes;
+            this.types = types;
+        }
+
+        String typeOf(int i) {
+            return types == null ? null : types[i];
+        }
+
+        /** The types of the locals once they are restored, where unknown types are Objects. */
+        String[] restoredTypes() {
+            return types == null ? new String[indexes.length] : types;
+        }
+    }
+
     private static final class ResumptionPoint {
         final int state;
         final int label;
-        final int[] liveLocals;
+        final SavedLocals liveLocals;
 
-        ResumptionPoint(int state, int label, int[] liveLocals) {
+        ResumptionPoint(int state, int label, SavedLocals liveLocals) {
             this.state = state;
             this.label = label;
             this.liveLocals = liveLocals;
