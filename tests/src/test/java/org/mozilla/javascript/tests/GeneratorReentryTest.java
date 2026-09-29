@@ -133,7 +133,6 @@ public class GeneratorReentryTest {
     }
 
     @Test
-    @Disabled("Compiled mode saves the stack at a yield as Objects, so typed values fail to verify")
     public void yieldAsCallArgument() {
         Utils.assertWithAllModes_ES6(
                 "1|2",
@@ -171,5 +170,127 @@ public class GeneratorReentryTest {
                         "while (!(r = it.next()).done) out.push(r.value);",
                         "out.push(r.value);",
                         "out.join(',')"));
+    }
+
+    @Test
+    public void yieldAsCallArgumentInCatch() {
+        Utils.assertWithAllModes_ES6(
+                "e:1",
+                Utils.lines(
+                        "function* g() {",
+                        "  try {",
+                        "    throw 'e';",
+                        "  } catch (e) {",
+                        "    var log = [];",
+                        "    log.push(e + ':' + (yield 'a'));",
+                        "    return log.join();",
+                        "  }",
+                        "}",
+                        "var it = g();",
+                        "it.next();",
+                        "it.next(1).value"));
+    }
+
+    @Test
+    public void yieldAsCallArgumentInFinally() {
+        Utils.assertWithAllModes_ES6(
+                "f:1",
+                Utils.lines(
+                        "var log = [];",
+                        "function* g() {",
+                        "  try {",
+                        "    yield 't';",
+                        "  } finally {",
+                        "    log.push('f:' + (yield 'f'));",
+                        "  }",
+                        "}",
+                        "var it = g();",
+                        "it.next();",
+                        "it.next();",
+                        "it.next(1);",
+                        "log.join()"));
+    }
+
+    @Test
+    public void yieldsAsArgumentsOfAMethodCall() {
+        Utils.assertWithAllModes_ES6(
+                "3",
+                Utils.lines(
+                        "function* g() {",
+                        "  return Math.max((yield 1), (yield 2), 0);",
+                        "}",
+                        "var it = g();",
+                        "it.next();",
+                        "it.next(3);",
+                        "String(it.next(2).value)"));
+    }
+
+    @Test
+    public void yieldInCompoundAssignments() {
+        Utils.assertWithAllModes_ES6(
+                "3,0,5",
+                Utils.lines(
+                        "function* g() {",
+                        "  var o = {x: 1};",
+                        "  o.x += (yield 'a');",
+                        "  var a = [0, 0, 0];",
+                        "  a[(yield 'i')] = (yield 'v');",
+                        "  return [o.x].concat(a.slice(1)).join();",
+                        "}",
+                        "var it = g();",
+                        "it.next();",
+                        "it.next(2);",
+                        "it.next(2);",
+                        "it.next(5).value"));
+    }
+
+    @Test
+    public void typedTemporariesLiveAcrossYields() {
+        // Exceptions, scopes and enumerators held in locals while suspended
+        Utils.assertWithAllModes_ES6(
+                "x,xy,a:f,F,done",
+                Utils.lines(
+                        "function* g() {",
+                        "  try {",
+                        "    try { throw 'x'; } catch (e) {",
+                        "      yield e;",
+                        "      try { throw 'y'; } catch (f) { yield e + f; }",
+                        "    }",
+                        "    for (var k in {a: 1}) {",
+                        "      try { throw k; } catch (e) { yield e + ':' + (yield 'f'); }",
+                        "    }",
+                        "  } finally {",
+                        "    yield 'F';",
+                        "  }",
+                        "  return 'done';",
+                        "}",
+                        "var it = g(), r, out = [], sent;",
+                        "while (!(r = it.next(sent)).done) {",
+                        "  if (r.value === 'f') { sent = 'f'; continue; }",
+                        "  out.push(r.value); sent = undefined;",
+                        "}",
+                        "out.push(r.value);",
+                        "out.join()"));
+    }
+
+    @Test
+    @Disabled(
+            "Compiled mode saves a local in the finally handler that is not set on every path into"
+                    + " it")
+    public void yieldInWithAndFinally() {
+        Utils.assertWithAllModes_ES6(
+                "1,F",
+                Utils.lines(
+                        "function* g() {",
+                        "  try {",
+                        "    var o = {p: 1};",
+                        "    with (o) { yield p; }",
+                        "  } finally {",
+                        "    yield 'F';",
+                        "  }",
+                        "}",
+                        "var out = [];",
+                        "for (var v of g()) out.push(v);",
+                        "out.join()"));
     }
 }
