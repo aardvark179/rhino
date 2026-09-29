@@ -262,6 +262,7 @@ public class ClassFileWriter {
         int typeIndex = itsConstantPool.addUtf8(type);
         itsCurrentMethod = new ClassFileMethod(methodName, methodNameIndex, type, typeIndex, flags);
         itsJumpFroms = new HashMap<>();
+        itsFrameTracker = null;
         itsMethods.add(itsCurrentMethod);
         addSuperBlockStart(0);
     }
@@ -519,6 +520,7 @@ public class ClassFileWriter {
                         if ((theOperand < 0) || (theOperand > 65535))
                             throw new IllegalArgumentException("Bad label for branch");
                     }
+                    trackFrame();
                     int branchPC = itsCodeBufferTop;
                     addToCodeBuffer(theOpCode);
                     if ((theOperand & 0x80000000) != 0x80000000) {
@@ -549,6 +551,8 @@ public class ClassFileWriter {
                             addToCodeInt16(0);
                         }
                     }
+                    trackBranch(
+                            branchPC, (theOperand & 0x80000000) == 0x80000000 ? theOperand : -1);
                 }
                 break;
 
@@ -1278,6 +1282,7 @@ public class ClassFileWriter {
         int newStack = itsStackTop + stackChange(ByteCode.TABLESWITCH);
         if (newStack < 0 || Short.MAX_VALUE < newStack) badStack(newStack);
 
+        trackFrame();
         int entryCount = high - low + 1;
         int padSize = 3 & ~itsCodeBufferTop; // == 3 - itsCodeBufferTop % 4
 
@@ -1298,17 +1303,20 @@ public class ClassFileWriter {
             System.err.println(
                     "After " + bytecodeStr(ByteCode.TABLESWITCH) + " stack = " + itsStackTop);
         }
+        trackTableSwitch(switchStart);
 
         return switchStart;
     }
 
     public final void markTableSwitchDefault(int switchStart) {
+        trackSwitchCase(switchStart);
         addSuperBlockStart(itsCodeBufferTop);
         itsJumpFroms.put(itsCodeBufferTop, switchStart);
         setTableSwitchJump(switchStart, -1, itsCodeBufferTop);
     }
 
     public final void markTableSwitchCase(int switchStart, int caseIndex) {
+        trackSwitchCase(switchStart);
         addSuperBlockStart(itsCodeBufferTop);
         itsJumpFroms.put(itsCodeBufferTop, switchStart);
         setTableSwitchJump(switchStart, caseIndex, itsCodeBufferTop);
@@ -1318,6 +1326,7 @@ public class ClassFileWriter {
         if (!(0 <= stackTop && stackTop <= itsMaxStack))
             throw new IllegalArgumentException("Bad stack index: " + stackTop);
         itsStackTop = (short) stackTop;
+        trackSwitchCase(switchStart);
         addSuperBlockStart(itsCodeBufferTop);
         itsJumpFroms.put(itsCodeBufferTop, switchStart);
         setTableSwitchJump(switchStart, caseIndex, itsCodeBufferTop);
@@ -1386,6 +1395,9 @@ public class ClassFileWriter {
         }
 
         itsLabelTable[label] = itsCodeBufferTop;
+        if (itsFrameTracker != null) {
+            trackJumpTarget(itsLabelFrames.remove(label));
+        }
     }
 
     public void markLabel(int label, int stackTop) {
@@ -1396,6 +1408,10 @@ public class ClassFileWriter {
     public void markHandler(int theLabel) {
         itsStackTop = 1;
         markLabel(theLabel);
+        if (itsFrameTracker != null) {
+            // The types of the locals depend on the code the handler covers
+            itsFrameState = FRAME_UNKNOWN;
+        }
     }
 
     public int getLabelPC(int label) {
@@ -1458,6 +1474,300 @@ public class ClassFileWriter {
 
     public int getStackTop() {
         return itsStackTop;
+    }
+
+    /**
+     * The verification types of the local variables and operand stack at a point in the code, as
+     * tracked while the code is emitted. Frames with the same types are equal.
+     */
+    public static final class Frame {
+        private final int[] locals;
+        private final int[] stack;
+        private final boolean unknown;
+
+        private Frame() {
+            locals = stack = new int[0];
+            unknown = true;
+        }
+
+        private Frame(int[] locals, int localsTop, int[] stack, int stackTop) {
+            this.unknown = false;
+            while (localsTop > 0 && locals[localsTop - 1] == TypeInfo.TOP) {
+                localsTop--;
+            }
+            this.locals = Arrays.copyOf(locals, localsTop);
+            this.stack = Arrays.copyOf(stack, stackTop);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof Frame
+                    && unknown == ((Frame) o).unknown
+                    && Arrays.equals(locals, ((Frame) o).locals)
+                    && Arrays.equals(stack, ((Frame) o).stack);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * Arrays.hashCode(locals) + Arrays.hashCode(stack);
+        }
+    }
+
+    private StackMapTable itsFrameTracker;
+    private int itsFrameState;
+    private int itsTrackedPC;
+    private boolean itsTrackedWide;
+    // Types at labels and table switches, recorded from jumps to them that come first
+    private HashMap<Integer, Frame> itsLabelFrames;
+    private HashMap<Integer, Frame> itsSwitchFrames;
+
+    // Tracking states: the types at the current point are known, the current
+    // point can't be reached by falling through, or the types are unknown.
+    private static final int FRAME_KNOWN = 0;
+    private static final int FRAME_NONE = 1;
+    private static final int FRAME_UNKNOWN = 2;
+
+    // Recorded for a jump target when a jump to it is made with unknown types
+    private static final Frame UNKNOWN_FRAME = new Frame();
+
+    /**
+     * Track the types of the local variables and operand stack while the code of the current method
+     * is emitted, so that they can be queried with {@link #getCurrentFrame()}. This must be called
+     * before any code is added to the method.
+     *
+     * <p>Types are tracked along the code as it is emitted, using the types recorded for forward
+     * jumps at labels. Where they can't be determined, for example at an exception handler or a
+     * label only reached by jumps that are added later, they are unknown until {@link
+     * #setCurrentFrame} is called.
+     */
+    public void enableFrameTracking() {
+        if (itsCodeBufferTop != 0) throw new IllegalStateException("Code already added");
+        itsFrameTracker = new StackMapTable();
+        int[] initialLocals = createInitialLocals(itsCurrentMethod.getType().length() + 1);
+        loadFrame(new Frame(initialLocals, initialLocals.length, new int[0], 0));
+        itsTrackedPC = 0;
+        itsTrackedWide = false;
+        itsLabelFrames = new HashMap<>();
+        itsSwitchFrames = new HashMap<>();
+    }
+
+    /**
+     * Get the types at the current point in the code.
+     *
+     * @return the frame, or null if the types are not known
+     */
+    public Frame getCurrentFrame() {
+        if (itsFrameTracker == null) throw new IllegalStateException("Frames are not tracked");
+        trackFrame();
+        if (itsFrameState != FRAME_KNOWN) {
+            return null;
+        }
+        int words = 0;
+        for (int i = 0; i < itsFrameTracker.stackTop; i++) {
+            words += TypeInfo.isTwoWords(itsFrameTracker.stack[i]) ? 2 : 1;
+        }
+        if (words != itsStackTop) {
+            // The stack depth has been set to something the tracked types don't match
+            return null;
+        }
+        return snapshotFrame();
+    }
+
+    /** Set the types at the current point in the code, which must be known to be correct. */
+    public void setCurrentFrame(Frame frame) {
+        if (itsFrameTracker == null) throw new IllegalStateException("Frames are not tracked");
+        trackFrame();
+        loadFrame(frame);
+    }
+
+    /** Get a copy of a frame in which the given local variables hold Objects. */
+    public Frame frameWithObjectLocals(Frame frame, int[] localIndexes) {
+        int localsTop = frame.locals.length;
+        for (int index : localIndexes) {
+            localsTop = Math.max(localsTop, index + 1);
+        }
+        int[] locals = Arrays.copyOf(frame.locals, localsTop);
+        int objectType = TypeInfo.OBJECT("java/lang/Object", itsConstantPool);
+        for (int index : localIndexes) {
+            locals[index] = objectType;
+        }
+        return new Frame(locals, localsTop, frame.stack, frame.stack.length);
+    }
+
+    private Frame snapshotFrame() {
+        StackMapTable t = itsFrameTracker;
+        return new Frame(t.locals, t.localsTop, t.stack, t.stackTop);
+    }
+
+    private void loadFrame(Frame frame) {
+        StackMapTable t = itsFrameTracker;
+        t.locals = Arrays.copyOf(frame.locals, frame.locals.length);
+        t.localsTop = frame.locals.length;
+        t.stack = Arrays.copyOf(frame.stack, Math.max(frame.stack.length, 4));
+        t.stackTop = frame.stack.length;
+        itsFrameState = FRAME_KNOWN;
+    }
+
+    /** Update the tracked types for the code added since they were last updated. */
+    private void trackFrame() {
+        if (itsFrameTracker == null) return;
+        while (itsTrackedPC < itsCodeBufferTop) {
+            int bci = itsTrackedPC;
+            int bc = itsCodeBuffer[bci] & 0xFF;
+            int length = 0;
+            if (itsFrameState == FRAME_KNOWN) {
+                itsFrameTracker.wide = itsTrackedWide;
+                try {
+                    length = itsFrameTracker.execute(bci);
+                } catch (RuntimeException e) {
+                    itsFrameState = FRAME_UNKNOWN;
+                }
+            }
+            if (length == 0) {
+                length = trackedInstructionLength(bci, bc);
+            }
+            itsTrackedWide = bc == ByteCode.WIDE;
+            itsTrackedPC = bci + length;
+            if (endsFlow(bc)) {
+                itsFrameState = FRAME_NONE;
+            }
+        }
+    }
+
+    private int trackedInstructionLength(int bci, int bc) {
+        if (bc == ByteCode.TABLESWITCH) {
+            int switchStart = bci + 1 + (3 & ~bci);
+            int low = getInt32(itsCodeBuffer, switchStart + 4);
+            int high = getInt32(itsCodeBuffer, switchStart + 8);
+            return 4 * (high - low + 4) + switchStart - bci;
+        }
+        return opcodeLength(bc, itsTrackedWide);
+    }
+
+    private static int getInt32(byte[] buffer, int offset) {
+        return ((buffer[offset] & 0xFF) << 24)
+                | ((buffer[offset + 1] & 0xFF) << 16)
+                | ((buffer[offset + 2] & 0xFF) << 8)
+                | (buffer[offset + 3] & 0xFF);
+    }
+
+    private static boolean endsFlow(int bc) {
+        switch (bc) {
+            case ByteCode.ARETURN:
+            case ByteCode.DRETURN:
+            case ByteCode.FRETURN:
+            case ByteCode.IRETURN:
+            case ByteCode.LRETURN:
+            case ByteCode.RETURN:
+            case ByteCode.ATHROW:
+            case ByteCode.GOTO:
+            case ByteCode.GOTO_W:
+            case ByteCode.TABLESWITCH:
+            case ByteCode.LOOKUPSWITCH:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /** Track a branch just added at branchPC, recording the types for its target label. */
+    private void trackBranch(int branchPC, int label) {
+        if (itsFrameTracker == null) return;
+        if (itsTrackedPC != branchPC) throw new IllegalStateException("Untracked code");
+        int bc = itsCodeBuffer[branchPC] & 0xFF;
+        if (itsFrameState == FRAME_KNOWN) {
+            try {
+                itsFrameTracker.execute(branchPC);
+            } catch (RuntimeException e) {
+                itsFrameState = FRAME_UNKNOWN;
+            }
+        }
+        if (label != -1 && getLabelPC(label) == -1 && itsFrameState != FRAME_NONE) {
+            recordFrame(itsLabelFrames, label & 0x7FFFFFFF);
+        }
+        itsTrackedWide = false;
+        itsTrackedPC = itsCodeBufferTop;
+        if (endsFlow(bc)) {
+            itsFrameState = FRAME_NONE;
+        }
+    }
+
+    /** Track a table switch just added, recording the types for its cases. */
+    private void trackTableSwitch(int switchStart) {
+        if (itsFrameTracker == null) return;
+        if (itsTrackedPC != switchStart) throw new IllegalStateException("Untracked code");
+        if (itsFrameState == FRAME_KNOWN) {
+            try {
+                itsFrameTracker.execute(switchStart);
+            } catch (RuntimeException e) {
+                itsFrameState = FRAME_UNKNOWN;
+            }
+        }
+        if (itsFrameState != FRAME_NONE) {
+            recordFrame(itsSwitchFrames, switchStart);
+        }
+        itsTrackedWide = false;
+        itsTrackedPC = itsCodeBufferTop;
+        itsFrameState = FRAME_NONE;
+    }
+
+    private void recordFrame(Map<Integer, Frame> frames, int key) {
+        Frame frame = itsFrameState == FRAME_KNOWN ? snapshotFrame() : UNKNOWN_FRAME;
+        Frame existing = frames.get(key);
+        frames.put(key, existing == null ? frame : mergeFrames(existing, frame));
+    }
+
+    /** Update the tracked types for a jump target at the current point. */
+    private void trackJumpTarget(Frame incoming) {
+        if (itsFrameTracker == null) return;
+        trackFrame();
+        if (incoming == null) {
+            if (itsFrameState == FRAME_NONE) {
+                // Only reached by jumps that have not been added yet
+                itsFrameState = FRAME_UNKNOWN;
+            }
+        } else if (itsFrameState == FRAME_NONE) {
+            if (incoming.unknown) {
+                itsFrameState = FRAME_UNKNOWN;
+            } else {
+                loadFrame(incoming);
+            }
+        } else if (itsFrameState == FRAME_KNOWN) {
+            Frame merged = mergeFrames(snapshotFrame(), incoming);
+            if (merged.unknown) {
+                itsFrameState = FRAME_UNKNOWN;
+            } else {
+                loadFrame(merged);
+            }
+        }
+    }
+
+    private void trackSwitchCase(int switchStart) {
+        if (itsFrameTracker == null) return;
+        Frame frame = itsSwitchFrames.get(switchStart);
+        trackJumpTarget(frame == null ? UNKNOWN_FRAME : frame);
+    }
+
+    private Frame mergeFrames(Frame a, Frame b) {
+        if (a.unknown || b.unknown || a.stack.length != b.stack.length) {
+            return UNKNOWN_FRAME;
+        }
+        try {
+            int localsTop = Math.max(a.locals.length, b.locals.length);
+            int[] locals = new int[localsTop];
+            for (int i = 0; i < localsTop; i++) {
+                int aType = i < a.locals.length ? a.locals[i] : TypeInfo.TOP;
+                int bType = i < b.locals.length ? b.locals[i] : TypeInfo.TOP;
+                locals[i] = TypeInfo.merge(aType, bType, itsConstantPool);
+            }
+            int[] stack = new int[a.stack.length];
+            for (int i = 0; i < stack.length; i++) {
+                stack[i] = TypeInfo.merge(a.stack[i], b.stack[i], itsConstantPool);
+            }
+            return new Frame(locals, localsTop, stack, stack.length);
+        } catch (RuntimeException e) {
+            return UNKNOWN_FRAME;
+        }
     }
 
     public void setStackTop(short n) {
@@ -2830,7 +3140,11 @@ public class ClassFileWriter {
      * parameters in the method.
      */
     private int[] createInitialLocals() {
-        int[] initialLocals = new int[itsMaxLocals];
+        return createInitialLocals(itsMaxLocals);
+    }
+
+    private int[] createInitialLocals(int size) {
+        int[] initialLocals = new int[size];
         int localsTop = 0;
         // Instance methods require the first local variable in the array
         // to be "this". However, if the method being created is a

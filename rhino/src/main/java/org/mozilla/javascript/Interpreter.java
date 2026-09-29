@@ -1647,21 +1647,14 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
     private static class DoStartSub extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            // Store the return PC address pushed by Icode.GOSUB in the local
             final Object[] stack = frame.stack;
             final double[] sDbl = frame.doubleStack;
-            final InterpreterData compilerData = frame.compilerData;
-            if (frame.stackTop == frame.emptyStackTop + 1) {
-                // Call from Icode.GOSUB: store return PC address in the local
-                state.indexReg += compilerData.maxVars;
-                stack[state.indexReg] = stack[frame.stackTop];
-                sDbl[state.indexReg] = sDbl[frame.stackTop];
-                --frame.stackTop;
-            } else {
-                // Call from exception handler: exception object is already
-                // stored
-                // in the local
-                if (frame.stackTop != frame.emptyStackTop) Kit.codeBug();
-            }
+            state.indexReg += frame.compilerData.maxVars;
+            stack[state.indexReg] = stack[frame.stackTop];
+            sDbl[state.indexReg] = sDbl[frame.stackTop];
+            stack[frame.stackTop] = null;
+            --frame.stackTop;
             return null;
         }
     }
@@ -1674,14 +1667,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                 addInstructionCount(cx, frame, 0);
             }
             state.indexReg += frame.compilerData.maxVars;
-            Object value = frame.stack[state.indexReg];
-            if (value != DOUBLE_MARK) {
-                // Invocation from exception handler, restore object to
-                // rethrow
-                state.throwable = value;
-                return BREAK_WITHOUT_EXTENSION;
-            }
-            // Normal return from GOSUB
+            if (frame.stack[state.indexReg] != DOUBLE_MARK) Kit.codeBug();
             frame.pc = (int) frame.doubleStack[state.indexReg];
             if (state.instructionCounting) {
                 frame.pcPrevBranch = frame.pc;

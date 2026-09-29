@@ -22,18 +22,11 @@ public class ReturnSubroutine extends Instruction {
             addInstructionCount(cx, frame, 0);
         }
 
-        // Normal return from GOSUB
-        if (frame.hasSubRoutineReturnPC(returnPcOffset)) {
-            var returnPc = frame.getSubRoutineReturnPC(returnPcOffset);
-            frame.pc = (int) returnPc;
-            if (cx.getInstructionObserverThreshold() != 0) {
-                frame.pcPrevBranch = frame.pc;
-            }
-            return;
+        var returnPc = frame.getSubRoutineReturnPC(returnPcOffset);
+        frame.pc = (int) returnPc;
+        if (cx.getInstructionObserverThreshold() != 0) {
+            frame.pcPrevBranch = frame.pc;
         }
-
-        // Invocation from exception handler, restore object to rethrow
-        frame.throwable = frame.getLocal(returnPcOffset);
     }
 
     @Override

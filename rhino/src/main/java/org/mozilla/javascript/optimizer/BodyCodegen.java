@@ -6,9 +6,10 @@ import static org.mozilla.classfile.ClassFileWriter.ACC_STATIC;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.BitSet;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.mozilla.classfile.ByteCode;
@@ -41,6 +42,8 @@ class BodyCodegen {
                     codegen.getBodyMethodName(scriptOrFn) + "_gen",
                     Codegen.GENERATOR_METHOD_SIGNATURE,
                     (short) (ACC_STATIC | ACC_PUBLIC));
+            // Finally blocks are shared between JSRs with the same frame
+            cfw.enableFrameTracking();
         } else {
             cfw.startMethod(
                     codegen.getBodyMethodName(scriptOrFn),
@@ -211,6 +214,7 @@ class BodyCodegen {
         enterAreaStartLabel = -1;
         generatorStateLocal = -1;
         generatorDispatchLabel = -1;
+        generatorDispatchFrame = null;
         resumptionPoints = null;
         savedHomeObjectLocal = -1;
         parentStrictnessLocal = -1;
@@ -304,6 +308,7 @@ class BodyCodegen {
                 // re-entry point (including those in duplicated code) is known.
                 resumptionPoints = new ArrayList<>();
                 generatorDispatchLabel = cfw.acquireLabel();
+                generatorDispatchFrame = cfw.getCurrentFrame();
                 cfw.add(ByteCode.GOTO, generatorDispatchLabel);
                 generateCheckForThrowOrClose(GENERATOR_START, null);
             }
@@ -558,25 +563,18 @@ class BodyCodegen {
                 }
             }
 
-            // generate dispatch tables for finally
-            if (finallys != null) {
-                for (Map.Entry<Node, FinallyReturnPoint> e : finallys.entrySet()) {
-                    if (e.getKey().getType() == Token.FINALLY) {
-                        FinallyReturnPoint ret = e.getValue();
-                        // the finally will jump here
-                        cfw.markLabel(ret.tableLabel, 1);
+            // generate dispatch tables for finally copies
+            for (FinallyCopy copy : emittedFinallyCopies) {
+                // the finally copy will jump here
+                cfw.markLabel(copy.tableLabel, copy.stackTop + 1);
 
-                        // start generating a dispatch table
-                        int startSwitch = cfw.addTableSwitch(0, ret.jsrPoints.size() - 1);
-                        int c = 0;
-                        cfw.markTableSwitchDefault(startSwitch);
-                        for (int i = 0; i < ret.jsrPoints.size(); i++) {
-                            // generate gotos back to the JSR location
-                            cfw.markTableSwitchCase(startSwitch, c);
-                            cfw.add(ByteCode.GOTO, ret.jsrPoints.get(i).intValue());
-                            c++;
-                        }
-                    }
+                // start generating a dispatch table
+                int startSwitch = cfw.addTableSwitch(0, copy.returnLabels.size() - 1);
+                cfw.markTableSwitchDefault(startSwitch);
+                for (int i = 0; i < copy.returnLabels.size(); i++) {
+                    // generate gotos back to the JSR location
+                    cfw.markTableSwitchCase(startSwitch, i);
+                    cfw.add(ByteCode.GOTO, copy.returnLabels.get(i));
                 }
             }
         }
@@ -936,38 +934,42 @@ class BodyCodegen {
                         break;
                     }
 
-                    if (compilerEnv.isGenerateObserverCount()) saveCurrentCodeOffset();
-                    // there is exactly one value on the stack when enterring
-                    // finally blocks: the return address (or its int encoding)
-                    cfw.setStackTop((short) 1);
-
-                    // Save return address in a new local
-                    int finallyRegister = getNewWordLocal();
-
-                    int finallyStart = cfw.acquireLabel();
-                    int finallyEnd = cfw.acquireLabel();
-                    cfw.markLabel(finallyStart);
-
-                    generateIntegerWrap();
-                    cfw.addAStore(finallyRegister);
-
-                    while (child != null) {
-                        generateStatement(child);
-                        child = child.getNext();
+                    // One copy for each frame a JSR reached this finally with. The
+                    // exception case is generated with the exception handler.
+                    Map<Object, FinallyCopy> copies = finallyCopies.remove(node);
+                    if (copies == null) {
+                        break;
                     }
+                    int savedStackTop = cfw.getStackTop();
+                    for (FinallyCopy copy : copies.values()) {
+                        if (compilerEnv.isGenerateObserverCount()) saveCurrentCodeOffset();
+                        node.resetTargets();
+                        // the return address (or its int encoding) is on top of the
+                        // stack of the JSRs
+                        cfw.markLabel(getTargetLabel(copy.entry), copy.stackTop + 1);
 
-                    cfw.addALoad(finallyRegister);
-                    cfw.add(ByteCode.CHECKCAST, "java/lang/Integer");
-                    generateIntegerUnwrap();
-                    FinallyReturnPoint ret = finallys.get(node);
-                    ret.tableLabel = cfw.acquireLabel();
-                    cfw.add(ByteCode.GOTO, ret.tableLabel);
+                        int[] savedLocals = locals.clone();
+                        int savedFirstFreeLocal = firstFreeLocal;
+                        reserveLocals(copy.usedLocals);
+                        // Save return address in a new local
+                        int finallyRegister = getNewWordLocal();
+                        generateIntegerWrap();
+                        cfw.addAStore(finallyRegister);
 
-                    // After this GOTO we expect stack to be empty again!
-                    cfw.setStackTop((short) 0);
+                        generateFinallyBody(node);
 
-                    releaseWordLocal((short) finallyRegister);
-                    cfw.markLabel(finallyEnd);
+                        cfw.addALoad(finallyRegister);
+                        cfw.add(ByteCode.CHECKCAST, "java/lang/Integer");
+                        generateIntegerUnwrap();
+                        copy.tableLabel = cfw.acquireLabel();
+                        cfw.add(ByteCode.GOTO, copy.tableLabel);
+                        emittedFinallyCopies.add(copy);
+
+                        releaseWordLocal((short) finallyRegister);
+                        locals = savedLocals;
+                        firstFreeLocal = savedFirstFreeLocal;
+                    }
+                    cfw.setStackTop((short) savedStackTop);
                 }
                 break;
 
@@ -2023,6 +2025,13 @@ class BodyCodegen {
         // mark the re-entry point, the dispatch table jumps here after
         // initializing the locals
         cfw.markLabel(reentryLabel);
+        if (generatorDispatchFrame != null) {
+            // Only reached from the dispatch table, which is generated later
+            cfw.setCurrentFrame(
+                    liveLocals == null
+                            ? generatorDispatchFrame
+                            : cfw.frameWithObjectLocals(generatorDispatchFrame, liveLocals));
+        }
         resumptionPoints.add(new ResumptionPoint(state, reentryLabel, liveLocals));
 
         // see if we need to dispatch for .close() or .throw()
@@ -2245,15 +2254,64 @@ class BodyCodegen {
         }
     }
 
+    /**
+     * Jump to the copy of a finally block for the current frame, and return here after it. JSRs can
+     * only share a copy if they have the same frame, as the frame at the start of the copy, and so
+     * at each return from it, is the merge of the frames of every JSR to it.
+     */
     private void addGotoWithReturn(Node target) {
-        FinallyReturnPoint ret = finallys.get(target);
-        cfw.addLoadConstant(ret.jsrPoints.size());
-        addGoto(target, ByteCode.GOTO);
+        Node fBlock = getFinallyAtTarget(target);
+        ClassFileWriter.Frame frame = cfw.getCurrentFrame();
+        // A JSR whose frame is not known gets a copy to itself
+        Object key = frame != null ? frame : new Object();
+        FinallyCopy copy =
+                finallyCopies
+                        .computeIfAbsent(fBlock, k -> new LinkedHashMap<>())
+                        .computeIfAbsent(key, k -> new FinallyCopy(cfw.getStackTop()));
+        for (int i = 0; i < localsMax; i++) {
+            if (locals[i] != 0) copy.usedLocals.set(i);
+        }
+
+        cfw.addLoadConstant(copy.returnLabels.size());
+        addGoto(copy.entry, ByteCode.GOTO);
         // Don't leave something on the stack here!
         cfw.add(ByteCode.POP);
         int retLabel = cfw.acquireLabel();
         cfw.markLabel(retLabel);
-        ret.jsrPoints.add(Integer.valueOf(retLabel));
+        // Only reached from the dispatch table, which is generated later. A yield in the
+        // finally block would leave the saved locals as Objects.
+        if (frame != null && !containsYield(fBlock)) {
+            cfw.setCurrentFrame(frame);
+        }
+        copy.returnLabels.add(retLabel);
+    }
+
+    private static boolean containsYield(Node node) {
+        for (Node child = node.getFirstChild(); child != null; child = child.getNext()) {
+            int type = child.getType();
+            if (type == Token.YIELD || type == Token.YIELD_STAR || containsYield(child)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void generateFinallyBody(Node fBlock) {
+        fBlock.resetTargets();
+        for (Node child = fBlock.getFirstChild(); child != null; child = child.getNext()) {
+            generateStatement(child);
+        }
+    }
+
+    /** Mark locals as in use, so that a finally copy doesn't reuse locals live at its JSRs. */
+    private void reserveLocals(BitSet usedLocals) {
+        for (int i = usedLocals.nextSetBit(0); i >= 0; i = usedLocals.nextSetBit(i + 1)) {
+            if (locals[i] == 0) locals[i] = 1;
+        }
+        while (locals[firstFreeLocal] != 0) {
+            firstFreeLocal++;
+        }
+        if (localsMax < firstFreeLocal) localsMax = firstFreeLocal;
     }
 
     private void generateArrayLiteralFactory(Node node, int count) {
@@ -3333,8 +3391,10 @@ class BodyCodegen {
          * and NodeTransformer;  Codegen just adds the java handlers for the
          * javascript catch and finally clauses.  */
 
+        // A try in an expression has the values of the expression on the stack
+        int stackTop = cfw.getStackTop();
         int startLabel = cfw.acquireLabel();
-        cfw.markLabel(startLabel, 0);
+        cfw.markLabel(startLabel, stackTop);
 
         Node catchTarget = node.target;
         Node finallyTarget = node.getFinally();
@@ -3354,18 +3414,6 @@ class BodyCodegen {
             handlerLabels[FINALLY_EXCEPTION] = cfw.acquireLabel();
         }
         exceptionManager.setHandlers(handlerLabels, startLabel);
-
-        // create a table for the equivalent of JSR returns
-        if (isGenerator && finallyTarget != null) {
-            FinallyReturnPoint ret = new FinallyReturnPoint();
-            if (finallys == null) {
-                finallys = new HashMap<>();
-            }
-            // add the finally target to hashtable
-            finallys.put(finallyTarget, ret);
-            // add the finally node as well to the hash table
-            finallys.put(finallyTarget.getNext(), ret);
-        }
 
         while (child != null) {
             if (child == catchTarget) {
@@ -3434,7 +3482,7 @@ class BodyCodegen {
             }
         }
 
-        // finally handler; catch all exceptions, store to a local; JSR to
+        // finally handler; catch all exceptions, store to a local; inline
         // the finally, then re-throw.
         if (finallyTarget != null) {
             int finallyHandler = cfw.acquireLabel();
@@ -3449,10 +3497,10 @@ class BodyCodegen {
             cfw.addALoad(savedVariableObject);
             cfw.addAStore(variableObjectLocal);
 
-            // get the label to JSR to
             int finallyLabel = finallyTarget.labelId();
-            if (isGenerator) addGotoWithReturn(finallyTarget);
-            else {
+            if (isGenerator) {
+                generateFinallyBody(getFinallyAtTarget(finallyTarget));
+            } else {
                 inlineFinally(finallyTarget, handlerLabels[FINALLY_EXCEPTION], finallyEnd);
             }
 
@@ -3469,7 +3517,7 @@ class BodyCodegen {
             }
         }
         releaseWordLocal(savedVariableObject);
-        cfw.markLabel(realEnd);
+        cfw.markLabel(realEnd, stackTop);
 
         if (!isGenerator) {
             exceptionManager.popExceptionInfo();
@@ -5140,16 +5188,29 @@ class BodyCodegen {
     private boolean isGenerator;
     private int generatorSwitch;
     private int generatorDispatchLabel;
+    private ClassFileWriter.Frame generatorDispatchFrame;
     private List<ResumptionPoint> resumptionPoints;
     private int maxLocals = 0;
     private int maxStack = 0;
 
-    private Map<Node, FinallyReturnPoint> finallys;
+    // For each FINALLY node in a generator, the copy of it for each frame it is reached with
+    private final IdentityHashMap<Node, Map<Object, FinallyCopy>> finallyCopies =
+            new IdentityHashMap<>();
+    private final List<FinallyCopy> emittedFinallyCopies = new ArrayList<>();
     private ArrayList<Node> literals;
 
-    static class FinallyReturnPoint {
-        public List<Integer> jsrPoints = new ArrayList<>();
-        public int tableLabel = 0;
+    private static final class FinallyCopy {
+        final Node entry = Node.newTarget();
+        // The stack depth at the JSRs to this copy
+        final int stackTop;
+        final List<Integer> returnLabels = new ArrayList<>();
+        // The locals in use at any of the JSRs to this copy
+        final BitSet usedLocals = new BitSet();
+        int tableLabel;
+
+        FinallyCopy(int stackTop) {
+            this.stackTop = stackTop;
+        }
     }
 
     private static final class ResumptionPoint {

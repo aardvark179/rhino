@@ -2,7 +2,6 @@ package org.mozilla.javascript.interpreterv2.instruction;
 
 import static org.mozilla.javascript.InterpreterV2.addInstructionCount;
 
-import java.util.Collections;
 import java.util.Objects;
 import java.util.Set;
 import org.mozilla.javascript.CallFrameV2;
@@ -22,7 +21,9 @@ public class GoSubroutine extends JumpInstruction {
 
     @Override
     public int stackChange() {
-        return 1;
+        // The return address is pushed for the subroutine, which pops it again
+        // before it returns to the next instruction.
+        return 0;
     }
 
     @Override
@@ -33,7 +34,8 @@ public class GoSubroutine extends JumpInstruction {
 
     @Override
     public Set<Integer> getTargets(int fromPC) {
-        return Collections.singleton(fromPC + getOffset());
+        // The next instruction is where the subroutine returns to.
+        return Set.of(fromPC + getOffset(), fromPC + 1);
     }
 
     @Override

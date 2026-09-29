@@ -10,6 +10,8 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.mozilla.javascript.InstrumentEmitter.Type;
@@ -49,6 +51,9 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
     // fixupTable[i] = (label_index << 32) | fixup_site
     private long[] fixupTable;
     private int fixupTableTop;
+    // For each FINALLY node, the copy of it for each stack depth
+    private final IdentityHashMap<Node, Map<Integer, FinallyCopy>> finallyCopies =
+            new IdentityHashMap<>();
     private final ArrayList<Object> literalIds = new ArrayList<>();
 
     private int exceptionTableTop;
@@ -449,23 +454,44 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
 
             case Token.JSR:
                 {
-                    Node target = ((Jump) node).target;
-                    addGoto(target, Icode.GOSUB);
+                    Node fBlock = getFinallyAtTarget(((Jump) node).target);
+                    addGoto(getFinallyEntry(fBlock, stackDepth), Icode.GOSUB);
                 }
                 break;
 
             case Token.FINALLY:
                 {
-                    // Account for incomming GOTOSUB address
-                    stackChange(1);
-                    int finallyRegister = getLocalBlockRef(node);
-                    addIndexOp(Icode.STARTSUB, finallyRegister);
-                    stackChange(-1);
-                    while (child != null) {
-                        visitStatement(child, initialStackDepth);
-                        child = child.getNext();
+                    int exceptionRegister = getLocalBlockRef(node);
+                    int savedStackDepth = stackDepth;
+
+                    // The exception handler enters here with an empty stack and
+                    // the exception stored in the register, and runs the copy for
+                    // an empty stack.
+                    stackDepth = 0;
+                    addGoto(getFinallyEntry(node, 0), Icode.GOSUB);
+                    addIndexOp(Token.RETHROW, exceptionRegister);
+
+                    // One copy for each stack depth a JSR reached this finally from
+                    int savedLocalTop = localTop;
+                    for (Map.Entry<Integer, FinallyCopy> entry :
+                            finallyCopies.remove(node).entrySet()) {
+                        FinallyCopy copy = entry.getValue();
+                        node.resetTargets();
+                        markTargetLabel(copy.entry);
+                        // Keep clear of locals that are live at any of the JSRs
+                        localTop = Math.max(savedLocalTop, copy.localTop);
+                        int returnRegister = allocLocal();
+                        stackDepth = entry.getKey();
+                        // Account for incoming GOSUB address
+                        stackChange(1);
+                        addIndexOp(Icode.STARTSUB, returnRegister);
+                        stackChange(-1);
+                        visitFinallyBody(child);
+                        addIndexOp(Icode.RETSUB, returnRegister);
+                        releaseLocal(returnRegister);
                     }
-                    addIndexOp(Icode.RETSUB, finallyRegister);
+                    localTop = savedLocalTop;
+                    stackDepth = savedStackDepth;
                 }
                 break;
 
@@ -1746,6 +1772,39 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
         // by statements.
         visitStatement(initStmt, stackDepth);
         visitExpression(expr, 0);
+    }
+
+    private static Node getFinallyAtTarget(Node finallyTarget) {
+        Node fBlock = finallyTarget.getNext();
+        if (fBlock == null || fBlock.getType() != Token.FINALLY) throw Kit.codeBug();
+        return fBlock;
+    }
+
+    /**
+     * Get the entry target for the copy of a finally block that is reached with the given stack
+     * depth. Every JSR to a finally block precedes the FINALLY node, so all the copies needed are
+     * known by the time it is generated.
+     */
+    private Node getFinallyEntry(Node fBlock, int depth) {
+        FinallyCopy copy =
+                finallyCopies
+                        .computeIfAbsent(fBlock, k -> new LinkedHashMap<>())
+                        .computeIfAbsent(depth, k -> new FinallyCopy());
+        copy.localTop = Math.max(copy.localTop, localTop);
+        return copy.entry;
+    }
+
+    private static final class FinallyCopy {
+        final Node entry = Node.newTarget();
+        // The highest local in use at any of the JSRs to this copy
+        int localTop;
+    }
+
+    private void visitFinallyBody(Node child) {
+        while (child != null) {
+            visitStatement(child, stackDepth);
+            child = child.getNext();
+        }
     }
 
     private static int getLocalBlockRef(Node node) {
