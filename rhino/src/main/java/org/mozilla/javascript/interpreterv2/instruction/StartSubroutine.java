@@ -17,14 +17,9 @@ public class StartSubroutine extends Instruction {
 
     @Override
     public void interpret(Context cx, CallFrameV2 frame) {
-        if (!frame.isStackEmpty()) {
-            // We are called from GoSubroutine, that adds the stack
-            // This is behavior in the original interpreter
-            // not a fan of this setup at all. But leaving it
-            // until we have a better setup
-            var returnPc = returnPcOperand.retrieveDouble(frame);
-            frame.saveSubRoutineReturnPC(subReturnOffset, returnPc);
-        }
+        // Store the return address pushed by GoSubroutine in the local
+        var returnPc = returnPcOperand.retrieveDouble(frame);
+        frame.saveSubRoutineReturnPC(subReturnOffset, returnPc);
 
         frame.pc += 1;
     }

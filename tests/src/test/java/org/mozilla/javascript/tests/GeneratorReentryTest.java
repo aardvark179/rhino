@@ -151,7 +151,6 @@ public class GeneratorReentryTest {
     }
 
     @Test
-    @Disabled("Compiled mode fails to generate yields in nested finally blocks")
     public void yieldInsideNestedFinallyReachedByReturn() {
         Utils.assertWithAllModes_ES6(
                 "0,f,o,r",

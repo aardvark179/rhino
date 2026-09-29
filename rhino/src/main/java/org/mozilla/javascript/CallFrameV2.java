@@ -239,10 +239,6 @@ public class CallFrameV2 extends ACallFrame<CallFrameV2, CompilerData<?>> implem
         return peekDouble(0);
     }
 
-    public boolean isStackEmpty() {
-        return stackTop == emptyStackTop;
-    }
-
     public void saveExceptionScope(int exceptionIndex, VarScope scope) {
         stack[localShift + exceptionIndex] = scope;
     }
@@ -252,13 +248,9 @@ public class CallFrameV2 extends ACallFrame<CallFrameV2, CompilerData<?>> implem
         doubleStack[localShift + returnPcOffset] = subRoutineReturnPC;
     }
 
-    public boolean hasSubRoutineReturnPC(int returnPcOffset) {
-        return stack[localShift + returnPcOffset] == DOUBLE_MARK;
-    }
-
     public double getSubRoutineReturnPC(int returnPcOffset) {
         if (stack[localShift + returnPcOffset] != DOUBLE_MARK) {
-            throw new IllegalStateException("Use hasSubRoutineReturnPC first");
+            throw new IllegalStateException("No subroutine return address");
         }
         return doubleStack[localShift + returnPcOffset];
     }
