@@ -210,6 +210,8 @@ class BodyCodegen {
         epilogueLabel = -1;
         enterAreaStartLabel = -1;
         generatorStateLocal = -1;
+        generatorDispatchLabel = -1;
+        resumptionPoints = null;
         savedHomeObjectLocal = -1;
         parentStrictnessLocal = -1;
     }
@@ -297,14 +299,13 @@ class BodyCodegen {
                 epilogueLabel = cfw.acquireLabel();
             }
 
-            List<Node> targets = ((FunctionNode) scriptOrFn).getResumptionPoints();
-            if (targets != null) {
-                // get resumption point
-                generateGetGeneratorResumptionPoint();
-
-                // generate dispatch table
-                generatorSwitch = cfw.addTableSwitch(0, targets.size() + GENERATOR_START);
-                generateCheckForThrowOrClose(-1, false, GENERATOR_START);
+            if (((FunctionNode) scriptOrFn).getResumptionPoints() != null) {
+                // The dispatch table is generated in the epilogue, once every
+                // re-entry point (including those in duplicated code) is known.
+                resumptionPoints = new ArrayList<>();
+                generatorDispatchLabel = cfw.acquireLabel();
+                cfw.add(ByteCode.GOTO, generatorDispatchLabel);
+                generateCheckForThrowOrClose(GENERATOR_START, null);
             }
         }
 
@@ -536,24 +537,24 @@ class BodyCodegen {
     private void generateEpilogue() {
         if (compilerEnv.isGenerateObserverCount()) addInstructionCount();
         if (isGenerator) {
-            // generate locals initialization
-            Map<Node, int[]> liveLocals = ((FunctionNode) scriptOrFn).getLiveLocals();
-            if (liveLocals != null) {
-                List<Node> nodes = ((FunctionNode) scriptOrFn).getResumptionPoints();
-                for (Node node : nodes) {
-                    int[] live = liveLocals.get(node);
-                    if (live != null) {
-                        cfw.markTableSwitchCase(generatorSwitch, getNextGeneratorState(node));
+            // generate the re-entry dispatch table and locals initialization
+            if (generatorDispatchLabel != -1) {
+                cfw.markLabel(generatorDispatchLabel, 0);
+                generateGetGeneratorResumptionPoint();
+                generatorSwitch = cfw.addTableSwitch(0, resumptionPoints.size() - 1);
+                for (ResumptionPoint point : resumptionPoints) {
+                    cfw.markTableSwitchCase(generatorSwitch, point.state);
+                    if (point.liveLocals != null) {
                         generateGetGeneratorLocalsState();
-                        for (int j = 0; j < live.length; j++) {
+                        for (int j = 0; j < point.liveLocals.length; j++) {
                             cfw.add(ByteCode.DUP);
                             cfw.addLoadConstant(j);
                             cfw.add(ByteCode.AALOAD);
-                            cfw.addAStore(live[j]);
+                            cfw.addAStore(point.liveLocals[j]);
                         }
                         cfw.add(ByteCode.POP);
-                        cfw.add(ByteCode.GOTO, getTargetLabel(node));
                     }
+                    cfw.add(ByteCode.GOTO, point.label);
                 }
             }
 
@@ -585,7 +586,7 @@ class BodyCodegen {
         }
 
         if (isGenerator) {
-            if (((FunctionNode) scriptOrFn).getResumptionPoints() != null) {
+            if (generatorDispatchLabel != -1) {
                 cfw.markTableSwitchDefault(generatorSwitch);
             }
 
@@ -999,11 +1000,6 @@ class BodyCodegen {
                 "<init>",
                 "(Ljava/lang/Object;Ljava/lang/String;I)V");
         cfw.add(ByteCode.ATHROW);
-    }
-
-    private int getNextGeneratorState(Node node) {
-        int nodeIndex = ((FunctionNode) scriptOrFn).getResumptionPoints().indexOf(node);
-        return nodeIndex + GENERATOR_YIELD_START;
     }
 
     private void generateExpression(Node node, Node parent) {
@@ -1902,10 +1898,11 @@ class BodyCodegen {
     }
 
     private void generateYieldPoint(Node node, boolean exprContext) {
-        if (unnestedYields.containsKey(node)) {
+        // Removed on use, so that a yield in duplicated code is generated again.
+        String name = unnestedYields.remove(node);
+        if (name != null) {
             // Yield was previously moved up via the "nestedYield" code below.
             if (exprContext) {
-                String name = unnestedYields.get(node);
                 cfw.addALoad(variableObjectLocal);
                 cfw.addALoad(contextLocal);
                 addDynamicInvoke("NAME:GET:" + name, Signatures.NAME_GET);
@@ -1975,16 +1972,18 @@ class BodyCodegen {
         }
 
         // change the resumption state
-        int nextState = getNextGeneratorState(node);
+        // States are allocated as each yield is emitted, so a yield in
+        // duplicated code gets a separate state for each copy.
+        int nextState = resumptionPoints.size();
         generateSetGeneratorResumptionPoint(nextState);
 
-        boolean hasLocals = generateSaveLocals(node);
+        int[] liveLocals = generateSaveLocals();
 
         cfw.add(ByteCode.ARETURN);
 
         // We get back here after a "next" on the generator object itself
 
-        generateCheckForThrowOrClose(getTargetLabel(node), hasLocals, nextState);
+        generateCheckForThrowOrClose(nextState, liveLocals);
 
         // reconstruct the stack from the bottom to the top
         if (top != 0) {
@@ -2004,9 +2003,11 @@ class BodyCodegen {
         }
     }
 
-    private void generateCheckForThrowOrClose(int label, boolean hasLocals, int nextState) {
+    private void generateCheckForThrowOrClose(int state, int[] liveLocals) {
+        if (state != resumptionPoints.size()) throw Kit.codeBug();
         int throwLabel = cfw.acquireLabel();
         int closeLabel = cfw.acquireLabel();
+        int reentryLabel = cfw.acquireLabel();
 
         // throw the user provided object, if the operation is .throw()
         cfw.markLabel(throwLabel);
@@ -2019,13 +2020,10 @@ class BodyCodegen {
         cfw.add(ByteCode.CHECKCAST, "java/lang/Throwable");
         cfw.add(ByteCode.ATHROW);
 
-        // mark the re-entry point
-        // jump here after initializing the locals
-        if (label != -1) cfw.markLabel(label);
-        if (!hasLocals) {
-            // jump here directly if there are no locals
-            cfw.markTableSwitchCase(generatorSwitch, nextState);
-        }
+        // mark the re-entry point, the dispatch table jumps here after
+        // initializing the locals
+        cfw.markLabel(reentryLabel);
+        resumptionPoints.add(new ResumptionPoint(state, reentryLabel, liveLocals));
 
         // see if we need to dispatch for .close() or .throw()
         cfw.addILoad(operationLocal);
@@ -3789,15 +3787,14 @@ class BodyCodegen {
         throw Kit.codeBug("bad finally target");
     }
 
-    private boolean generateSaveLocals(Node node) {
+    private int[] generateSaveLocals() {
         int count = 0;
         for (int i = 0; i < firstFreeLocal; i++) {
             if (locals[i] != 0) count++;
         }
 
         if (count == 0) {
-            ((FunctionNode) scriptOrFn).addLiveLocals(node, null);
-            return false;
+            return null;
         }
 
         // calculate the max locals
@@ -3813,9 +3810,6 @@ class BodyCodegen {
             }
         }
 
-        // save the locals
-        ((FunctionNode) scriptOrFn).addLiveLocals(node, ls);
-
         // save locals
         generateGetGeneratorLocalsState();
         for (int i = 0; i < count; i++) {
@@ -3827,7 +3821,7 @@ class BodyCodegen {
         // pop the array off the stack
         cfw.add(ByteCode.POP);
 
-        return true;
+        return ls;
     }
 
     private void visitSwitch(Jump switchNode, Node child) {
@@ -5100,7 +5094,6 @@ class BodyCodegen {
 
     static final int GENERATOR_TERMINATE = -1;
     static final int GENERATOR_START = 0;
-    static final int GENERATOR_YIELD_START = 1;
 
     ClassFileWriter cfw;
     Codegen codegen;
@@ -5146,6 +5139,8 @@ class BodyCodegen {
 
     private boolean isGenerator;
     private int generatorSwitch;
+    private int generatorDispatchLabel;
+    private List<ResumptionPoint> resumptionPoints;
     private int maxLocals = 0;
     private int maxStack = 0;
 
@@ -5155,6 +5150,18 @@ class BodyCodegen {
     static class FinallyReturnPoint {
         public List<Integer> jsrPoints = new ArrayList<>();
         public int tableLabel = 0;
+    }
+
+    private static final class ResumptionPoint {
+        final int state;
+        final int label;
+        final int[] liveLocals;
+
+        ResumptionPoint(int state, int label, int[] liveLocals) {
+            this.state = state;
+            this.label = label;
+            this.liveLocals = liveLocals;
+        }
     }
 
     private int unnestedYieldCount = 0;
