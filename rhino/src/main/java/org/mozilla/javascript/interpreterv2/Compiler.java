@@ -1350,7 +1350,8 @@ public class Compiler<T extends ScriptOrFn<T>> {
 
             // Access property
             addInstruction(
-                    new RefSpecial(lhs.convertToConsume(), dedup((String) node.getProp(Node.NAME_PROP))));
+                    new RefSpecial(
+                            lhs.convertToConsume(), dedup((String) node.getProp(Node.NAME_PROP))));
             int afterLabel = instructions.size();
             addInstruction(new Goto());
 
@@ -2299,7 +2300,9 @@ public class Compiler<T extends ScriptOrFn<T>> {
             case Token.GETPROP:
                 addInstruction(
                         new GetPropSuper(
-                            superObject, dedup(object.getNext().getString()), false)); // stack: [p]
+                                superObject,
+                                dedup(object.getNext().getString()),
+                                false)); // stack: [p]
                 break;
 
             case Token.GETELEM:
@@ -2339,7 +2342,9 @@ public class Compiler<T extends ScriptOrFn<T>> {
             case Token.GETPROP:
                 addInstruction(
                         new SetPropSuper(
-                            superObject, dedup(object.getNext().getString()), PopOperand.instance));
+                                superObject,
+                                dedup(object.getNext().getString()),
+                                PopOperand.instance));
                 // stack: prefix [p+-1], postfix: [p, p+-1]
                 break;
 

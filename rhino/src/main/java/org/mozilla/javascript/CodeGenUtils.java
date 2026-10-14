@@ -43,7 +43,10 @@ public class CodeGenUtils {
         fillInForFunction(builder, fn, compilerEnv);
     }
 
-    private static void fillInForFunction(JSDescriptor.Builder<JSFunction> builder, FunctionNode fn, CompilerEnvirons compilerEnv) {
+    private static void fillInForFunction(
+            JSDescriptor.Builder<JSFunction> builder,
+            FunctionNode fn,
+            CompilerEnvirons compilerEnv) {
         builder.functionType = fn.getFunctionType();
         builder.requiresActivationFrame = fn.requiresActivation();
         builder.requiresArgumentObject = fn.requiresArgumentObject();
@@ -103,10 +106,15 @@ public class CodeGenUtils {
         builder.securityDomain = compilerEnv.securityDomain();
     }
 
-    private static void fillInCommon(JSDescriptor.Builder<?> builder, ScriptNode scriptOrFn, CompilerEnvirons compilerEnv) {
+    private static void fillInCommon(
+            JSDescriptor.Builder<?> builder, ScriptNode scriptOrFn, CompilerEnvirons compilerEnv) {
         builder.paramAndVarNames =
-                compilerEnv.getDeduplicator().deduplicate(
-                    disambiguateNames(scriptOrFn.getParamAndVarNames(), scriptOrFn.getParamCount()));
+                compilerEnv
+                        .getDeduplicator()
+                        .deduplicate(
+                                disambiguateNames(
+                                        scriptOrFn.getParamAndVarNames(),
+                                        scriptOrFn.getParamCount()));
         builder.paramCount = scriptOrFn.getParamCount();
         builder.paramIsConst = scriptOrFn.getParamAndVarConst();
         builder.paramAndVarCount = scriptOrFn.getParamAndVarCount();
