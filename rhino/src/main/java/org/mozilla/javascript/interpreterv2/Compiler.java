@@ -23,7 +23,6 @@ import org.mozilla.javascript.Token;
 import org.mozilla.javascript.ast.FunctionNode;
 import org.mozilla.javascript.ast.Jump;
 import org.mozilla.javascript.ast.ScriptNode;
-import org.mozilla.javascript.ast.TemplateCharacters;
 import org.mozilla.javascript.interpreterv2.instruction.Add;
 import org.mozilla.javascript.interpreterv2.instruction.ArrayLit;
 import org.mozilla.javascript.interpreterv2.instruction.ArrayLitWithSpread;
