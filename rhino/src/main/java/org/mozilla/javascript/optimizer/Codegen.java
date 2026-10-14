@@ -499,6 +499,7 @@ public class Codegen implements Evaluator {
         new BigIntDescriber(registry);
         new UniqueTagDescriber(registry);
         ObjectLiteralDescriptorDescribers.register(registry);
+        ArrayLiteralDescriptorDescribers.register(registry);
 
         cfw.registerStringConcat(
                 ConstantDescs.ofConstantBootstrap(

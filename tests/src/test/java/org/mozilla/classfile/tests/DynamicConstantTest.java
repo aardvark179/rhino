@@ -6,6 +6,7 @@
 
 package org.mozilla.classfile.tests;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -31,6 +32,9 @@ import org.mozilla.classfile.ByteCode;
 import org.mozilla.classfile.ClassFileWriter;
 import org.mozilla.classfile.DynamicConstantDescriber;
 import org.mozilla.classfile.DynamicDescriberRegistry;
+import org.mozilla.javascript.ArrayLiteralDescriptor;
+import org.mozilla.javascript.ArrayLiteralDescriptor.ComplexArrayLiteral;
+import org.mozilla.javascript.ArrayLiteralDescriptor.SimpleArrayLiteral;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.DefiningClassLoader;
 import org.mozilla.javascript.EagerSourceCodeProvider;
@@ -44,6 +48,7 @@ import org.mozilla.javascript.ObjectLiteralDescriptor.SetterEntry;
 import org.mozilla.javascript.ObjectLiteralDescriptor.SimpleClassLitDescriptor;
 import org.mozilla.javascript.ObjectLiteralDescriptor.SpreadEntry;
 import org.mozilla.javascript.RegExpProxy;
+import org.mozilla.javascript.ResultAccumulator;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.Symbol;
 import org.mozilla.javascript.SymbolKey;
@@ -51,6 +56,7 @@ import org.mozilla.javascript.TemplateLiteralCallSite;
 import org.mozilla.javascript.TopLevel;
 import org.mozilla.javascript.Undefined;
 import org.mozilla.javascript.UniqueTag;
+import org.mozilla.javascript.optimizer.ArrayLiteralDescriptorDescribers;
 import org.mozilla.javascript.optimizer.EagerSourceCodeProviderDescriber;
 import org.mozilla.javascript.optimizer.ObjectLiteralDescriptorDescribers;
 import org.mozilla.javascript.optimizer.StringConcatBootstraps;
@@ -513,6 +519,70 @@ public class DynamicConstantTest {
     }
 
     @Test
+    public void simpleArrayLiteralRoundTrips() throws Exception {
+        var descriptor = new ArrayLiteralDescriptor.Builder().withElement().withElement().build();
+        var resolved = loadArrayLiteral("TestSimpleArrayLiteral", descriptor);
+        assertInstanceOf(SimpleArrayLiteral.class, resolved);
+        assertSameArrays(descriptor, resolved, "a", "b");
+    }
+
+    @Test
+    public void complexArrayLiteralRoundTrips() throws Exception {
+        // [, a, ...s, , b, ...s, ,]
+        var descriptor =
+                new ArrayLiteralDescriptor.Builder()
+                        .withSkip()
+                        .withElement()
+                        .withSpread()
+                        .withSkip()
+                        .withElement()
+                        .withSpread()
+                        .withSkip()
+                        .build();
+        var resolved =
+                (ComplexArrayLiteral) loadArrayLiteral("TestComplexArrayLiteral", descriptor);
+        var original = (ComplexArrayLiteral) descriptor;
+        assertArrayEquals(original.getSkips(), resolved.getSkips());
+        assertArrayEquals(original.getSpreads(), resolved.getSpreads());
+        assertSameArrays(
+                descriptor,
+                resolved,
+                "a",
+                "x",
+                "y",
+                ObjectLiteralDescriptor.SPREAD_END,
+                "b",
+                ObjectLiteralDescriptor.SPREAD_END);
+    }
+
+    @Test
+    public void arrayLiteralsWithOnlySkipsOrSpreadsRoundTrip() throws Exception {
+        var skipsOnly =
+                (ComplexArrayLiteral)
+                        loadArrayLiteral(
+                                "TestSkipsOnlyArrayLiteral",
+                                new ArrayLiteralDescriptor.Builder()
+                                        .withElement()
+                                        .withSkip()
+                                        .withSkip()
+                                        .build());
+        assertArrayEquals(new int[] {1, 2}, skipsOnly.getSkips());
+        assertArrayEquals(new int[0], skipsOnly.getSpreads());
+
+        var spreadsOnly =
+                (ComplexArrayLiteral)
+                        loadArrayLiteral(
+                                "TestSpreadsOnlyArrayLiteral",
+                                new ArrayLiteralDescriptor.Builder()
+                                        .withSpread()
+                                        .withElement()
+                                        .withSpread()
+                                        .build());
+        assertArrayEquals(new int[0], spreadsOnly.getSkips());
+        assertArrayEquals(new int[] {0, 2}, spreadsOnly.getSpreads());
+    }
+
+    @Test
     public void eagerSourceCodeProviderResolvesFromRawSource() throws Exception {
         // The source contains the "[" and ";" characters that a constant name may not, which is
         // why the describer passes it as a bootstrap argument instead.
@@ -869,6 +939,42 @@ public class DynamicConstantTest {
     }
 
     // ---------------------------------------------------------------- helpers
+
+    private static ArrayLiteralDescriptor loadArrayLiteral(
+            String className, ArrayLiteralDescriptor descriptor) throws Exception {
+        ClassFileWriter cfw = writer(className);
+        ArrayLiteralDescriptorDescribers.register(cfw.getDynamicDescriptorRegistry());
+        cfw.startMethod("get", "()Ljava/lang/Object;", (short) (ACC_PUBLIC | ACC_STATIC));
+        cfw.addLoadDynamicConstant(descriptor);
+        cfw.add(ByteCode.ARETURN);
+        cfw.stopMethod((short) 0);
+
+        var resolved = invoke(cfw, className, "get");
+        assertSame(descriptor.getClass(), resolved.getClass());
+        return (ArrayLiteralDescriptor) resolved;
+    }
+
+    /** Check that both descriptors build the same array from the same results. */
+    private static void assertSameArrays(
+            ArrayLiteralDescriptor expected, ArrayLiteralDescriptor actual, Object... results) {
+        try (Context cx = Context.enter()) {
+            TopLevel scope = cx.initStandardObjects();
+            var expectedArray = (NativeArray) expected.createArray(cx, scope, accumulate(results));
+            var actualArray = (NativeArray) actual.createArray(cx, scope, accumulate(results));
+            assertEquals(expectedArray.getLength(), actualArray.getLength());
+            for (int i = 0; i < expectedArray.getLength(); i++) {
+                assertEquals(expectedArray.get(i, expectedArray), actualArray.get(i, actualArray));
+            }
+        }
+    }
+
+    private static ResultAccumulator accumulate(Object... results) {
+        var accumulator = new ResultAccumulator(results.length);
+        for (Object result : results) {
+            accumulator.addResult(result);
+        }
+        return accumulator;
+    }
 
     private static ObjectLiteralDescriptor loadObjectLiteral(
             String className, ObjectLiteralDescriptor descriptor) throws Exception {
