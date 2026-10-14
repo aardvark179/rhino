@@ -2,7 +2,6 @@ package org.mozilla.javascript.interpreterv2.instruction;
 
 import java.util.Arrays;
 import java.util.Objects;
-
 import org.mozilla.javascript.CallFrameV2;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.interpreterv2.operand.Operand;

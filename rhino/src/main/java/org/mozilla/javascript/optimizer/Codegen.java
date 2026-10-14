@@ -310,7 +310,7 @@ public class Codegen implements Evaluator {
             @SuppressWarnings("unchecked")
             var funcBuilder = (JSDescriptor.Builder<JSFunction>) builder;
             CodeGenUtils.fillInForTopLevelFunction(
-                funcBuilder, scriptOrFn.getFunctionNode(0), rawSource, compilerEnv);
+                    funcBuilder, scriptOrFn.getFunctionNode(0), rawSource, compilerEnv);
             scriptOrFn = scriptOrFn.getFunctionNode(0);
         } else {
             @SuppressWarnings("unchecked")

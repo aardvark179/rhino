@@ -1361,7 +1361,8 @@ public class Compiler<T extends ScriptOrFn<T>> {
 
             // Access property
             addInstruction(
-                    new RefSpecial(lhs.convertToConsume(), dedup((String) node.getProp(Node.NAME_PROP))));
+                    new RefSpecial(
+                            lhs.convertToConsume(), dedup((String) node.getProp(Node.NAME_PROP))));
             int afterLabel = instructions.size();
             addInstruction(new Goto());
 
