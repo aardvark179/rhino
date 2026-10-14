@@ -22,6 +22,8 @@ public final class UniqueTag implements Serializable {
     private static final int ID_NOT_FOUND = 1;
     private static final int ID_NULL_VALUE = 2;
     private static final int ID_DOUBLE_MARK = 3;
+    private static final int ID_COMPUTED_KEY = 4;
+    private static final int ID_COMPUTED_METHOD = 5;
 
     /** Tag to mark non-existing values. */
     public static final UniqueTag NOT_FOUND = new UniqueTag(ID_NOT_FOUND);
@@ -34,6 +36,12 @@ public final class UniqueTag implements Serializable {
      */
     public static final UniqueTag DOUBLE_MARK = new UniqueTag(ID_DOUBLE_MARK);
 
+    /** Tag to indicate that a object represents a computed key in an object literal. */
+    public static final UniqueTag COMPUTED_KEY = new UniqueTag(ID_COMPUTED_KEY);
+
+    /** Tag to indicate that a object represents a computed method key in an object literal. */
+    public static final UniqueTag COMPUTED_METHOD = new UniqueTag(ID_COMPUTED_METHOD);
+
     private final int tagId;
 
     private UniqueTag(int tagId) {
@@ -41,15 +49,14 @@ public final class UniqueTag implements Serializable {
     }
 
     public Object readResolve() {
-        switch (tagId) {
-            case ID_NOT_FOUND:
-                return NOT_FOUND;
-            case ID_NULL_VALUE:
-                return NULL_VALUE;
-            case ID_DOUBLE_MARK:
-                return DOUBLE_MARK;
-        }
-        throw new IllegalStateException(String.valueOf(tagId));
+        return switch (tagId) {
+            case ID_NOT_FOUND -> NOT_FOUND;
+            case ID_NULL_VALUE -> NULL_VALUE;
+            case ID_DOUBLE_MARK -> DOUBLE_MARK;
+            case ID_COMPUTED_KEY -> COMPUTED_KEY;
+            case ID_COMPUTED_METHOD -> COMPUTED_METHOD;
+            default -> throw new IllegalStateException(String.valueOf(tagId));
+        };
     }
 
     // Overridden for better debug printouts

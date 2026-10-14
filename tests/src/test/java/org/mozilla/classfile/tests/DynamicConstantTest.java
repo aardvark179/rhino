@@ -8,6 +8,7 @@ package org.mozilla.classfile.tests;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -34,6 +35,14 @@ import org.mozilla.javascript.Context;
 import org.mozilla.javascript.DefiningClassLoader;
 import org.mozilla.javascript.EagerSourceCodeProvider;
 import org.mozilla.javascript.NativeArray;
+import org.mozilla.javascript.NativeObject;
+import org.mozilla.javascript.ObjectLiteralDescriptor;
+import org.mozilla.javascript.ObjectLiteralDescriptor.ComplexObjectLiteral;
+import org.mozilla.javascript.ObjectLiteralDescriptor.ComputedKeyObjectLiteral;
+import org.mozilla.javascript.ObjectLiteralDescriptor.GetterEntry;
+import org.mozilla.javascript.ObjectLiteralDescriptor.SetterEntry;
+import org.mozilla.javascript.ObjectLiteralDescriptor.SimpleClassLitDescriptor;
+import org.mozilla.javascript.ObjectLiteralDescriptor.SpreadEntry;
 import org.mozilla.javascript.RegExpProxy;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.Symbol;
@@ -41,11 +50,14 @@ import org.mozilla.javascript.SymbolKey;
 import org.mozilla.javascript.TemplateLiteralCallSite;
 import org.mozilla.javascript.TopLevel;
 import org.mozilla.javascript.Undefined;
+import org.mozilla.javascript.UniqueTag;
 import org.mozilla.javascript.optimizer.EagerSourceCodeProviderDescriber;
+import org.mozilla.javascript.optimizer.ObjectLiteralDescriptorDescribers;
 import org.mozilla.javascript.optimizer.StringConcatBootstraps;
 import org.mozilla.javascript.optimizer.SymbolKeyDescriber;
 import org.mozilla.javascript.optimizer.TemplateLiteralCallSiteDescriber;
 import org.mozilla.javascript.optimizer.UndefinedDescriber;
+import org.mozilla.javascript.optimizer.UniqueTagDescriber;
 import org.mozilla.javascript.regexp.RegExpImpl;
 
 public class DynamicConstantTest {
@@ -361,6 +373,143 @@ public class DynamicConstantTest {
         cfw.stopMethod((short) 0);
 
         assertSame(Undefined.instance, invoke(cfw, "TestUndefinedConstant", "get"));
+    }
+
+    @Test
+    public void uniqueTagsResolveToTheCanonicalInstances() throws Exception {
+        UniqueTag[] tags = {
+            UniqueTag.NOT_FOUND,
+            UniqueTag.NULL_VALUE,
+            UniqueTag.DOUBLE_MARK,
+            UniqueTag.COMPUTED_KEY,
+            UniqueTag.COMPUTED_METHOD
+        };
+        for (int i = 0; i < tags.length; i++) {
+            String className = "TestUniqueTagConstant" + i;
+            ClassFileWriter cfw = writer(className);
+            new UniqueTagDescriber(cfw.getDynamicDescriptorRegistry());
+            cfw.startMethod("get", "()Ljava/lang/Object;", (short) (ACC_PUBLIC | ACC_STATIC));
+            cfw.addLoadDynamicConstant(tags[i]);
+            cfw.add(ByteCode.ARETURN);
+            cfw.stopMethod((short) 0);
+
+            assertSame(tags[i], invoke(cfw, className, "get"));
+        }
+    }
+
+    @Test
+    public void simpleObjectLiteralRoundTrips() throws Exception {
+        var builder = new ObjectLiteralDescriptor.Builder();
+        builder.addLiteralKey("a");
+        builder.addLiteralKey(1);
+        builder.addLiteralKey(SymbolKey.ITERATOR);
+        var resolved =
+                (SimpleClassLitDescriptor)
+                        loadObjectLiteral("TestSimpleObjectLiteral", builder.build());
+
+        assertEquals(3, resolved.getKeys().length);
+        assertEquals("a", resolved.getKeys()[0]);
+        assertEquals(1, resolved.getKeys()[1]);
+        assertSame(SymbolKey.ITERATOR, resolved.getKeys()[2]);
+        try (Context cx = Context.enter()) {
+            TopLevel scope = cx.initStandardObjects();
+            var obj = new NativeObject();
+            resolved.createObject(cx, scope, obj, new Object[] {"x", "y", "z"});
+            assertEquals("x", obj.get("a", obj));
+            assertEquals("y", obj.get(1, obj));
+            assertEquals("z", obj.get(SymbolKey.ITERATOR, obj));
+        }
+    }
+
+    @Test
+    public void emptyObjectLiteralRoundTrips() throws Exception {
+        var resolved =
+                (SimpleClassLitDescriptor)
+                        loadObjectLiteral(
+                                "TestEmptyObjectLiteral",
+                                new ObjectLiteralDescriptor.Builder().build());
+        assertEquals(0, resolved.getKeys().length);
+    }
+
+    @Test
+    public void computedKeyObjectLiteralRoundTrips() throws Exception {
+        var builder = new ObjectLiteralDescriptor.Builder();
+        builder.addLiteralKey("a");
+        builder.addComputedKey();
+        builder.addComputedMethod();
+        var resolved =
+                (ComputedKeyObjectLiteral)
+                        loadObjectLiteral("TestComputedKeyObjectLiteral", builder.build());
+
+        assertEquals(3, resolved.getOps().length);
+        assertEquals("a", resolved.getOps()[0]);
+        assertSame(UniqueTag.COMPUTED_KEY, resolved.getOps()[1]);
+        assertSame(UniqueTag.COMPUTED_METHOD, resolved.getOps()[2]);
+    }
+
+    @Test
+    public void complexObjectLiteralRoundTrips() throws Exception {
+        var builder = new ObjectLiteralDescriptor.Builder();
+        builder.addLiteralKey("a");
+        builder.addGetter("g");
+        builder.addSetter(2);
+        builder.addComputedGetter();
+        builder.addComputedSetter();
+        builder.addSpread();
+        var resolved =
+                (ComplexObjectLiteral)
+                        loadObjectLiteral("TestComplexObjectLiteral", builder.build());
+
+        Object[] ops = resolved.getOps();
+        assertEquals(6, ops.length);
+        assertEquals("a", ops[0]);
+        assertEquals("g", assertInstanceOf(GetterEntry.class, ops[1]).getKey());
+        assertEquals(2, assertInstanceOf(SetterEntry.class, ops[2]).getKey());
+        assertSame(UniqueTag.COMPUTED_KEY, assertInstanceOf(GetterEntry.class, ops[3]).getKey());
+        assertSame(UniqueTag.COMPUTED_KEY, assertInstanceOf(SetterEntry.class, ops[4]).getKey());
+        assertInstanceOf(SpreadEntry.class, ops[5]);
+    }
+
+    @Test
+    public void spreadObjectLiteralRoundTrips() throws Exception {
+        var builder = new ObjectLiteralDescriptor.Builder();
+        builder.addLiteralKey("a");
+        builder.addSpread();
+        var resolved = loadObjectLiteral("TestSpreadObjectLiteral", builder.build());
+
+        try (Context cx = Context.enter()) {
+            TopLevel scope = cx.initStandardObjects();
+            var obj = new NativeObject();
+            resolved.createObject(
+                    cx,
+                    scope,
+                    obj,
+                    new Object[] {"x", "b", "y", "c", "z", ObjectLiteralDescriptor.SPREAD_END});
+            assertEquals("x", obj.get("a", obj));
+            assertEquals("y", obj.get("b", obj));
+            assertEquals("z", obj.get("c", obj));
+        }
+    }
+
+    @Test
+    public void equalObjectLiteralsShareAConstant() throws Exception {
+        ClassFileWriter cfw = writer("TestSharedObjectLiterals");
+        ObjectLiteralDescriptorDescribers.register(cfw.getDynamicDescriptorRegistry());
+        new UniqueTagDescriber(cfw.getDynamicDescriptorRegistry());
+        cfw.startMethod("get", "()Ljava/lang/Object;", (short) (ACC_PUBLIC | ACC_STATIC));
+        for (int i = 0; i < 2; i++) {
+            var builder = new ObjectLiteralDescriptor.Builder();
+            builder.addLiteralKey("a");
+            builder.addComputedKey();
+            cfw.addLoadDynamicConstant(builder.build());
+            cfw.add(ByteCode.POP);
+        }
+        cfw.add(ByteCode.ACONST_NULL);
+        cfw.add(ByteCode.ARETURN);
+        cfw.stopMethod((short) 0);
+
+        ClassFileInfo info = ClassFileInfo.parse(cfw.toByteArray());
+        assertEquals(2, info.count(TAG_DYNAMIC), "one for the literal and one for the tag");
     }
 
     @Test
@@ -720,6 +869,23 @@ public class DynamicConstantTest {
     }
 
     // ---------------------------------------------------------------- helpers
+
+    private static ObjectLiteralDescriptor loadObjectLiteral(
+            String className, ObjectLiteralDescriptor descriptor) throws Exception {
+        ClassFileWriter cfw = writer(className);
+        var registry = cfw.getDynamicDescriptorRegistry();
+        ObjectLiteralDescriptorDescribers.register(registry);
+        new UniqueTagDescriber(registry);
+        new SymbolKeyDescriber(registry);
+        cfw.startMethod("get", "()Ljava/lang/Object;", (short) (ACC_PUBLIC | ACC_STATIC));
+        cfw.addLoadDynamicConstant(descriptor);
+        cfw.add(ByteCode.ARETURN);
+        cfw.stopMethod((short) 0);
+
+        var resolved = invoke(cfw, className, "get");
+        assertSame(descriptor.getClass(), resolved.getClass());
+        return (ObjectLiteralDescriptor) resolved;
+    }
 
     private static ClassFileWriter writer(String className) {
         var cfw = new ClassFileWriter(className, "java/lang/Object", "DynamicConstantTest.java");

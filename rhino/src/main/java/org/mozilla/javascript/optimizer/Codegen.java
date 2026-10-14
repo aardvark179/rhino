@@ -497,6 +497,8 @@ public class Codegen implements Evaluator {
         new UndefinedDescriber(registry);
         new TemplateLiteralCallSiteDescriber(registry);
         new BigIntDescriber(registry);
+        new UniqueTagDescriber(registry);
+        ObjectLiteralDescriptorDescribers.register(registry);
 
         cfw.registerStringConcat(
                 ConstantDescs.ofConstantBootstrap(
