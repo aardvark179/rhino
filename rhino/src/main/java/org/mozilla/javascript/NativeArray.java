@@ -26,6 +26,7 @@ import java.util.NoSuchElementException;
 import org.mozilla.javascript.ArrayLikeAbstractOperations.IterativeOperation;
 import org.mozilla.javascript.ArrayLikeAbstractOperations.ReduceOperation;
 import org.mozilla.javascript.ClassDescriptor.BuiltInJSCodeExec;
+import org.mozilla.javascript.InstrumentEmitter.Type;
 import org.mozilla.javascript.xml.XMLObject;
 
 /**
@@ -339,13 +340,13 @@ public class NativeArray extends ScriptableObject implements List {
                 }
                 return;
             } else if (denseOnly
-                    && index < dense.length * GROW_FACTOR
+                    && index < Math.max(dense.length + 1, dense.length * GROW_FACTOR)
                     && ensureCapacity(index + 1)) {
                 dense[index] = value;
                 this.length = (long) index + 1;
                 this.modCount++;
                 return;
-            } else {
+            } else if (denseOnly) {
                 denseOnly = false;
             }
         }
