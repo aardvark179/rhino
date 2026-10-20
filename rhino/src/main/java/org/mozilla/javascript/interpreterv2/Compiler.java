@@ -25,7 +25,9 @@ import org.mozilla.javascript.ast.Jump;
 import org.mozilla.javascript.ast.ScriptNode;
 import org.mozilla.javascript.interpreterv2.instruction.Add;
 import org.mozilla.javascript.interpreterv2.instruction.ArrayLit;
-import org.mozilla.javascript.interpreterv2.instruction.ArrayLitWithSpread;
+import org.mozilla.javascript.interpreterv2.instruction.ArrayLitFinish;
+import org.mozilla.javascript.interpreterv2.instruction.ArrayLitPush;
+import org.mozilla.javascript.interpreterv2.instruction.ArrayLitSpread;
 import org.mozilla.javascript.interpreterv2.instruction.BigInt;
 import org.mozilla.javascript.interpreterv2.instruction.BindName;
 import org.mozilla.javascript.interpreterv2.instruction.BitAnd;
@@ -101,6 +103,7 @@ import org.mozilla.javascript.interpreterv2.instruction.NameAndThisOptional;
 import org.mozilla.javascript.interpreterv2.instruction.NameIncDec;
 import org.mozilla.javascript.interpreterv2.instruction.Neg;
 import org.mozilla.javascript.interpreterv2.instruction.New;
+import org.mozilla.javascript.interpreterv2.instruction.NewArrayLiteralWithSpread;
 import org.mozilla.javascript.interpreterv2.instruction.NewObjectLiteral;
 import org.mozilla.javascript.interpreterv2.instruction.NewObjectLiteralWithSpread;
 import org.mozilla.javascript.interpreterv2.instruction.NewTarget;
@@ -1253,51 +1256,37 @@ public class Compiler<T extends ScriptOrFn<T>> {
         int numberOfSpread = node.getIntProp(Node.NUMBER_OF_SPREAD, 0);
 
         if (numberOfSpread > 0) {
-            var elements = new ArrayList<Operand>();
-            var spreadFlags = new ArrayList<Boolean>();
-            var lines = new ArrayList<Integer>();
-            while (child != null) {
+            int count = 0;
+            for (Node c = child; c != null; c = c.getNext()) {
+                count++;
+            }
+
+            int[] sourcePositions = new int[count];
+            int sourcePos = 0;
+            int skipIdx = 0;
+            for (int i = 0; i < count; i++) {
+                while (skipIndices != null
+                        && skipIdx < skipIndices.length
+                        && skipIndices[skipIdx] == sourcePos) {
+                    sourcePos++;
+                    skipIdx++;
+                }
+                sourcePositions[i] = sourcePos;
+                sourcePos++;
+            }
+
+            addInstruction(new NewArrayLiteralWithSpread(skipIndices, count - numberOfSpread));
+            for (int i = 0; child != null; i++, child = child.getNext()) {
                 updateLineNumber(child);
                 if (child.getType() == Token.DOTDOTDOT) {
-                    elements.add(getOperand(child.getFirstChild(), 0, false, lines));
-                    spreadFlags.add(Boolean.TRUE);
+                    visitExpression(child.getFirstChild(), 0);
+                    addInstruction(new ArrayLitSpread(PopOperand.instance, sourcePositions[i]));
                 } else {
-                    elements.add(getOperand(child, 0, false, lines));
-                    spreadFlags.add(Boolean.FALSE);
-                }
-                child = child.getNext();
-            }
-
-            int count = elements.size();
-            boolean[] isSpread = new boolean[count];
-            for (int i = 0; i < count; i++) {
-                isSpread[i] = spreadFlags.get(i);
-            }
-
-            int[] sourcePositions = null;
-            if (skipIndices != null) {
-                sourcePositions = new int[count];
-                int sourcePos = 0;
-                int skipIdx = 0;
-                for (int i = 0; i < count; i++) {
-                    while (skipIdx < skipIndices.length && skipIndices[skipIdx] == sourcePos) {
-                        sourcePos++;
-                        skipIdx++;
-                    }
-                    sourcePositions[i] = sourcePos;
-                    sourcePos++;
+                    var valueOp = getOperand(child, 0);
+                    addInstruction(new ArrayLitPush(valueOp));
                 }
             }
-
-            int nonSpreadCount = count - numberOfSpread;
-            updateLineNumbers(lines);
-            addInstruction(
-                    new ArrayLitWithSpread(
-                            elements.toArray(Operand.EMPTY_ARRAY),
-                            isSpread,
-                            skipIndices,
-                            sourcePositions,
-                            nonSpreadCount));
+            addInstruction(ArrayLitFinish.instance);
             return;
         }
 
