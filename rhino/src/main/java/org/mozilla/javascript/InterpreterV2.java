@@ -45,8 +45,6 @@ public class InterpreterV2 extends AInterpreter<CallFrameV2, CompilerData<?>> {
             if (throwable instanceof GeneratorState) {
                 generatorState = (GeneratorState) throwable;
 
-                // reestablish this call frame
-                enterFrame(cx, frame, ScriptRuntime.emptyArgs, true);
                 frame.generatorState = generatorState;
                 throwable = null;
             } else if (!(throwable instanceof ContinuationJump)) {
@@ -128,7 +126,6 @@ public class InterpreterV2 extends AInterpreter<CallFrameV2, CompilerData<?>> {
             }
         }
 
-        exitFrame(cx, frame, frame.throwable);
         if (frame.parentFrame != null) {
             throw new IllegalStateException(
                     "Interpreter V2 only supports a single frame per interpreter call at this time.");
@@ -188,7 +185,6 @@ public class InterpreterV2 extends AInterpreter<CallFrameV2, CompilerData<?>> {
             // to parent and try to look there
 
             frame.throwable = null;
-            exitFrame(cx, frame, throwable);
 
             if (frame.parentFrame != null) {
                 throw new IllegalStateException(
@@ -463,12 +459,11 @@ public class InterpreterV2 extends AInterpreter<CallFrameV2, CompilerData<?>> {
                         null,
                         cx.lastInterpreterFrame);
 
-        boolean parentStrictness = ScriptRuntime.enterFunctionStrictness(cx, desc.isStrict());
+        enterFrame(cx, frame, args, false);
         try {
-            enterFrame(cx, frame, args, false);
             return InterpreterV2.interpret(cx, frame, null);
         } finally {
-            ScriptRuntime.exitFunctionStrictness(cx, parentStrictness);
+            exitFrame(cx, frame, frame.throwable);
         }
     }
 
