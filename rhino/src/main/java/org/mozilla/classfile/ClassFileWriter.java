@@ -1373,6 +1373,12 @@ public class ClassFileWriter {
         }
         itsLabelTableTop = top + 1;
         itsLabelTable[top] = -1;
+        if (DEBUGLABELS) {
+            if (DEBUGCODEORIGINS) {
+                printOrigin();
+            }
+            System.err.printf("Acquired label %d.\n", top);
+        }
         return top | 0x80000000;
     }
 
@@ -1387,6 +1393,12 @@ public class ClassFileWriter {
         }
 
         itsLabelTable[label] = itsCodeBufferTop;
+        if (DEBUGLABELS) {
+            if (DEBUGCODEORIGINS) {
+                printOrigin();
+            }
+            System.err.printf("Marking label %x to %x.\n", label, itsCodeBufferTop);
+        }
         if (itsFrameTracker != null) {
             trackJumpTarget(itsLabelFrames.remove(label));
         }
@@ -1442,7 +1454,7 @@ public class ClassFileWriter {
             int pc = itsLabelTable[label];
             if (pc == -1) {
                 // Unlocated label
-                throw new RuntimeException("unlocated label");
+                throw new RuntimeException(String.format("unlocated label %d", i));
             }
             // -1 to get delta from instruction start
             addSuperBlockStart(pc);

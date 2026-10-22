@@ -52,14 +52,15 @@ class BodyCodegen {
                     codegen.getBodyMethodName(scriptOrFn) + "_gen",
                     Codegen.GENERATOR_METHOD_SIGNATURE,
                     (short) (ACC_STATIC | ACC_PUBLIC));
-            // Finally blocks are shared between JSRs with the same frame
-            cfw.enableFrameTracking();
         } else {
             cfw.startMethod(
                     codegen.getBodyMethodName(scriptOrFn),
                     codegen.getBodyMethodSignature(scriptOrFn),
                     (short) (ACC_STATIC | ACC_PUBLIC));
         }
+
+        // Finally blocks are shared between JSRs with the same frame
+        cfw.enableFrameTracking();
 
         generatePrologue();
         Node treeTop;
@@ -106,6 +107,9 @@ class BodyCodegen {
                 codegen.getBodyMethodName(scriptOrFn),
                 codegen.getBodyMethodSignature(scriptOrFn),
                 (short) (ACC_STATIC | ACC_PUBLIC));
+
+        // Finally blocks are shared between JSRs with the same frame
+        cfw.enableFrameTracking();
 
         initBodyGeneration();
         argsLocal = firstFreeLocal++;
