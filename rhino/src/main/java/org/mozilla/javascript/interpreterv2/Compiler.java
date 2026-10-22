@@ -1513,8 +1513,14 @@ public class Compiler<T extends ScriptOrFn<T>> {
     private void visitComma(Node node, int contextFlags, Node child) {
         var lastChild = node.getLastChild();
         while (child != lastChild) {
-            var obj = getOperand(child, 0);
-            addInstruction(VoidInstruction.ofOperand(obj));
+            if (child.getType() == Token.LOCAL_BLOCK) {
+                // Embedded statement-level side-effect (e.g. try/finally for
+                // iterator cleanup in destructuring). Produces no value, so no POP.
+                generateStatement(child, stackDepth);
+            } else {
+                var obj = getOperand(child, 0);
+                addInstruction(VoidInstruction.ofOperand(obj));
+            }
             child = child.getNext();
         }
         // Preserve tail context flag if any

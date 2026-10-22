@@ -1303,8 +1303,15 @@ class BodyCodegen {
                 {
                     Node next = child.getNext();
                     while (next != null) {
-                        generateExpression(child, node);
-                        cfw.add(ByteCode.POP);
+                        if (child.getType() == Token.LOCAL_BLOCK) {
+                            // Embedded statement-level side-effect (e.g. try/finally for
+                            // iterator cleanup in destructuring). Evaluate as a statement;
+                            // it produces no value and thus no POP is needed.
+                            generateStatement(child);
+                        } else {
+                            generateExpression(child, node);
+                            cfw.add(ByteCode.POP);
+                        }
                         child = next;
                         next = next.getNext();
                     }
