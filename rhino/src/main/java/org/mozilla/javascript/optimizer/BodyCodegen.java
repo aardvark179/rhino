@@ -41,6 +41,7 @@ class BodyCodegen {
 
     void generateBodyCode() {
         isGenerator = Codegen.isGenerator(scriptOrFn);
+        inResumableBody = isGenerator;
 
         // generate the body of the current function or script object
         initBodyGeneration();
@@ -112,6 +113,8 @@ class BodyCodegen {
         cfw.enableFrameTracking();
 
         initBodyGeneration();
+        // Parameter initialisation can't yield, so finally blocks are inlined
+        inResumableBody = false;
         argsLocal = firstFreeLocal++;
         localsMax = firstFreeLocal;
 
@@ -203,6 +206,7 @@ class BodyCodegen {
         }
 
         cfw.add(ByteCode.ARETURN);
+        exceptionManager.flush();
         cfw.stopMethod((short) (localsMax + 1));
     }
 
@@ -623,6 +627,7 @@ class BodyCodegen {
                     cfw.add(ByteCode.GOTO, copy.returnLabels.get(i));
                 }
             }
+            emittedFinallyCopies.clear();
         }
 
         if (epilogueLabel != -1) {
@@ -988,7 +993,7 @@ class BodyCodegen {
                     // jsr was previously used, and jsr is only used when the
                     // function is not a generator, we don't need to generate
                     // this case if the function isn't a generator.
-                    if (!isGenerator) {
+                    if (!inResumableBody) {
                         break;
                     }
 
@@ -2497,7 +2502,7 @@ class BodyCodegen {
             cfw.markLabel(fallThruLabel);
         } else {
             if (type == Token.JSR) {
-                if (isGenerator) {
+                if (inResumableBody) {
                     addGotoWithReturn(target);
                 } else {
                     // This assumes that JSR is only ever used for finally
@@ -3694,7 +3699,7 @@ class BodyCodegen {
                 exceptionManager.endHandlers(getTargetLabel(finallyTarget), FINALLY_EXCEPTION);
             }
             generateStatement(child);
-            if (child == catchTarget && isGenerator) {
+            if (child == catchTarget && inResumableBody) {
                 // Reached from the handlers below, with the exception stored
                 cfw.setCurrentFrameWithUnknownLocals();
             }
@@ -3762,7 +3767,7 @@ class BodyCodegen {
             cfw.addALoad(savedVariableObject);
             cfw.addAStore(variableObjectLocal);
 
-            if (isGenerator) {
+            if (inResumableBody) {
                 generateFinallyBody(getFinallyAtTarget(finallyTarget));
             } else {
                 inlineFinally(finallyTarget, handlerLabels[FINALLY_EXCEPTION], finallyEnd);
@@ -3770,7 +3775,7 @@ class BodyCodegen {
 
             // rethrow
             cfw.addALoad(exceptionLocal);
-            if (isGenerator) cfw.add(ByteCode.CHECKCAST, "java/lang/Throwable");
+            if (inResumableBody) cfw.add(ByteCode.CHECKCAST, "java/lang/Throwable");
             cfw.add(ByteCode.ATHROW);
 
             cfw.markLabel(finallyEnd);
@@ -5272,6 +5277,8 @@ class BodyCodegen {
     private int parentStrictnessLocal;
 
     private boolean isGenerator;
+    // True while generating a generator's resumable body, rather than its entry method
+    private boolean inResumableBody;
     private int generatorSwitch;
     private int generatorDispatchLabel;
     private ClassFileWriter.Frame generatorDispatchFrame;
