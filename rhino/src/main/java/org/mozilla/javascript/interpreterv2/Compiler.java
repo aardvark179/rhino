@@ -1023,8 +1023,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 addInstruction(new EnumAsyncNext(getLocalBlockRef(node)));
                 return;
             case Token.ENUM_ASYNC_STEP:
-                visitUnaryOperation(
-                    child, obj -> new EnumAsyncStep(obj, getLocalBlockRef(node)));
+                visitUnaryOperation(child, obj -> new EnumAsyncStep(obj, getLocalBlockRef(node)));
                 return;
             case Token.BIGINT:
                 addInstruction(new BigInt(node.getBigInt()));
