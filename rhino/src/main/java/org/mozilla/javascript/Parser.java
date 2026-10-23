@@ -5262,6 +5262,7 @@ public class Parser {
             boolean empty = true;
             String iteratorName = null;
             String lastResultName = null;
+            String needsCloseName = null;
             Node iteratorAssignNode = null;
             if (left instanceof ArrayLiteral) {
                 DestructuringArrayResult arrayResult =
@@ -5277,9 +5278,11 @@ public class Parser {
                 empty = arrayResult.empty;
                 iteratorName = arrayResult.iteratorName;
                 lastResultName = arrayResult.lastResultName;
+                needsCloseName = arrayResult.needsCloseName;
                 iteratorAssignNode = arrayResult.iteratorAssignNode;
                 if (iteratorName != null) {
                     letNode.addChildToBack(createName(Token.NAME, iteratorName, null));
+                    letNode.addChildToBack(createName(Token.NAME, needsCloseName, null));
                 }
                 if (lastResultName != null) {
                     letNode.addChildToBack(createName(Token.NAME, lastResultName, null));
@@ -5320,25 +5323,11 @@ public class Parser {
             // completion (thrown exception or generator .return()). The try/finally ensures
             // iter.return() is invoked even when the destructuring is interrupted by a yield
             // inside it whose generator is subsequently closed.
-            if (iteratorName != null && lastResultName != null) {
+            if (iteratorName != null) {
                 // Allocate temp for return method used by the normal-path close
                 String returnMethodName = currentScriptOrFn.getNextTempName();
                 defineSymbol(Token.LET, returnMethodName, true);
                 letNode.addChildToBack(createName(Token.NAME, returnMethodName, null));
-
-                // Allocate sentinel: set to true once the iterator is open, cleared after
-                // the normal-path close completes. The finally only runs the abrupt close
-                // when this is still set, so (a) a throw during iterator setup, (b) a throw
-                // during the normal-path close, and (c) successful normal completion all
-                // avoid an unwanted second call to return().
-                String needsCloseName = currentScriptOrFn.getNextTempName();
-                defineSymbol(Token.LET, needsCloseName, true);
-                letNode.addChildToBack(createName(Token.NAME, needsCloseName, null));
-
-                // Check if iterator is done: !lastResult.done
-                Node getDone =
-                        new Node(Token.GETPROP, createName(lastResultName), Node.newString("done"));
-                Node notDone = new Node(Token.NOT, getDone);
 
                 // Get iterator.return and store: f = iterator.return
                 Node getReturn =
@@ -5365,17 +5354,13 @@ public class Parser {
                 // throwing a TypeError if it is null or undefined.
                 Node checkedCallReturn = new Node(Token.TO_OBJECT_COERCIBLE, callReturn);
 
-                // Inner ternary: (f = iterator.return) !== undefined ? f.call(iterator) : undefined
-                Node innerTernary =
+                // (f = iterator.return) !== undefined ? f.call(iterator) : undefined
+                Node normalClose =
                         new Node(
                                 Token.HOOK,
                                 notUndefined,
                                 checkedCallReturn,
                                 new Node(Token.UNDEFINED));
-
-                // Outer ternary: !lastResult.done ? innerTernary : undefined
-                Node normalClose =
-                        new Node(Token.HOOK, notDone, innerTernary, new Node(Token.UNDEFINED));
 
                 wrapIteratorUseInTryFinally(
                         comma, iteratorAssignNode, iteratorName, needsCloseName, normalClose);
@@ -5408,6 +5393,7 @@ public class Parser {
         boolean empty;
         String iteratorName;
         String lastResultName;
+        String needsCloseName;
         List<String> tempResultName;
         // First iterator-related node added to `parent` (the SETNAME opening the iterator).
         // Serves as the split point for wrapping iterator work in a try/finally. Null when
@@ -5418,11 +5404,13 @@ public class Parser {
                 boolean empty,
                 String iteratorName,
                 String lastResultName,
+                String needsCloseName,
                 List<String> tempResultName,
                 Node iteratorAssignNode) {
             this.empty = empty;
             this.iteratorName = iteratorName;
             this.lastResultName = lastResultName;
+            this.needsCloseName = needsCloseName;
             this.tempResultName = tempResultName;
             this.iteratorAssignNode = iteratorAssignNode;
         }
@@ -5432,7 +5420,10 @@ public class Parser {
      * Restructures a destructuring {@code comma} body so the iterator-using portion (starting with
      * {@code iteratorAssignNode}) runs inside a try/finally. The finally invokes IteratorClose's
      * abrupt-completion branch when the {@code needsCloseName} sentinel is still set, ensuring
-     * iter.return() is called on exceptions and generator {@code .return()}.
+     * iter.return() is called on exceptions and generator {@code .return()}. The sentinel is the
+     * inverse of the iterator record's [[Done]]: it is set once the iterator is obtained, and
+     * cleared while the iterator is being stepped (see {@link #iteratorStep}) and once it reports
+     * done.
      *
      * <p>Emitted structure (appended to {@code comma}, after any pre-iterator children that were
      * left in place, e.g. default-value setup):
@@ -5444,9 +5435,10 @@ public class Parser {
      *         iteratorAssign;        // iter = rhs[Symbol.iterator]()
      *         needsClose = true;     // mark open
      *         ...original iterator-using children...
-     *         needsClose = false;    // clear before normal close so a throw from return()
-     *                                // doesn't trigger a redundant abrupt close
-     *         normalClose;           // spec IteratorClose normal-completion path
+     *         needsClose ? (needsClose = false, normalClose) : undefined;
+     *                                // spec IteratorClose normal-completion path; the sentinel
+     *                                // is cleared first so a throw from return() doesn't
+     *                                // trigger a redundant abrupt close
      *       }
      *     } FINALLY {
      *       needsClose ? ITERATOR_CLOSE_ABRUPT(iter) : undefined;
@@ -5483,17 +5475,19 @@ public class Parser {
             cursor = next;
         }
 
-        // Clear the sentinel before the normal-path close runs; a throw from return() on the
-        // normal path should propagate as-is rather than trigger a redundant abrupt close.
-        Node clearSentinel =
+        // Normal-path IteratorClose (HOOK already built by the caller), skipped if the iterator
+        // is done. Clear the sentinel before it runs; a throw from return() on the normal path
+        // should propagate as-is rather than trigger a redundant abrupt close.
+        Node closeIfOpen =
                 new Node(
-                        Token.SETNAME,
-                        createName(Token.BINDNAME, needsCloseName, null),
-                        new Node(Token.FALSE));
-        tryBody.addChildToBack(new Node(Token.EXPR_VOID, clearSentinel));
-
-        // Normal-path IteratorClose (HOOK already built by the caller).
-        tryBody.addChildToBack(new Node(Token.EXPR_VOID, normalClose));
+                        Token.HOOK,
+                        createName(needsCloseName),
+                        new Node(
+                                Token.COMMA,
+                                setTemp(needsCloseName, new Node(Token.FALSE)),
+                                normalClose),
+                        new Node(Token.UNDEFINED));
+        tryBody.addChildToBack(new Node(Token.EXPR_VOID, closeIfOpen));
 
         // Finally body: needsClose ? ITERATOR_CLOSE_ABRUPT(iter) : undefined
         Node abruptClose = new Node(Token.ITERATOR_CLOSE_ABRUPT, createName(iteratorName));
@@ -5575,6 +5569,7 @@ public class Parser {
         boolean iteratorSetup = false;
         String iteratorName = null;
         String lastResultName = null;
+        String needsCloseName = null;
         Node iteratorAssignNode = null;
         List<String> elemTempNames = new ArrayList<>();
 
@@ -5591,6 +5586,10 @@ public class Parser {
                 iteratorName = currentScriptOrFn.getNextTempName();
                 // Define the iterator temp variables for strict mode
                 defineSymbol(Token.LET, iteratorName, true);
+                // Set while the iterator is open and not done (the inverse of [[Done]]); see
+                // wrapIteratorUseInTryFinally.
+                needsCloseName = currentScriptOrFn.getNextTempName();
+                defineSymbol(Token.LET, needsCloseName, true);
 
                 // Generate: iterator = tempName[Symbol.iterator]()
                 // Load SymbolKey.ITERATOR directly from the shared literal table
@@ -5619,18 +5618,8 @@ public class Parser {
                         lastResultName = currentScriptOrFn.getNextTempName();
                         defineSymbol(Token.LET, lastResultName, true);
                     }
-                    Node getNextProp =
-                            new Node(
-                                    Token.GETPROP,
-                                    createName(iteratorName),
-                                    Node.newString("next"));
-                    Node callNext = new Node(Token.CALL, getNextProp);
-                    Node storeResult =
-                            new Node(
-                                    Token.SETNAME,
-                                    createName(Token.BINDNAME, lastResultName, null),
-                                    callNext);
-                    parent.addChildToBack(storeResult);
+                    parent.addChildToBack(
+                            iteratorStep(iteratorName, lastResultName, needsCloseName));
                     empty = false;
                 }
                 index++;
@@ -5658,14 +5647,35 @@ public class Parser {
                     // stays null here, skipping the manual closing code generated
                     // after the loop (see destructuringAssignmentHelper).
                     Node accumulator = new Node(Token.RESULT_ACCUMULATOR);
-                    restValue = new Node(Token.ARRAYLIT);
-                    restValue.addChildToBack(accumulator);
-                    restValue.addChildToBack(
+                    Node spreadValue = new Node(Token.ARRAYLIT);
+                    spreadValue.addChildToBack(accumulator);
+                    spreadValue.addChildToBack(
                             new Node(Token.ACCUMULATE_ITERATOR, createName(iteratorName)));
                     var builder = new ArrayLiteralDescriptor.Builder().withSpread();
                     accumulator.putIntProp(Node.RESULTS_SIZE_PROP, builder.getSize());
-                    restValue.putIntProp(
+                    spreadValue.putIntProp(
                             Node.LITERAL_INDEX_PROP, currentScriptOrFn.addLiteral(builder.build()));
+
+                    // Collecting the rest always leaves the iterator done, whether it
+                    // completes or next() throws, so clear the sentinel first. If the
+                    // iterator is already done, don't step it again.
+                    Node emptyArray = new Node(Token.ARRAYLIT);
+                    Node emptyAccumulator = new Node(Token.RESULT_ACCUMULATOR);
+                    emptyArray.addChildToBack(emptyAccumulator);
+                    var emptyBuilder = new ArrayLiteralDescriptor.Builder();
+                    emptyAccumulator.putIntProp(Node.RESULTS_SIZE_PROP, emptyBuilder.getSize());
+                    emptyArray.putIntProp(
+                            Node.LITERAL_INDEX_PROP,
+                            currentScriptOrFn.addLiteral(emptyBuilder.build()));
+                    restValue =
+                            new Node(
+                                    Token.HOOK,
+                                    createName(needsCloseName),
+                                    new Node(
+                                            Token.COMMA,
+                                            setTemp(needsCloseName, new Node(Token.FALSE)),
+                                            spreadValue),
+                                    emptyArray);
                 } else {
                     // call array.slice(index) to collect remaining elements
                     restValue =
@@ -5713,34 +5723,30 @@ public class Parser {
                         defineSymbol(Token.LET, lastResultName, true);
                     }
                     // ES6+: Call iterator.next() and store the full result
-                    Node getNextProp =
-                            new Node(
-                                    Token.GETPROP,
-                                    createName(iteratorName),
-                                    Node.newString("next"));
-                    Node callNext = new Node(Token.CALL, getNextProp);
-                    Node storeResult =
-                            new Node(
-                                    Token.SETNAME,
-                                    createName(Token.BINDNAME, lastResultName, null),
-                                    callNext);
-                    parent.addChildToBack(storeResult);
+                    parent.addChildToBack(
+                            iteratorStep(iteratorName, lastResultName, needsCloseName));
                     // Extract .value from the result
                     String elemTempName = currentScriptOrFn.getNextTempName();
                     elemTempNames.add(elemTempName);
                     // Define the element temp variable for strict mode
                     defineSymbol(Token.LET, elemTempName, true);
+                    // needsClose ? (needsClose = false, elem = lastResult.value,
+                    //               needsClose = true) : (elem = undefined)
                     Node getValue =
                             new Node(
                                     Token.GETPROP,
                                     createName(lastResultName),
                                     Node.newString("value"));
-                    Node storeElem =
+                    Node readValue = new Node(Token.COMMA);
+                    readValue.addChildToBack(setTemp(needsCloseName, new Node(Token.FALSE)));
+                    readValue.addChildToBack(setTemp(elemTempName, getValue));
+                    readValue.addChildToBack(setTemp(needsCloseName, new Node(Token.TRUE)));
+                    parent.addChildToBack(
                             new Node(
-                                    Token.SETNAME,
-                                    createName(Token.BINDNAME, elemTempName, null),
-                                    getValue);
-                    parent.addChildToBack(storeElem);
+                                    Token.HOOK,
+                                    createName(needsCloseName),
+                                    readValue,
+                                    setTemp(elemTempName, new Node(Token.UNDEFINED))));
                     // Use the temp variable for element access
                     rightElem = createName(elemTempName);
                     empty = false;
@@ -5786,7 +5792,38 @@ public class Parser {
         }
 
         return new DestructuringArrayResult(
-                empty, iteratorName, lastResultName, elemTempNames, iteratorAssignNode);
+                empty,
+                iteratorName,
+                lastResultName,
+                needsCloseName,
+                elemTempNames,
+                iteratorAssignNode);
+    }
+
+    /**
+     * Spec IteratorStep, tracking [[Done]] as the inverse of {@code needsCloseName}. The sentinel
+     * is cleared while next() and the done property are evaluated, so an exception from either
+     * leaves the iterator marked done and return() is not called.
+     *
+     * <pre>
+     *   needsClose ? (needsClose = false, lastResult = iter.next(),
+     *                 needsClose = !lastResult.done) : false
+     * </pre>
+     */
+    private Node iteratorStep(String iteratorName, String lastResultName, String needsCloseName) {
+        Node getNextProp =
+                new Node(Token.GETPROP, createName(iteratorName), Node.newString("next"));
+        Node callNext = new Node(Token.CALL, getNextProp);
+        Node getDone = new Node(Token.GETPROP, createName(lastResultName), Node.newString("done"));
+        Node step = new Node(Token.COMMA);
+        step.addChildToBack(setTemp(needsCloseName, new Node(Token.FALSE)));
+        step.addChildToBack(setTemp(lastResultName, callNext));
+        step.addChildToBack(setTemp(needsCloseName, new Node(Token.NOT, getDone)));
+        return new Node(Token.HOOK, createName(needsCloseName), step, new Node(Token.FALSE));
+    }
+
+    private Node setTemp(String name, Node value) {
+        return new Node(Token.SETNAME, createName(Token.BINDNAME, name, null), value);
     }
 
     private void processDestructuringDefaults(

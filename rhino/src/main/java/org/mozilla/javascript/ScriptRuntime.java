@@ -2749,10 +2749,11 @@ public class ScriptRuntime {
             Context cx, VarScope scope, ResultAccumulator results, Object source) {
         Scriptable src = ScriptRuntime.toObject(cx, scope, source);
         final Object iterator = ScriptRuntime.callIterator(src, cx, scope);
-        try (IteratorLikeIterable it = new IteratorLikeIterable(cx, scope, iterator)) {
-            for (Object temp : it) {
-                results.addResult(temp);
-            }
+        // The loop only ends once the iterator is done, either normally or because stepping it
+        // threw, so the iterator is never closed.
+        IteratorLikeIterable it = new IteratorLikeIterable(cx, scope, iterator);
+        for (Object temp : it) {
+            results.addResult(temp);
         }
         results.addResult(ObjectLiteralDescriptor.SPREAD_END);
     }

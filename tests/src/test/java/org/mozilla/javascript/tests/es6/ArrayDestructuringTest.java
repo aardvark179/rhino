@@ -720,4 +720,159 @@ public class ArrayDestructuringTest {
                     return null;
                 });
     }
+
+    /**
+     * Builds an iterable whose {@code next()} is {@code nextImpl(callCount)}, recording calls to
+     * {@code next()} and {@code return()} in {@code log}.
+     */
+    private static final String STEP_ITERABLE =
+            "var log = { next: 0, ret: 0 };\n"
+                    + "function makeIterable(nextImpl) {\n"
+                    + "  var iterable = {};\n"
+                    + "  iterable[Symbol.iterator] = function() {\n"
+                    + "    var iter = {\n"
+                    + "      next: function() { log.next++; return nextImpl(log.next); },\n"
+                    + "      return: function() { log.ret++; return {}; }\n"
+                    + "    };\n"
+                    + "    iter[Symbol.iterator] = function() { return this; };\n"
+                    + "    return iter;\n"
+                    + "  };\n"
+                    + "  return iterable;\n"
+                    + "}\n"
+                    + "function run(f) {\n"
+                    + "  var err;\n"
+                    + "  try { f(); } catch (e) { err = e; }\n"
+                    + "  return (err === undefined ? 'none' : err === 'boom' ? 'boom' : err.name)\n"
+                    + "      + ' next=' + log.next + ' ret=' + log.ret;\n"
+                    + "}\n";
+
+    @Test
+    public void arrayDestructuringNextThrowsDoesNotCallReturn() {
+        Utils.assertWithAllModes_ES6(
+                "boom next=1 ret=0",
+                STEP_ITERABLE
+                        + "var it = makeIterable(function() { throw 'boom'; });\n"
+                        + "run(function() { var [a, b] = it; });");
+    }
+
+    @Test
+    public void arrayDestructuringNextThrowsOnLaterElementDoesNotCallReturn() {
+        Utils.assertWithAllModes_ES6(
+                "boom next=2 ret=0",
+                STEP_ITERABLE
+                        + "var it = makeIterable(function(n) {\n"
+                        + "  if (n === 2) throw 'boom';\n"
+                        + "  return { value: n, done: false };\n"
+                        + "});\n"
+                        + "var a, b;\n"
+                        + "run(function() { [a, b] = it; });");
+    }
+
+    @Test
+    public void arrayDestructuringElisionNextThrowsDoesNotCallReturn() {
+        Utils.assertWithAllModes_ES6(
+                "boom next=1 ret=0",
+                STEP_ITERABLE
+                        + "var it = makeIterable(function() { throw 'boom'; });\n"
+                        + "run(function() { var [, a] = it; });");
+    }
+
+    @Test
+    public void arrayDestructuringRestNextThrowsDoesNotCallReturn() {
+        Utils.assertWithAllModes_ES6(
+                "boom next=1 ret=0",
+                STEP_ITERABLE
+                        + "var it = makeIterable(function() { throw 'boom'; });\n"
+                        + "run(function() { var [...rest] = it; });");
+    }
+
+    @Test
+    public void arrayDestructuringRestAfterElementNextThrowsDoesNotCallReturn() {
+        Utils.assertWithAllModes_ES6(
+                "boom next=3 ret=0",
+                STEP_ITERABLE
+                        + "var it = makeIterable(function(n) {\n"
+                        + "  if (n === 3) throw 'boom';\n"
+                        + "  return { value: n, done: false };\n"
+                        + "});\n"
+                        + "run(function() { var [a, ...rest] = it; });");
+    }
+
+    @Test
+    public void arrayDestructuringNextThrowsInParameterDoesNotCallReturn() {
+        Utils.assertWithAllModes_ES6(
+                "boom next=1 ret=0",
+                STEP_ITERABLE
+                        + "var it = makeIterable(function() { throw 'boom'; });\n"
+                        + "run(function() { (function([a]) {})(it); });");
+    }
+
+    @Test
+    public void arrayDestructuringDoneGetterThrowsDoesNotCallReturn() {
+        Utils.assertWithAllModes_ES6(
+                "boom next=1 ret=0",
+                STEP_ITERABLE
+                        + "var it = makeIterable(function() {\n"
+                        + "  return { get done() { throw 'boom'; } };\n"
+                        + "});\n"
+                        + "run(function() { var [a] = it; });");
+    }
+
+    @Test
+    public void arrayDestructuringValueGetterThrowsDoesNotCallReturn() {
+        Utils.assertWithAllModes_ES6(
+                "boom next=1 ret=0",
+                STEP_ITERABLE
+                        + "var it = makeIterable(function() {\n"
+                        + "  return { done: false, get value() { throw 'boom'; } };\n"
+                        + "});\n"
+                        + "run(function() { var [a] = it; });");
+    }
+
+    @Test
+    public void arrayDestructuringRestValueGetterThrowsDoesNotCallReturn() {
+        Utils.assertWithAllModes_ES6(
+                "boom next=1 ret=0",
+                STEP_ITERABLE
+                        + "var it = makeIterable(function() {\n"
+                        + "  return { done: false, get value() { throw 'boom'; } };\n"
+                        + "});\n"
+                        + "run(function() { var [...rest] = it; });");
+    }
+
+    /** Once the iterator reports done, [[Done]] is set and next() must not be called again. */
+    @Test
+    public void arrayDestructuringDoneStopsCallingNext() {
+        Utils.assertWithAllModes_ES6(
+                "none next=1 ret=0 undefined,undefined,0",
+                STEP_ITERABLE
+                        + "var it = makeIterable(function() { return { done: true }; });\n"
+                        + "var a, b, rest;\n"
+                        + "run(function() { [a, , b, ...rest] = it; })\n"
+                        + "  + ' ' + a + ',' + b + ',' + rest.length;");
+    }
+
+    /** A throwing next() sets [[Done]], so a subsequent throw from the body doesn't close. */
+    @Test
+    public void arrayDestructuringNextThrowsWithDefaultDoesNotCallReturn() {
+        Utils.assertWithAllModes_ES6(
+                "boom next=2 ret=0",
+                STEP_ITERABLE
+                        + "var it = makeIterable(function(n) {\n"
+                        + "  if (n === 2) throw 'boom';\n"
+                        + "  return { value: undefined, done: false };\n"
+                        + "});\n"
+                        + "run(function() { var [a = 1, b = 2] = it; });");
+    }
+
+    /** An exception from a target after a successful step must still close the iterator. */
+    @Test
+    public void arrayDestructuringTargetThrowsCallsReturn() {
+        Utils.assertWithAllModes_ES6(
+                "boom next=1 ret=1",
+                STEP_ITERABLE
+                        + "var it = makeIterable(function(n) { return { value: n, done: false }; });\n"
+                        + "var obj = { set x(v) { throw 'boom'; } };\n"
+                        + "run(function() { [obj.x] = it; });");
+    }
 }
