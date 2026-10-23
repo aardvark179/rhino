@@ -27,6 +27,12 @@ import org.mozilla.javascript.sourcemap.Position;
 import org.mozilla.javascript.sourcemap.SourceMapper;
 
 class BodyCodegen {
+
+    BodyCodegen(ClassFileWriter cfw) {
+        this.cfw = cfw;
+        this.exceptionManager = new ExceptionManager(cfw);
+    }
+
     void generateBodyCode() {
         isGenerator = Codegen.isGenerator(scriptOrFn);
 
@@ -3543,9 +3549,12 @@ class BodyCodegen {
      * exception state stack is being inlined and skips the proper exception handlers until the
      * finally block is generated.
      */
-    private class ExceptionManager {
-        ExceptionManager() {
+    private static class ExceptionManager {
+        private final ClassFileWriter cfw;
+
+        ExceptionManager(ClassFileWriter cfw ) {
             exceptionInfo = new ArrayDeque<>();
+            this.cfw = cfw;
         }
 
         /**
@@ -3722,7 +3731,7 @@ class BodyCodegen {
         private ArrayDeque<ExceptionInfo> exceptionInfo;
     }
 
-    private ExceptionManager exceptionManager = new ExceptionManager();
+    private final ExceptionManager exceptionManager;
 
     /**
      * Inline a FINALLY node into the method bytecode.
@@ -5100,7 +5109,7 @@ class BodyCodegen {
     static final int GENERATOR_START = 0;
     static final int GENERATOR_YIELD_START = 1;
 
-    ClassFileWriter cfw;
+    private final ClassFileWriter cfw;
     Codegen codegen;
     CompilerEnvirons compilerEnv;
     ScriptNode scriptOrFn;

@@ -583,8 +583,7 @@ public class Codegen implements Evaluator {
             MHJSCode.BuilderEnv env = ((MHJSCode.Builder<?>) builders[i].code).env;
             ClassFileWriter cfw = cfwForEnv.get(env);
 
-            BodyCodegen bodygen = new BodyCodegen();
-            bodygen.cfw = cfw;
+            BodyCodegen bodygen = new BodyCodegen(cfw);
             bodygen.codegen = this;
             bodygen.compilerEnv = compilerEnv;
             bodygen.scriptOrFn = n;
