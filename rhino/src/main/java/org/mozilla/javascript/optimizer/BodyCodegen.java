@@ -3,12 +3,16 @@ package org.mozilla.javascript.optimizer;
 import static org.mozilla.classfile.ClassFileWriter.ACC_PRIVATE;
 import static org.mozilla.classfile.ClassFileWriter.ACC_PUBLIC;
 import static org.mozilla.classfile.ClassFileWriter.ACC_STATIC;
+import static org.mozilla.javascript.optimizer.ExceptionManager.ECMAERROR_EXCEPTION;
+import static org.mozilla.javascript.optimizer.ExceptionManager.EVALUATOR_EXCEPTION;
+import static org.mozilla.javascript.optimizer.ExceptionManager.EXCEPTION_MAX;
+import static org.mozilla.javascript.optimizer.ExceptionManager.FINALLY_EXCEPTION;
+import static org.mozilla.javascript.optimizer.ExceptionManager.JAVASCRIPT_EXCEPTION;
+import static org.mozilla.javascript.optimizer.ExceptionManager.THROWABLE_EXCEPTION;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import org.mozilla.classfile.ByteCode;
@@ -62,6 +66,7 @@ class BodyCodegen {
         }
         generateStatement(treeTop);
         generateEpilogue();
+        exceptionManager.flush();
 
         cfw.stopMethod((short) (localsMax + 1));
 
@@ -635,9 +640,7 @@ class BodyCodegen {
             // rethrow
             cfw.add(ByteCode.ATHROW);
 
-            // mark the handler
-            cfw.addExceptionHandler(
-                    enterAreaStartLabel, epilogueLabel, finallyHandler, null); // catch any
+            exceptionManager.addCatchAll(enterAreaStartLabel, epilogueLabel, finallyHandler);
         }
     }
 
@@ -3346,7 +3349,6 @@ class BodyCodegen {
         Node finallyTarget = node.getFinally();
         int[] handlerLabels = new int[EXCEPTION_MAX];
 
-        exceptionManager.pushExceptionInfo(node);
         if (catchTarget != null) {
             handlerLabels[JAVASCRIPT_EXCEPTION] = cfw.acquireLabel();
             handlerLabels[EVALUATOR_EXCEPTION] = cfw.acquireLabel();
@@ -3359,7 +3361,7 @@ class BodyCodegen {
         if (finallyTarget != null) {
             handlerLabels[FINALLY_EXCEPTION] = cfw.acquireLabel();
         }
-        exceptionManager.setHandlers(handlerLabels, startLabel);
+        exceptionManager.pushTry(getFinallyAtTarget(finallyTarget), startLabel, handlerLabels);
 
         // create a table for the equivalent of JSR returns
         if (isGenerator && finallyTarget != null) {
@@ -3375,11 +3377,14 @@ class BodyCodegen {
 
         while (child != null) {
             if (child == catchTarget) {
-                int catchLabel = getTargetLabel(catchTarget);
-                exceptionManager.removeHandler(JAVASCRIPT_EXCEPTION, catchLabel);
-                exceptionManager.removeHandler(EVALUATOR_EXCEPTION, catchLabel);
-                exceptionManager.removeHandler(ECMAERROR_EXCEPTION, catchLabel);
-                exceptionManager.removeHandler(THROWABLE_EXCEPTION, catchLabel);
+                exceptionManager.endHandlers(
+                        getTargetLabel(catchTarget),
+                        JAVASCRIPT_EXCEPTION,
+                        EVALUATOR_EXCEPTION,
+                        ECMAERROR_EXCEPTION,
+                        THROWABLE_EXCEPTION);
+            } else if (child == finallyTarget) {
+                exceptionManager.endHandlers(getTargetLabel(finallyTarget), FINALLY_EXCEPTION);
             }
             generateStatement(child);
             child = child.getNext();
@@ -3395,11 +3400,6 @@ class BodyCodegen {
         if (catchTarget != null) {
             // get the label to goto
             int catchLabel = catchTarget.labelId();
-
-            // If the function is a generator, then handlerLabels will consist
-            // of zero labels. generateCatchBlock will create its own label
-            // in this case. The extra parameter for the label is added for
-            // the case of non-generator functions that inline finally blocks.
 
             generateCatchBlock(
                     JAVASCRIPT_EXCEPTION,
@@ -3443,20 +3443,14 @@ class BodyCodegen {
         // finally handler; catch all exceptions, store to a local; JSR to
         // the finally, then re-throw.
         if (finallyTarget != null) {
-            int finallyHandler = cfw.acquireLabel();
             int finallyEnd = cfw.acquireLabel();
-            cfw.markHandler(finallyHandler);
-            if (!isGenerator) {
-                cfw.markLabel(handlerLabels[FINALLY_EXCEPTION]);
-            }
+            cfw.markHandler(handlerLabels[FINALLY_EXCEPTION]);
             cfw.addAStore(exceptionLocal);
 
             // reset the variable object local
             cfw.addALoad(savedVariableObject);
             cfw.addAStore(variableObjectLocal);
 
-            // get the label to JSR to
-            int finallyLabel = finallyTarget.labelId();
             if (isGenerator) addGotoWithReturn(finallyTarget);
             else {
                 inlineFinally(finallyTarget, handlerLabels[FINALLY_EXCEPTION], finallyEnd);
@@ -3468,29 +3462,12 @@ class BodyCodegen {
             cfw.add(ByteCode.ATHROW);
 
             cfw.markLabel(finallyEnd);
-            // mark the handler
-            if (isGenerator) {
-                cfw.addExceptionHandler(
-                        startLabel, finallyLabel, finallyHandler, null); // catch any
-            }
         }
         releaseWordLocal(savedVariableObject);
         cfw.markLabel(realEnd);
 
-        if (!isGenerator) {
-            exceptionManager.popExceptionInfo();
-        }
+        exceptionManager.popTry();
     }
-
-    private static final int JAVASCRIPT_EXCEPTION = 0;
-    private static final int EVALUATOR_EXCEPTION = 1;
-    private static final int ECMAERROR_EXCEPTION = 2;
-    private static final int THROWABLE_EXCEPTION = 3;
-    // Finally catch-alls are technically Throwable, but we want a distinction
-    // for the exception manager and we want to use a null string instead of
-    // an explicit Throwable string.
-    private static final int FINALLY_EXCEPTION = 4;
-    private static final int EXCEPTION_MAX = 5;
 
     private void generateCatchBlock(
             int exceptionType,
@@ -3511,224 +3488,6 @@ class BodyCodegen {
         cfw.addAStore(variableObjectLocal);
 
         cfw.add(ByteCode.GOTO, catchLabel);
-    }
-
-    private static String exceptionTypeToName(int exceptionType) {
-        if (exceptionType == JAVASCRIPT_EXCEPTION) {
-            return "org/mozilla/javascript/JavaScriptException";
-        } else if (exceptionType == EVALUATOR_EXCEPTION) {
-            return "org/mozilla/javascript/EvaluatorException";
-        } else if (exceptionType == ECMAERROR_EXCEPTION) {
-            return "org/mozilla/javascript/EcmaError";
-        } else if (exceptionType == THROWABLE_EXCEPTION) {
-            return "java/lang/Throwable";
-        } else if (exceptionType == FINALLY_EXCEPTION) {
-            return null;
-        } else {
-            throw Kit.codeBug();
-        }
-    }
-
-    /**
-     * Manages placement of exception handlers for non-generator functions.
-     *
-     * <p>For generator functions, there are mechanisms put into place to emulate jsr by using a
-     * goto with a return label. That is one mechanism for implementing finally blocks. The other,
-     * which is implemented by Sun, involves duplicating the finally block where jsr instructions
-     * would normally be. However, inlining finally blocks causes problems with translating
-     * exception handlers. Instead of having one big bytecode range for each exception, we now have
-     * to skip over the inlined finally blocks. This class is meant to help implement this.
-     *
-     * <p>Every time a try block is encountered during translation, exception information should be
-     * pushed into the manager, which is treated as a stack. The addHandler() and setHandlers()
-     * methods may be used to register exceptionHandlers for the try block; removeHandler() is used
-     * to reverse the operation. At the end of the try/catch/finally, the exception state for it
-     * should be popped.
-     *
-     * <p>The important function here is markInlineFinally. This finds which finally block on the
-     * exception state stack is being inlined and skips the proper exception handlers until the
-     * finally block is generated.
-     */
-    private static class ExceptionManager {
-        private final ClassFileWriter cfw;
-
-        ExceptionManager(ClassFileWriter cfw ) {
-            exceptionInfo = new ArrayDeque<>();
-            this.cfw = cfw;
-        }
-
-        /**
-         * Push a new try block onto the exception information stack.
-         *
-         * @param node an exception handling node (node.getType() == Token.TRY)
-         */
-        void pushExceptionInfo(Jump node) {
-            Node fBlock = getFinallyAtTarget(node.getFinally());
-            ExceptionInfo ei = new ExceptionInfo(node, fBlock);
-            exceptionInfo.add(ei);
-        }
-
-        /**
-         * Register an exception handler for the try block at the top of the exception information
-         * stack.
-         *
-         * @param exceptionType one of the integer constants representing an exception type
-         * @param handlerLabel the label of the exception handler
-         * @param startLabel the label where the exception handling begins
-         */
-        void addHandler(int exceptionType, int handlerLabel, int startLabel) {
-            ExceptionInfo top = getTop();
-            top.handlerLabels[exceptionType] = handlerLabel;
-            top.exceptionStarts[exceptionType] = startLabel;
-        }
-
-        /**
-         * Register multiple exception handlers for the top try block. If the exception type maps to
-         * a zero label, then it is ignored.
-         *
-         * @param handlerLabels a map from integer constants representing an exception type to the
-         *     label of the exception handler
-         * @param startLabel the label where all of the exception handling begins
-         */
-        void setHandlers(int[] handlerLabels, int startLabel) {
-            for (int i = 0; i < handlerLabels.length; i++) {
-                if (handlerLabels[i] != 0) {
-                    addHandler(i, handlerLabels[i], startLabel);
-                }
-            }
-        }
-
-        /**
-         * Remove an exception handler for the top try block.
-         *
-         * @param exceptionType one of the integer constants representing an exception type
-         * @param endLabel a label representing the end of the last bytecode that should be handled
-         *     by the exception
-         * @returns the label of the exception handler associated with the exception type
-         */
-        int removeHandler(int exceptionType, int endLabel) {
-            ExceptionInfo top = getTop();
-            if (top.handlerLabels[exceptionType] != 0) {
-                int handlerLabel = top.handlerLabels[exceptionType];
-                endCatch(top, exceptionType, endLabel);
-                top.handlerLabels[exceptionType] = 0;
-                return handlerLabel;
-            }
-            return 0;
-        }
-
-        /** Remove the top try block from the exception information stack. */
-        void popExceptionInfo() {
-            exceptionInfo.removeLast();
-        }
-
-        /**
-         * Mark the start of an inlined finally block.
-         *
-         * <p>When a finally block is inlined, any exception handlers that are lexically inside of
-         * its try block should not cover the range of the exception block. We scan from the
-         * innermost try block outward until we find the try block that matches the finally block.
-         * For any block whose exception handlers that aren't currently stopped by a finally block,
-         * we stop the handlers at the beginning of the finally block and set it as the finally
-         * block that has stopped the handlers. This prevents other inlined finally blocks from
-         * prematurely ending skip ranges and creating bad exception handler ranges.
-         *
-         * @param finallyBlock the finally block that is being inlined
-         * @param finallyStart the label of the beginning of the inlined code
-         */
-        void markInlineFinallyStart(Node finallyBlock, int finallyStart) {
-            // Traverse the stack in LIFO order until the try block
-            // corresponding to the finally block has been reached. We must
-            // traverse backwards because the earlier exception handlers in
-            // the exception handler table have priority when determining which
-            // handler to use. Therefore, we start with the most nested try
-            // block and move outward.
-            Iterator<ExceptionInfo> iter = exceptionInfo.descendingIterator();
-            while (iter.hasNext()) {
-                ExceptionInfo ei = iter.next();
-                for (int i = 0; i < EXCEPTION_MAX; i++) {
-                    if (ei.handlerLabels[i] != 0 && ei.currentFinally == null) {
-                        endCatch(ei, i, finallyStart);
-                        ei.exceptionStarts[i] = 0;
-                        ei.currentFinally = finallyBlock;
-                    }
-                }
-                if (ei.finallyBlock == finallyBlock) {
-                    break;
-                }
-            }
-        }
-
-        /**
-         * Mark the end of an inlined finally block.
-         *
-         * <p>For any set of exception handlers that have been stopped by the inlined block, resume
-         * exception handling at the end of the finally block.
-         *
-         * @param finallyBlock the finally block that is being inlined
-         * @param finallyEnd the label of the end of the inlined code
-         */
-        void markInlineFinallyEnd(Node finallyBlock, int finallyEnd) {
-            Iterator<ExceptionInfo> iter = exceptionInfo.descendingIterator();
-            while (iter.hasNext()) {
-                ExceptionInfo ei = iter.next();
-                for (int i = 0; i < EXCEPTION_MAX; i++) {
-                    if (ei.handlerLabels[i] != 0 && ei.currentFinally == finallyBlock) {
-                        ei.exceptionStarts[i] = finallyEnd;
-                        ei.currentFinally = null;
-                    }
-                }
-                if (ei.finallyBlock == finallyBlock) {
-                    break;
-                }
-            }
-        }
-
-        /**
-         * Mark off the end of a bytecode chunk that should be handled by an exceptionHandler.
-         *
-         * <p>The caller of this method must appropriately mark the start of the next bytecode chunk
-         * or remove the handler.
-         */
-        private void endCatch(ExceptionInfo ei, int exceptionType, int catchEnd) {
-            if (ei.exceptionStarts[exceptionType] == 0) {
-                throw new IllegalStateException("bad exception start");
-            }
-
-            int currentStart = ei.exceptionStarts[exceptionType];
-            int currentStartPC = cfw.getLabelPC(currentStart);
-            int catchEndPC = cfw.getLabelPC(catchEnd);
-            if (currentStartPC != catchEndPC) {
-                cfw.addExceptionHandler(
-                        ei.exceptionStarts[exceptionType],
-                        catchEnd,
-                        ei.handlerLabels[exceptionType],
-                        exceptionTypeToName(exceptionType));
-            }
-        }
-
-        private ExceptionInfo getTop() {
-            return exceptionInfo.getLast();
-        }
-
-        private static class ExceptionInfo {
-            ExceptionInfo(Jump node, Node finallyBlock) {
-                this.finallyBlock = finallyBlock;
-                handlerLabels = new int[EXCEPTION_MAX];
-                exceptionStarts = new int[EXCEPTION_MAX];
-                currentFinally = null;
-            }
-
-            Node finallyBlock;
-            int[] handlerLabels;
-            int[] exceptionStarts;
-            // The current finally block that has temporarily ended the
-            // exception handler ranges
-            Node currentFinally;
-        }
-
-        // A stack of try/catch block information ordered by lexical scoping
-        private ArrayDeque<ExceptionInfo> exceptionInfo;
     }
 
     private final ExceptionManager exceptionManager;
@@ -3758,12 +3517,12 @@ class BodyCodegen {
         Node fBlock = getFinallyAtTarget(finallyTarget);
         fBlock.resetTargets();
         Node child = fBlock.getFirstChild();
-        exceptionManager.markInlineFinallyStart(fBlock, finallyStart);
+        exceptionManager.enterInlinedFinally(fBlock, finallyStart);
         while (child != null) {
             generateStatement(child);
             child = child.getNext();
         }
-        exceptionManager.markInlineFinallyEnd(fBlock, finallyEnd);
+        exceptionManager.exitInlinedFinally(fBlock, finallyEnd);
     }
 
     private void inlineFinally(Node finallyTarget) {

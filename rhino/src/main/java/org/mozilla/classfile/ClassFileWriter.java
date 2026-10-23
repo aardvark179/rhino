@@ -1725,11 +1725,20 @@ public class ClassFileWriter {
 
             // Remove any exception table entry whose handler is the killed
             // block. This removes block dependencies to make stack maps for
-            // dead blocks easier to create.
+            // dead blocks easier to create. Entries starting at the killed
+            // block that extend past it are trimmed to start after it, so
+            // they still cover the live code.
             for (int i = 0; i < itsExceptionTableTop; i++) {
                 ExceptionTableEntry ete = itsExceptionTable[i];
                 int eteStart = getLabelPC(ete.itsStartLabel);
-                if (eteStart == sb.getStart() || getLabelPC(ete.itsHandlerLabel) == sb.getStart()) {
+                int handlerPC = getLabelPC(ete.itsHandlerLabel);
+                if (eteStart == sb.getStart()
+                        && handlerPC != sb.getStart()
+                        && getLabelPC(ete.itsEndLabel) > sb.getEnd()) {
+                    int newStart = acquireLabel();
+                    itsLabelTable[newStart & 0x7FFFFFFF] = sb.getEnd();
+                    ete.itsStartLabel = newStart;
+                } else if (eteStart == sb.getStart() || handlerPC == sb.getStart()) {
                     for (int j = i + 1; j < itsExceptionTableTop; j++) {
                         itsExceptionTable[j - 1] = itsExceptionTable[j];
                     }
