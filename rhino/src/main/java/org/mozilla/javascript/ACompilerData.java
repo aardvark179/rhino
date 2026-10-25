@@ -6,6 +6,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serial;
 import java.io.Serializable;
+import java.util.List;
 
 public abstract class ACompilerData<T extends ScriptOrFn<T>, U extends ACompilerData<?, U>>
         extends JSCode<T> implements Serializable {
@@ -25,6 +26,18 @@ public abstract class ACompilerData<T extends ScriptOrFn<T>, U extends ACompiler
         this.maxStack = maxStack;
         this.maxFrameSize = maxFrameSize;
         this.exceptionTable = exceptionTable;
+    }
+
+    private List<JSDescriptor<JSFunction>> nestedFunctions = List.of();
+
+    @Override
+    public List<JSDescriptor<JSFunction>> getNestedFunctions() {
+        return nestedFunctions;
+    }
+
+    @Override
+    public void setNestedFunctions(List<JSDescriptor<JSFunction>> nestedFunctions) {
+        this.nestedFunctions = nestedFunctions;
     }
 
     public abstract int getLineNumberFromPc(int pc, int pcLineStart);

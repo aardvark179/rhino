@@ -1,6 +1,7 @@
 package org.mozilla.javascript.optimizer;
 
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
 import org.mozilla.classfile.ByteCode;
@@ -16,6 +17,20 @@ import org.mozilla.javascript.VarScope;
 public class MHJSFunctionCode extends MHJSCode<JSFunction> {
     private final JSCodeExec<JSFunction> exec;
     private final JSCodeResume<JSFunction> resume;
+
+    public static MHJSFunctionCode bootstrap(
+            MethodHandles.Lookup lookup,
+            String name,
+            Class<?> type,
+            MethodHandle execMH,
+            MethodHandle resumeMH) {
+        return new MHJSFunctionCode(execMH, resumeMH);
+    }
+
+    public static MHJSFunctionCode bootstrapNoResume(
+            MethodHandles.Lookup lookup, String name, Class<?> type, MethodHandle execMH) {
+        return new MHJSFunctionCode(execMH, null);
+    }
 
     protected MHJSFunctionCode(MethodHandle execMH, MethodHandle resumeMH) {
         exec =

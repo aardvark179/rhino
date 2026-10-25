@@ -13,6 +13,7 @@ import static org.mozilla.classfile.ClassFileWriter.ACC_STATIC;
 
 import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDescs;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -32,6 +33,7 @@ import org.mozilla.javascript.InstrumentEmitter;
 import org.mozilla.javascript.JSDescriptor;
 import org.mozilla.javascript.JSFunction;
 import org.mozilla.javascript.JSScript;
+import org.mozilla.javascript.LazySourceCodeProvider;
 import org.mozilla.javascript.RegExpProxy;
 import org.mozilla.javascript.RhinoException;
 import org.mozilla.javascript.Script;
@@ -200,20 +202,25 @@ public class Codegen implements Evaluator {
                 Class<?> cl = loader.defineClass(unit.className, unit.bytecode);
                 loader.linkClass(cl);
                 unit.env.compiledClass = cl;
+                if (compiled.builder.sourceCodeProvider instanceof LazySourceCodeProvider) {
+                    var lazy = (LazySourceCodeProvider) compiled.builder.sourceCodeProvider;
+                    var provider =
+                            (LazySourceCodeProvider)
+                                    cl.getMethod(SOURCE_PROVIDER_METHOD_NAME).invoke(null);
+                    provider.setSourceSupplier(lazy.getSourceSupplier());
+                }
                 if (mainClass == null) {
                     mainClass = cl;
                 }
             }
-            var descs = new ArrayList<JSDescriptor<?>>();
-            JSDescriptor<T> desc = compiled.builder.build(d -> descs.add(d));
-            mainClass
-                    .getField(DESCRIPTORS_FIELD_NAME)
-                    .set(null, descs.toArray(new JSDescriptor[0]));
+            @SuppressWarnings("unchecked")
+            var desc = (JSDescriptor<T>) mainClass.getMethod(DESCRIPTOR_METHOD_NAME).invoke(null);
             return desc;
         } catch (SecurityException
                 | IllegalArgumentException
                 | IllegalAccessException
-                | NoSuchFieldException x) {
+                | InvocationTargetException
+                | NoSuchMethodException x) {
             e = x;
         }
         throw new RuntimeException(e);
@@ -494,12 +501,17 @@ public class Codegen implements Evaluator {
         var registry = cfw.getDynamicDescriptorRegistry();
         new SymbolKeyDescriber(registry);
         new EagerSourceCodeProviderDescriber(registry);
+        new LazySourceCodeProviderDescriber(registry);
+        new NullSourceCodeProviderDescriber(registry);
         new UndefinedDescriber(registry);
         new TemplateLiteralCallSiteDescriber(registry);
         new BigIntDescriber(registry);
         new UniqueTagDescriber(registry);
         ObjectLiteralDescriptorDescribers.register(registry);
         ArrayLiteralDescriptorDescribers.register(registry);
+        new MHJSScriptCodeDescriber(registry);
+        new MHJSFunctionCodeDescriber(registry);
+        new JSDescriptorBuilderDescriber(registry);
 
         cfw.registerStringConcat(
                 ConstantDescs.ofConstantBootstrap(
@@ -579,16 +591,16 @@ public class Codegen implements Evaluator {
             cfws[c] = new ClassFileWriter(chunkClassNames[c], SUPER_CLASS_NAME, sourceFile);
             installConstantDescribers(cfws[c]);
             generateLookupAccessor(cfws[c]);
+            if (builders[0].sourceCodeProvider instanceof LazySourceCodeProvider) {
+                generateSourceProviderAccessor(cfws[c]);
+            }
             cfwForEnv.put(chunkEnvs[c], cfws[c]);
         }
         ClassFileWriter mainCfw = cfws[0];
 
         prepareConstants(cfws, chunkEnvs);
         mainCfw.addField(ID_FIELD_NAME, "I", ACC_PRIVATE);
-        mainCfw.addField(
-                DESCRIPTORS_FIELD_NAME,
-                "[Lorg/mozilla/javascript/JSDescriptor;",
-                (short) (ACC_PUBLIC | ACC_STATIC));
+        generateDescriptorAccessor(mainCfw);
 
         int count = scriptOrFnNodes.length;
         for (int i = 0; i != count; ++i) {
@@ -764,6 +776,30 @@ public class Codegen implements Evaluator {
 
     static boolean isGenerator(ScriptNode node) {
         return (node.getType() == Token.FUNCTION) && ((FunctionNode) node).isGenerator();
+    }
+
+    private void generateDescriptorAccessor(ClassFileWriter cfw) {
+        cfw.startMethod(
+                DESCRIPTOR_METHOD_NAME,
+                DESCRIPTOR_METHOD_SIGNATURE,
+                (short) (ACC_STATIC | ACC_PUBLIC));
+        cfw.addLoadDynamicConstant(builders[0]);
+        cfw.add(ByteCode.ARETURN);
+        cfw.stopMethod(0);
+    }
+
+    /**
+     * Each class resolves its own lazy source code provider, shared by all the descriptors loaded
+     * in it, and this accessor lets {@link #defineClass} give it the supplier.
+     */
+    private void generateSourceProviderAccessor(ClassFileWriter cfw) {
+        cfw.startMethod(
+                SOURCE_PROVIDER_METHOD_NAME,
+                SOURCE_PROVIDER_METHOD_SIGNATURE,
+                (short) (ACC_STATIC | ACC_PUBLIC));
+        cfw.addLoadDynamicConstant(builders[0].sourceCodeProvider);
+        cfw.add(ByteCode.ARETURN);
+        cfw.stopMethod(0);
     }
 
     private void generateLookupAccessor(ClassFileWriter cfw) {
@@ -1055,8 +1091,12 @@ public class Codegen implements Evaluator {
     static final String ID_FIELD_NAME = "_id";
 
     static final String DESCRIPTOR_CLASS_SIGNATURE = "Lorg/mozilla/javascript/JSDescriptor;";
-    static final String DESCRIPTORS_FIELD_NAME = "_descriptors";
-    static final String DESCRIPTORS_FIELD_SIGNATURE = "[" + DESCRIPTOR_CLASS_SIGNATURE;
+    static final String DESCRIPTOR_METHOD_NAME = "_descriptor";
+    static final String DESCRIPTOR_METHOD_SIGNATURE = "()" + DESCRIPTOR_CLASS_SIGNATURE;
+
+    static final String SOURCE_PROVIDER_METHOD_NAME = "_sourceProvider";
+    static final String SOURCE_PROVIDER_METHOD_SIGNATURE =
+            "()Lorg/mozilla/javascript/LazySourceCodeProvider;";
 
     static final String CODE_INIT_SIGNATURE = "(Lorg/mozilla/javascript/Context;" + ")V";
 

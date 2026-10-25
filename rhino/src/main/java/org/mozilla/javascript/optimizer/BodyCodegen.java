@@ -2280,13 +2280,7 @@ class BodyCodegen {
     }
 
     private void pushDescriptor() {
-        cfw.add(
-                ByteCode.GETSTATIC,
-                codegen.mainClassName,
-                Codegen.DESCRIPTORS_FIELD_NAME,
-                Codegen.DESCRIPTORS_FIELD_SIGNATURE);
-        cfw.addPush(scriptOrFnIndex);
-        cfw.add(ByteCode.AALOAD);
+        cfw.addLoadDynamicConstant(codegen.builders[scriptOrFnIndex]);
     }
 
     private void generateIfJump(Node node, Node parent, int trueLabel, int falseLabel) {
@@ -2401,15 +2395,7 @@ class BodyCodegen {
             cfw.add(ByteCode.SWAP);
             cfw.addALoad(variableObjectLocal);
             cfw.add(ByteCode.SWAP);
-            // The descriptors array always lives on the main class, even when this body method has
-            // been placed in a different (split) chunk class.
-            cfw.add(
-                    ByteCode.GETSTATIC,
-                    codegen.mainClassName,
-                    Codegen.DESCRIPTORS_FIELD_NAME,
-                    Codegen.DESCRIPTORS_FIELD_SIGNATURE);
-            cfw.addPush(fnIndex);
-            cfw.add(ByteCode.AALOAD);
+            cfw.addLoadDynamicConstant(codegen.builders[fnIndex]);
             cfw.add(ByteCode.SWAP);
             cfw.add(ByteCode.ACONST_NULL);
             cfw.add(ByteCode.SWAP);
@@ -2428,15 +2414,7 @@ class BodyCodegen {
         cfw.add(ByteCode.DUP);
         cfw.addALoad(contextLocal);
         cfw.addALoad(variableObjectLocal);
-        // The descriptors array always lives on the main class, even when this body method has
-        // been placed in a different (split) chunk class.
-        cfw.add(
-                ByteCode.GETSTATIC,
-                codegen.mainClassName,
-                Codegen.DESCRIPTORS_FIELD_NAME,
-                Codegen.DESCRIPTORS_FIELD_SIGNATURE);
-        cfw.addPush(fnIndex);
-        cfw.add(ByteCode.AALOAD);
+        cfw.addLoadDynamicConstant(codegen.builders[fnIndex]);
         if (functionType == FunctionNode.ARROW_FUNCTION) {
             cfw.addALoad(thisObjLocal);
             if (isGenerator) {
@@ -3243,15 +3221,7 @@ class BodyCodegen {
                 className,
                 "getDescriptor",
                 "()" + Codegen.DESCRIPTOR_CLASS_SIGNATURE);
-        // The descriptors array always lives on the main class, even when this call site has
-        // been placed in a different (split) chunk class.
-        cfw.add(
-                ByteCode.GETSTATIC,
-                codegen.mainClassName,
-                Codegen.DESCRIPTORS_FIELD_NAME,
-                Codegen.DESCRIPTORS_FIELD_SIGNATURE);
-        cfw.addPush(codegen.getIndex(target.fnode));
-        cfw.add(ByteCode.AALOAD);
+        cfw.addLoadDynamicConstant(codegen.builders[codegen.getIndex(target.fnode)]);
         cfw.add(ByteCode.IF_ACMPNE, regularCall);
 
         // stack: ... directFunct

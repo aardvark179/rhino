@@ -6,12 +6,29 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serial;
 import java.io.Serializable;
+import java.util.List;
 
 /**
  * Represents code that is executable, and potentially resumable. Those concepts are separated out
  * as {@link JSCodeExec} and {@link JSCodeResume} to allow for the use of functional interfaces.
  */
 public abstract class JSCode<T extends ScriptOrFn<T>> implements JSCodeExec<T>, JSCodeResume<T> {
+
+    /** The descriptors of the functions nested directly within this code. */
+    public List<JSDescriptor<JSFunction>> getNestedFunctions() {
+        return List.of();
+    }
+
+    /** Code that has no use for its nested function descriptors may ignore them. */
+    public void setNestedFunctions(List<JSDescriptor<JSFunction>> nestedFunctions) {}
+
+    public int getFunctionCount() {
+        return getNestedFunctions().size();
+    }
+
+    public JSDescriptor<JSFunction> getFunction(int index) {
+        return getNestedFunctions().get(index);
+    }
 
     /**
      * Represents a mutable {@link JSCode} object in the process of being created, usually as a

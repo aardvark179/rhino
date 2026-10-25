@@ -6,6 +6,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serial;
 import java.io.Serializable;
+import java.lang.invoke.MethodHandles;
 import java.lang.ref.WeakReference;
 import java.util.Objects;
 
@@ -15,12 +16,41 @@ import java.util.Objects;
  */
 public class LazySourceCodeProvider implements SourceCodeProvider, Serializable {
     private static final long serialVersionUID = 1L;
-    private final SourceCodeSupplier sourceSupplier;
+    private SourceCodeSupplier sourceSupplier;
     private WeakReference<String> sourceCodeRef;
 
     public LazySourceCodeProvider(SourceCodeSupplier sourceSupplier) {
         Objects.requireNonNull(sourceSupplier);
         this.sourceSupplier = sourceSupplier;
+    }
+
+    private LazySourceCodeProvider() {}
+
+    public SourceCodeSupplier getSourceSupplier() {
+        return sourceSupplier;
+    }
+
+    /**
+     * Set the supplier of a provider created by {@link #sourceConstant}. The supplier cannot be
+     * written into a class file, so a provider resolved from a dynamic constant starts without one,
+     * and must have it set once the class has been defined and before any source is requested.
+     */
+    public void setSourceSupplier(SourceCodeSupplier sourceSupplier) {
+        Objects.requireNonNull(sourceSupplier);
+        if (this.sourceSupplier != null) {
+            throw new IllegalStateException("Source supplier has already been set.");
+        }
+        this.sourceSupplier = sourceSupplier;
+    }
+
+    /**
+     * Bootstrap method for the dynamic constant described by {@link
+     * org.mozilla.javascript.optimizer.LazySourceCodeProviderDescriber}. The provider has no
+     * supplier until one is set with {@link #setSourceSupplier}.
+     */
+    public static LazySourceCodeProvider sourceConstant(
+            MethodHandles.Lookup lookup, String name, Class<?> type) {
+        return new LazySourceCodeProvider();
     }
 
     @Override

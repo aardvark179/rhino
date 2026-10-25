@@ -598,6 +598,33 @@ public class DynamicConstantTest {
     }
 
     @Test
+    public void equalNumbersShareAConstant() throws Exception {
+        ClassFileWriter cfw = writer("TestSharedNumericConstants");
+        cfw.startMethod("get", "()Ljava/lang/Object;", (short) (ACC_PUBLIC | ACC_STATIC));
+        cfw.addLoadConstant(100000);
+        cfw.addLoadConstant(100000);
+        cfw.add(ByteCode.POP2);
+        cfw.addLoadConstant(1L << 40);
+        cfw.addLoadConstant(1L << 40);
+        cfw.add(ByteCode.POP2);
+        cfw.add(ByteCode.POP2);
+        cfw.addLoadConstant(0.0);
+        cfw.addLoadConstant(-0.0);
+        cfw.add(ByteCode.POP2);
+        cfw.add(ByteCode.POP2);
+        cfw.addLoadConstant("done");
+        cfw.add(ByteCode.ARETURN);
+        cfw.stopMethod((short) 0);
+
+        byte[] bytecode = cfw.toByteArray();
+        ClassFileInfo info = ClassFileInfo.parse(bytecode);
+        assertEquals(1, info.count(TAG_INTEGER));
+        assertEquals(1, info.count(TAG_LONG));
+        assertEquals(2, info.count(TAG_DOUBLE), "0.0 and -0.0 must stay distinct");
+        assertEquals("done", invoke(bytecode, "TestSharedNumericConstants", "get"));
+    }
+
+    @Test
     public void equalSourceSharesAConstant() throws Exception {
         ClassFileWriter cfw = writer("TestSharedEagerSourceConstants");
         new EagerSourceCodeProviderDescriber(cfw.getDynamicDescriptorRegistry());
@@ -1019,6 +1046,7 @@ public class DynamicConstantTest {
     }
 
     private static final int TAG_UTF8 = 1;
+    private static final int TAG_INTEGER = 3;
     private static final int TAG_LONG = 5;
     private static final int TAG_DOUBLE = 6;
     private static final int TAG_METHOD_HANDLE = 15;

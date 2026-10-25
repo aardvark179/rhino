@@ -9,18 +9,12 @@ package org.mozilla.javascript.optimizer;
 import static org.mozilla.classfile.ClassFileWriter.ACC_PUBLIC;
 import static org.mozilla.classfile.ClassFileWriter.ACC_STATIC;
 
-import java.lang.invoke.MethodType;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import org.mozilla.classfile.ByteCode;
 import org.mozilla.classfile.ClassFileWriter;
 import org.mozilla.javascript.CompilerEnvirons;
 import org.mozilla.javascript.Context;
-import org.mozilla.javascript.EagerSourceCodeProvider;
 import org.mozilla.javascript.IRFactory;
-import org.mozilla.javascript.JSCode;
 import org.mozilla.javascript.JSDescriptor;
 import org.mozilla.javascript.JavaAdapter;
 import org.mozilla.javascript.Parser;
@@ -167,8 +161,7 @@ public class ClassCompiler {
                                 tree,
                                 source,
                                 false);
-                Object[] auxilaryClasses =
-                        buildDescriptorsAndMain(scriptClassName, builderEnv, builder);
+                Object[] auxilaryClasses = buildMain(scriptClassName);
                 if (isPrimary) {
                     var result = new Object[auxilaryClasses.length + 2];
                     System.arraycopy(auxilaryClasses, 0, result, 2, auxilaryClasses.length);
@@ -210,45 +203,21 @@ public class ClassCompiler {
     }
 
     /**
-     * Build script class initialisation method and main method. The init method will create all the
-     * class descriptors, and the main method will create a {@link JSDescriptor} object based on the
-     * first descriptor and pass that to the main method in the runtime.
+     * Build the main class, whose main method creates a script from the descriptor of the compiled
+     * script class and passes that to the main method in the runtime.
      */
-    private Object[] buildDescriptorsAndMain(
-            String mainClassName, MHJSCode.BuilderEnv builderEnv, JSDescriptor.Builder<?> builder) {
-        var classes = new HashMap<String, byte[]>();
+    private Object[] buildMain(String mainClassName) {
         var mainName = mainClassName + "Main";
 
         var cfw = new ClassFileWriter(mainName, "java.lang.Object", "");
-        Codegen.installConstantDescribers(cfw);
-        var builders = new ArrayList<JSDescriptor.Builder<?>>();
-        buildDescriptor(cfw, builder, builder, classes, builders, mainClassName);
-        cfw.startMethod("<clinit>", "()V", ACC_STATIC);
-        cfw.addLoadConstant(builders.size());
-        cfw.add(ByteCode.ANEWARRAY, "org/mozilla/javascript/JSDescriptor");
-        for (var b : builders) {
-            int index = ((MHJSCode.Builder<?>) b.code).index;
-            int parent = b.parent == null ? 0 : ((MHJSCode.Builder<?>) b.parent.code).index;
-            populateDescriptorEntry(cfw, index, parent);
-        }
-        cfw.add(
-                ByteCode.PUTSTATIC,
-                mainClassName,
-                Codegen.DESCRIPTORS_FIELD_NAME,
-                Codegen.DESCRIPTORS_FIELD_SIGNATURE);
-        cfw.add(ByteCode.RETURN);
-        cfw.stopMethod(0);
-
         cfw.startMethod("main", "([Ljava/lang/String;)V", (short) (ACC_STATIC | ACC_PUBLIC));
         cfw.add(ByteCode.NEW, "org.mozilla.javascript.JSScript");
         cfw.add(ByteCode.DUP);
-        cfw.add(
-                ByteCode.GETSTATIC,
+        cfw.addInvoke(
+                ByteCode.INVOKESTATIC,
                 mainClassName,
-                Codegen.DESCRIPTORS_FIELD_NAME,
-                Codegen.DESCRIPTORS_FIELD_SIGNATURE);
-        cfw.addLoadConstant(0);
-        cfw.add(ByteCode.AALOAD);
+                Codegen.DESCRIPTOR_METHOD_NAME,
+                Codegen.DESCRIPTOR_METHOD_SIGNATURE);
         cfw.add(ByteCode.ACONST_NULL);
         cfw.addInvoke(
                 ByteCode.INVOKESPECIAL,
@@ -265,186 +234,7 @@ public class ClassCompiler {
         cfw.add(ByteCode.RETURN);
         cfw.stopMethod(1);
 
-        var result = new Object[classes.size() * 2 + 2];
-        int count = 0;
-        result[count++] = mainName;
-        result[count++] = cfw.toByteArray();
-        for (var e : classes.entrySet()) {
-            result[count++] = e.getKey();
-            result[count++] = e.getValue();
-        }
-        return result;
-    }
-
-    /**
-     * Generates a byte code for a method to create a {@link JSDescriptor}. It might be more
-     * efficient in future to use a const dynamic for this, when our bytecode generation and
-     * supported platforms can all handle it.
-     */
-    private void buildDescriptor(
-            ClassFileWriter cfw,
-            JSDescriptor.Builder<?> builder,
-            JSDescriptor.Builder<?> root,
-            Map<String, byte[]> classes,
-            List<JSDescriptor.Builder<?>> builders,
-            String mainClassName) {
-        builders.add(builder);
-        cfw.startMethod(
-                "init" + functionId(builder),
-                "(Lorg/mozilla/javascript/JSDescriptor;)Lorg/mozilla/javascript/JSDescriptor;",
-                ACC_STATIC);
-
-        cfw.add(ByteCode.NEW, "org.mozilla.javascript.JSDescriptor");
-        cfw.add(ByteCode.DUP);
-        buildCode(cfw, builder.code, classes, mainClassName);
-        buildCode(cfw, builder.constructor, classes, mainClassName);
-        cfw.addALoad(0);
-        cfw.addLoadConstant(builder.paramAndVarNames.length);
-        cfw.add(ByteCode.ANEWARRAY, "java/lang/String");
-        if (builder.paramAndVarNames.length > 0) {
-            cfw.addLoadConstant(0);
-            cfw.addIStore(2);
-            for (int p = 0; p < builder.paramAndVarNames.length; p++) {
-                cfw.add(ByteCode.DUP);
-                cfw.addILoad(2);
-                cfw.addLoadConstant(builder.paramAndVarNames[p]);
-                cfw.add(ByteCode.AASTORE);
-                cfw.add(ByteCode.IINC, 2, 1);
-            }
-        }
-        cfw.addLoadConstant(builder.paramIsConst.length);
-        cfw.add(ByteCode.NEWARRAY, ByteCode.T_BOOLEAN);
-        if (builder.paramIsConst.length > 0) {
-            cfw.addLoadConstant(0);
-            cfw.addIStore(2);
-            for (int p = 0; p < builder.paramAndVarNames.length; p++) {
-                cfw.add(ByteCode.DUP);
-                cfw.addILoad(2);
-                cfw.add(builder.paramIsConst[p] ? ByteCode.ICONST_1 : ByteCode.ICONST_0);
-                cfw.add(ByteCode.BASTORE);
-                cfw.add(ByteCode.IINC, 2, 1);
-            }
-        }
-        cfw.add(builder.isStrict ? ByteCode.ICONST_1 : ByteCode.ICONST_0);
-        cfw.add(builder.isScript ? ByteCode.ICONST_1 : ByteCode.ICONST_0);
-        cfw.add(builder.isTopLevel ? ByteCode.ICONST_1 : ByteCode.ICONST_0);
-        cfw.add(builder.isES6Generator ? ByteCode.ICONST_1 : ByteCode.ICONST_0);
-        cfw.add(builder.isShorthand ? ByteCode.ICONST_1 : ByteCode.ICONST_0);
-        cfw.add(builder.hasPrototype ? ByteCode.ICONST_1 : ByteCode.ICONST_0);
-        cfw.add(builder.hasLexicalThis ? ByteCode.ICONST_1 : ByteCode.ICONST_0);
-        cfw.add(builder.isEvalFunction ? ByteCode.ICONST_1 : ByteCode.ICONST_0);
-        cfw.add(builder.hasRestArg ? ByteCode.ICONST_1 : ByteCode.ICONST_0);
-        cfw.addLoadConstant(builder.sourceFile);
-        if (compilerEnv.isGeneratingSource()) {
-            cfw.addLoadDynamicConstant(
-                    new EagerSourceCodeProvider(root.sourceCodeProvider.getRawSource()));
-        } else {
-            cfw.add(ByteCode.ACONST_NULL);
-        }
-        cfw.addLoadConstant(builder.sourceStart);
-        cfw.addLoadConstant(builder.sourceEnd);
-        if (builder.name == null) {
-            cfw.add(ByteCode.ACONST_NULL);
-        } else {
-            cfw.addLoadConstant(builder.name);
-        }
-        cfw.addLoadConstant(builder.languageVersion);
-        cfw.addLoadConstant(builder.paramAndVarCount);
-        cfw.addLoadConstant(builder.paramCount);
-        cfw.addLoadConstant(builder.arity);
-        cfw.add(builder.hasDefaultParameters ? ByteCode.ICONST_1 : ByteCode.ICONST_0);
-        cfw.add(builder.requiresActivationFrame ? ByteCode.ICONST_1 : ByteCode.ICONST_0);
-        cfw.add(builder.requiresArgumentObject ? ByteCode.ICONST_1 : ByteCode.ICONST_0);
-        cfw.add(builder.declaredAsFunctionExpression ? ByteCode.ICONST_1 : ByteCode.ICONST_0);
-        cfw.add(ByteCode.ICONST_0);
-        cfw.add(builder.isAsync ? ByteCode.ICONST_1 : ByteCode.ICONST_0);
-        cfw.add(ByteCode.ACONST_NULL);
-        cfw.add(ByteCode.ACONST_NULL);
-        cfw.addLoadConstant(builder.functionType);
-        // Call the constructor
-        var type =
-                MethodType.methodType(
-                                void.class,
-                                JSDescriptor.class.getConstructors()[0].getParameterTypes())
-                        .toMethodDescriptorString();
-        cfw.addInvoke(
-                ByteCode.INVOKESPECIAL, "org.mozilla.javascript.JSDescriptor", "<init>", type);
-        cfw.addAStore(1);
-        cfw.addALoad(1);
-        cfw.add(ByteCode.DUP);
-        cfw.addLoadConstant(builder.nestedFunctions.size());
-        cfw.add(ByteCode.ANEWARRAY, "org/mozilla/javascript/JSDescriptor");
-        if (builder.nestedFunctions.size() > 0) {
-            cfw.addLoadConstant(0);
-            cfw.addIStore(2);
-            // Loop over the nested functions adding them to the list
-            for (var child : builder.nestedFunctions) {
-                cfw.add(ByteCode.DUP);
-                cfw.addILoad(2);
-                cfw.addALoad(1);
-                cfw.addInvoke(
-                        ByteCode.INVOKESTATIC,
-                        cfw.getClassName(),
-                        "init" + functionId((JSDescriptor.Builder<?>) child),
-                        "(Lorg/mozilla/javascript/JSDescriptor;)Lorg/mozilla/javascript/JSDescriptor;");
-                cfw.add(ByteCode.AASTORE);
-                cfw.add(ByteCode.IINC, 2, 1);
-            }
-        }
-        cfw.addInvoke(
-                ByteCode.INVOKESTATIC,
-                "org.mozilla.javascript.optimizer.OptRuntime",
-                "listOf",
-                "([Ljava/lang/Object;)Ljava/util/List;");
-        cfw.add(
-                ByteCode.PUTFIELD,
-                "org.mozilla.javascript.JSDescriptor",
-                "nestedFunctions",
-                "Ljava/util/List;");
-
-        cfw.add(ByteCode.ARETURN);
-        cfw.stopMethod(3);
-        for (var child : builder.nestedFunctions) {
-            buildDescriptor(
-                    cfw, (JSDescriptor.Builder<?>) child, root, classes, builders, mainClassName);
-        }
-    }
-
-    /**
-     * Generates a subclass of {@link OptJSCode} to invoke a compiled method, and the code to
-     * instantiate that class.
-     */
-    private void buildCode(
-            ClassFileWriter cfw,
-            JSCode.Builder<?> builder,
-            Map<String, byte[]> classes,
-            String mainClassName) {
-        if (builder instanceof JSCode.NullBuilder<?>) {
-            cfw.add(ByteCode.ACONST_NULL);
-        } else {
-            ((MHJSCode.Builder<?>) builder).buildByteCode(cfw, mainClassName);
-        }
-    }
-
-    private void populateDescriptorEntry(ClassFileWriter cfw, int index, int parent) {
-        // Start with the array on top.
-        cfw.add(ByteCode.DUP); // array, array.
-        cfw.add(ByteCode.DUP); // array, array, array.
-        cfw.addLoadConstant(parent); // array, array, array, index.
-        cfw.add(ByteCode.AALOAD); // array, array, parent.
-        cfw.addInvoke(
-                ByteCode.INVOKESTATIC,
-                cfw.getClassName(),
-                "init" + index,
-                "(Lorg/mozilla/javascript/JSDescriptor;)Lorg/mozilla/javascript/JSDescriptor;"); // array, array, entry.
-        cfw.addLoadConstant(index); // array, array, entry, index.
-        cfw.add(ByteCode.SWAP); // array, array, index, entry.
-        cfw.add(ByteCode.AASTORE);
-    }
-
-    private int functionId(JSDescriptor.Builder<?> builder) {
-        var code = (MHJSCode.Builder<?>) builder.code;
-        return code.index;
+        return new Object[] {mainName, cfw.toByteArray()};
     }
 
     private String mainMethodClassName;

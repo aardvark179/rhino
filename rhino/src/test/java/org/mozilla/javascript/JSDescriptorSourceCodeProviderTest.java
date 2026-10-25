@@ -3,6 +3,7 @@ package org.mozilla.javascript;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,5 +78,49 @@ public class JSDescriptorSourceCodeProviderTest {
         JSDescriptor<JSScript> descriptor = script.getDescriptor();
         assertNotNull(descriptor);
         assertInstanceOf(EagerSourceCodeProvider.class, sourceCodeProviderOf(descriptor));
+    }
+
+    @Test
+    public void compiledDescriptorsShareLazyProviderWithSupplier()
+            throws ReflectiveOperationException {
+        String source = "function f(a) { return a; }\nfunction g() {}";
+        cx.setInterpretedMode(false);
+        var scope = cx.initStandardObjects();
+
+        Script script =
+                cx.compileScript(
+                        ScriptCompileSpec.fromSource(source)
+                                .sourceName("test.js")
+                                .sourceCodeSupplier(() -> source)
+                                .build());
+        script.exec(cx, scope, scope);
+
+        var f = ((JSFunction) scope.get("f", scope)).getDescriptor();
+        var g = ((JSFunction) scope.get("g", scope)).getDescriptor();
+        assertInstanceOf(LazySourceCodeProvider.class, sourceCodeProviderOf(f));
+        assertSame(sourceCodeProviderOf(f), sourceCodeProviderOf(g));
+        assertSame(sourceCodeProviderOf(f), sourceCodeProviderOf(script.getDescriptor()));
+        assertEquals("function f(a) { return a; }", f.getSource());
+        assertEquals("function g() {}", g.getSource());
+    }
+
+    @Test
+    public void compiledDescriptorsWithoutSourceUseNullProvider()
+            throws ReflectiveOperationException {
+        String source = "function f(a) { return a; }";
+        cx.setInterpretedMode(false);
+        cx.setGeneratingSource(false);
+        var scope = cx.initStandardObjects();
+
+        Script script =
+                cx.compileScript(
+                        ScriptCompileSpec.fromSource(source)
+                                .sourceName("test.js")
+                                .sourceCodeSupplier(() -> source)
+                                .build());
+        script.exec(cx, scope, scope);
+
+        var f = ((JSFunction) scope.get("f", scope)).getDescriptor();
+        assertSame(NullSourceCodeProvider.NULL_PROVIDER, sourceCodeProviderOf(f));
     }
 }

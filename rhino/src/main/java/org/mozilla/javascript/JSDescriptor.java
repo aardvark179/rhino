@@ -42,7 +42,6 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
     private final JSCode<T> code;
     private final JSCode<T> constructor;
     private final JSDescriptor<?> parent;
-    public List<JSDescriptor<JSFunction>> nestedFunctions;
     private final String[] paramAndVarNames;
     private final boolean[] paramIsConst;
     private final int flags;
@@ -58,6 +57,7 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
     private final SecurityController securityController;
     private final Object securityDomain;
     private final int functionType;
+    private final String[] functionStatementNames;
 
     public JSDescriptor(
             JSCode<T> code,
@@ -91,7 +91,8 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
             boolean isAsync,
             SecurityController securityController,
             Object securityDomain,
-            int functionType) {
+            int functionType,
+            String[] functionStatementNames) {
         this.code = code;
         this.constructor = constructor;
         this.parent = parent;
@@ -131,6 +132,7 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
         this.securityController = securityController;
         this.securityDomain = securityDomain;
         this.functionType = functionType;
+        this.functionStatementNames = functionStatementNames;
     }
 
     public JSCode<T> getCode() {
@@ -142,7 +144,11 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
     }
 
     public List<JSDescriptor<JSFunction>> getNestedFunctions() {
-        return nestedFunctions;
+        return code == null ? List.of() : code.getNestedFunctions();
+    }
+
+    public void setNestedFunctions(List<JSDescriptor<JSFunction>> nestedFunctions) {
+        code.setNestedFunctions(nestedFunctions);
     }
 
     public boolean isStrict() {
@@ -245,10 +251,8 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
     }
 
     public boolean hasNoFunctionStatementNamed(String name) {
-        for (int f = 0; f < getFunctionCount(); f++) {
-            var functionData = getFunction(f);
-            if (functionData.getFunctionType() == FunctionNode.FUNCTION_STATEMENT
-                    && name.equals(functionData.getFunctionName())) {
+        for (String statementName : functionStatementNames) {
+            if (statementName.equals(name)) {
                 return false;
             }
         }
@@ -257,12 +261,12 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
 
     @Override
     public int getFunctionCount() {
-        return (nestedFunctions == null) ? 0 : nestedFunctions.size();
+        return code == null ? 0 : code.getFunctionCount();
     }
 
     @Override
     public JSDescriptor<JSFunction> getFunction(int index) {
-        return nestedFunctions.get(index);
+        return code.getFunction(index);
     }
 
     @Override
@@ -418,14 +422,26 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
                             isAsync,
                             securityController,
                             securityDomain,
-                            functionType);
+                            functionType,
+                            functionStatementNames());
             consumer.accept(result);
-            result.nestedFunctions =
-                    Collections.unmodifiableList(
-                            nestedFunctions.stream()
-                                    .map(x -> x.build(result, consumer))
-                                    .collect(Collectors.toList()));
+            if (!nestedFunctions.isEmpty()) {
+                result.setNestedFunctions(
+                        Collections.unmodifiableList(
+                                nestedFunctions.stream()
+                                        .map(x -> x.build(result, consumer))
+                                        .collect(Collectors.toList())));
+            }
             return result;
+        }
+
+        /** The names of the nested functions declared as statements. */
+        public String[] functionStatementNames() {
+            return nestedFunctions.stream()
+                    .filter(f -> f.functionType == FunctionNode.FUNCTION_STATEMENT)
+                    .map(f -> f.name)
+                    .filter(n -> n != null && !n.isEmpty())
+                    .toArray(String[]::new);
         }
 
         public void setCode(JSCode.Builder<T> code) {

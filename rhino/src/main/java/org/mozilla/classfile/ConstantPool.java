@@ -13,6 +13,7 @@ import java.lang.constant.DynamicConstantDesc;
 import java.lang.constant.MethodTypeDesc;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 
 final class ConstantPool {
@@ -74,40 +75,62 @@ final class ConstantPool {
     }
 
     int addConstant(int k) {
-        int index = reserveIndex(1);
-        ensure(5);
-        itsPool[itsTop++] = CONSTANT_Integer;
-        itsTop = ClassFileWriter.putInt32(k, itsPool, itsTop);
-        itsPoolTypes.put(index, CONSTANT_Integer);
+        Object key = Integer.valueOf(k);
+        int index = itsConstantHash.getOrDefault(key, -1);
+        if (index == -1) {
+            index = reserveIndex(1);
+            ensure(5);
+            itsPool[itsTop++] = CONSTANT_Integer;
+            itsTop = ClassFileWriter.putInt32(k, itsPool, itsTop);
+            itsConstantHash.put(key, index);
+            itsPoolTypes.put(index, CONSTANT_Integer);
+        }
         return index;
     }
 
     int addConstant(long k) {
-        int index = reserveIndex(2);
-        ensure(9);
-        itsPool[itsTop++] = CONSTANT_Long;
-        itsTop = ClassFileWriter.putInt64(k, itsPool, itsTop);
-        itsPoolTypes.put(index, CONSTANT_Long);
+        Object key = Long.valueOf(k);
+        int index = itsConstantHash.getOrDefault(key, -1);
+        if (index == -1) {
+            index = reserveIndex(2);
+            ensure(9);
+            itsPool[itsTop++] = CONSTANT_Long;
+            itsTop = ClassFileWriter.putInt64(k, itsPool, itsTop);
+            itsConstantHash.put(key, index);
+            itsPoolTypes.put(index, CONSTANT_Long);
+        }
         return index;
     }
 
     int addConstant(float k) {
-        int index = reserveIndex(1);
-        ensure(5);
-        itsPool[itsTop++] = CONSTANT_Float;
-        int bits = Float.floatToIntBits(k);
-        itsTop = ClassFileWriter.putInt32(bits, itsPool, itsTop);
-        itsPoolTypes.put(index, CONSTANT_Float);
+        // Boxed equality compares bits, so NaN and -0.0 are kept distinct correctly.
+        Object key = Float.valueOf(k);
+        int index = itsConstantHash.getOrDefault(key, -1);
+        if (index == -1) {
+            index = reserveIndex(1);
+            ensure(5);
+            itsPool[itsTop++] = CONSTANT_Float;
+            int bits = Float.floatToIntBits(k);
+            itsTop = ClassFileWriter.putInt32(bits, itsPool, itsTop);
+            itsConstantHash.put(key, index);
+            itsPoolTypes.put(index, CONSTANT_Float);
+        }
         return index;
     }
 
     int addConstant(double k) {
-        int index = reserveIndex(2);
-        ensure(9);
-        itsPool[itsTop++] = CONSTANT_Double;
-        long bits = Double.doubleToLongBits(k);
-        itsTop = ClassFileWriter.putInt64(bits, itsPool, itsTop);
-        itsPoolTypes.put(index, CONSTANT_Double);
+        // Boxed equality compares bits, so NaN and -0.0 are kept distinct correctly.
+        Object key = Double.valueOf(k);
+        int index = itsConstantHash.getOrDefault(key, -1);
+        if (index == -1) {
+            index = reserveIndex(2);
+            ensure(9);
+            itsPool[itsTop++] = CONSTANT_Double;
+            long bits = Double.doubleToLongBits(k);
+            itsTop = ClassFileWriter.putInt64(bits, itsPool, itsTop);
+            itsConstantHash.put(key, index);
+            itsPoolTypes.put(index, CONSTANT_Double);
+        }
         return index;
     }
 
@@ -187,17 +210,31 @@ final class ConstantPool {
         }
     }
 
+    private final IdentityHashMap<Object, Integer> cachedConsts = new IdentityHashMap<>();
+
     /**
      * Add the constant described by the given {@code java.lang.constant} description, returning its
      * constant pool index.
      */
     int addConstantDesc(ConstantDesc desc) {
+        var id = cachedConsts.get(desc);
+        if (id != null) {
+            return id;
+        } else {
+            int res = addConstantDescInner(desc);
+            cachedConsts.put(desc, res);
+            return res;
+        }
+    }
+
+    private final int addConstantDescInner(ConstantDesc desc) {
         if (desc instanceof DynamicConstantDesc) {
             DynamicConstantDesc<?> dynamic = (DynamicConstantDesc<?>) desc;
             return addDynamicConstant(
                     dynamic.constantName(),
                     dynamic.constantType().descriptorString(),
                     cfw.getBootstrapMethodIndex(dynamic));
+
         } else if (desc instanceof ClassDesc) {
             return addClass(internalNameOf((ClassDesc) desc));
         } else if (desc instanceof MethodTypeDesc) {

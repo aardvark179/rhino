@@ -79,19 +79,17 @@ public class CallFrameV2 extends ACallFrame<CallFrameV2, CompilerData<?>> implem
             ScriptRuntime.initScript(fnOrScript, thisObj, cx, scope, desc.isEvalFunction());
         }
 
-        if (desc.nestedFunctions != null) {
-            // Generators emit explicit ClosureStatement instructions for nested function
-            // declarations after evaluating their default parameter expressions, so that
-            // 'arguments' in a default-param scope binds to the arguments object rather
-            // than to a hoisted inner `function arguments(){}`. Skip frame-init hoisting
-            // for them.
-            if (desc.getFunctionCount() != 0 && !desc.isES6Generator() && !desc.isAsync()) {
-                if (desc.getFunctionType() != 0 && !desc.requiresActivationFrame()) Kit.codeBug();
-                for (int i = 0; i < desc.getFunctionCount(); i++) {
-                    JSDescriptor<?> fdesc = desc.getFunction(i);
-                    if (fdesc.getFunctionType() == FunctionNode.FUNCTION_STATEMENT) {
-                        initFunction(cx, this.scope, desc, i);
-                    }
+        // Generators emit explicit ClosureStatement instructions for nested function
+        // declarations after evaluating their default parameter expressions, so that
+        // 'arguments' in a default-param scope binds to the arguments object rather
+        // than to a hoisted inner `function arguments(){}`. Skip frame-init hoisting
+        // for them.
+        if (desc.getFunctionCount() != 0 && !desc.isES6Generator() && !desc.isAsync()) {
+            if (desc.getFunctionType() != 0 && !desc.requiresActivationFrame()) Kit.codeBug();
+            for (int i = 0; i < desc.getFunctionCount(); i++) {
+                JSDescriptor<?> fdesc = desc.getFunction(i);
+                if (fdesc.getFunctionType() == FunctionNode.FUNCTION_STATEMENT) {
+                    initFunction(cx, this.scope, desc, i);
                 }
             }
         }

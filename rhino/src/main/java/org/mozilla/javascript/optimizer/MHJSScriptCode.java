@@ -1,6 +1,7 @@
 package org.mozilla.javascript.optimizer;
 
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
 import org.mozilla.classfile.ByteCode;
@@ -13,6 +14,11 @@ import org.mozilla.javascript.VarScope;
 /** Subclass of {@link JSCode} for compiled Java methods. */
 public class MHJSScriptCode extends MHJSCode<JSScript> {
     private final JSCodeExec<JSScript> exec;
+
+    public static MHJSScriptCode bootstrap(
+            MethodHandles.Lookup lookup, String name, Class<?> type, MethodHandle execMH) {
+        return new MHJSScriptCode(execMH);
+    }
 
     protected MHJSScriptCode(MethodHandle execMH) {
         exec =
