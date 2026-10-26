@@ -11,8 +11,10 @@ import static org.mozilla.javascript.optimizer.ExceptionManager.JAVASCRIPT_EXCEP
 import static org.mozilla.javascript.optimizer.ExceptionManager.THROWABLE_EXCEPTION;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Arrays;
+import java.util.BitSet;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.mozilla.classfile.ByteCode;
@@ -50,6 +52,8 @@ class BodyCodegen {
                     codegen.getBodyMethodName(scriptOrFn) + "_gen",
                     Codegen.GENERATOR_METHOD_SIGNATURE,
                     (short) (ACC_STATIC | ACC_PUBLIC));
+            // Finally blocks are shared between JSRs with the same frame
+            cfw.enableFrameTracking();
         } else {
             cfw.startMethod(
                     codegen.getBodyMethodName(scriptOrFn),
@@ -220,6 +224,9 @@ class BodyCodegen {
         epilogueLabel = -1;
         enterAreaStartLabel = -1;
         generatorStateLocal = -1;
+        generatorDispatchLabel = -1;
+        generatorDispatchFrame = null;
+        resumptionPoints = null;
         savedHomeObjectLocal = -1;
         parentStrictnessLocal = -1;
     }
@@ -307,14 +314,14 @@ class BodyCodegen {
                 epilogueLabel = cfw.acquireLabel();
             }
 
-            List<Node> targets = ((FunctionNode) scriptOrFn).getResumptionPoints();
-            if (targets != null) {
-                // get resumption point
-                generateGetGeneratorResumptionPoint();
-
-                // generate dispatch table
-                generatorSwitch = cfw.addTableSwitch(0, targets.size() + GENERATOR_START);
-                generateCheckForThrowOrClose(-1, false, GENERATOR_START);
+            if (((FunctionNode) scriptOrFn).getResumptionPoints() != null) {
+                // The dispatch table is generated in the epilogue, once every
+                // re-entry point (including those in duplicated code) is known.
+                resumptionPoints = new ArrayList<>();
+                generatorDispatchLabel = cfw.acquireLabel();
+                generatorDispatchFrame = cfw.getCurrentFrame();
+                cfw.add(ByteCode.GOTO, generatorDispatchLabel);
+                generateCheckForThrowOrClose(GENERATOR_START, null);
             }
         }
 
@@ -546,46 +553,46 @@ class BodyCodegen {
     private void generateEpilogue() {
         if (compilerEnv.isGenerateObserverCount()) addInstructionCount();
         if (isGenerator) {
-            // generate locals initialization
-            Map<Node, int[]> liveLocals = ((FunctionNode) scriptOrFn).getLiveLocals();
-            if (liveLocals != null) {
-                List<Node> nodes = ((FunctionNode) scriptOrFn).getResumptionPoints();
-                for (Node node : nodes) {
-                    int[] live = liveLocals.get(node);
-                    if (live != null) {
-                        cfw.markTableSwitchCase(generatorSwitch, getNextGeneratorState(node));
+            // generate the re-entry dispatch table and locals initialization
+            if (generatorDispatchLabel != -1) {
+                cfw.markLabel(generatorDispatchLabel, 0);
+                generateGetGeneratorResumptionPoint();
+                generatorSwitch = cfw.addTableSwitch(0, resumptionPoints.size() - 1);
+                for (ResumptionPoint point : resumptionPoints) {
+                    cfw.markTableSwitchCase(generatorSwitch, point.state);
+                    SavedLocals saved = point.liveLocals;
+                    if (saved != null) {
                         generateGetGeneratorLocalsState();
-                        for (int j = 0; j < live.length; j++) {
-                            cfw.add(ByteCode.DUP);
-                            cfw.addLoadConstant(j);
-                            cfw.add(ByteCode.AALOAD);
-                            cfw.addAStore(live[j]);
+                        for (int j = 0; j < saved.indexes.length; j++) {
+                            String type = saved.typeOf(j);
+                            if ("null".equals(type)) {
+                                cfw.add(ByteCode.ACONST_NULL);
+                            } else {
+                                cfw.add(ByteCode.DUP);
+                                cfw.addLoadConstant(j);
+                                cfw.add(ByteCode.AALOAD);
+                                addUnboxValue(type);
+                            }
+                            addStoreLocal(type, saved.indexes[j]);
                         }
                         cfw.add(ByteCode.POP);
-                        cfw.add(ByteCode.GOTO, getTargetLabel(node));
                     }
+                    cfw.add(ByteCode.GOTO, point.label);
                 }
             }
 
-            // generate dispatch tables for finally
-            if (finallys != null) {
-                for (Map.Entry<Node, FinallyReturnPoint> e : finallys.entrySet()) {
-                    if (e.getKey().getType() == Token.FINALLY) {
-                        FinallyReturnPoint ret = e.getValue();
-                        // the finally will jump here
-                        cfw.markLabel(ret.tableLabel, 1);
+            // generate dispatch tables for finally copies
+            for (FinallyCopy copy : emittedFinallyCopies) {
+                // the finally copy will jump here
+                cfw.markLabel(copy.tableLabel, copy.stackTop + 1);
 
-                        // start generating a dispatch table
-                        int startSwitch = cfw.addTableSwitch(0, ret.jsrPoints.size() - 1);
-                        int c = 0;
-                        cfw.markTableSwitchDefault(startSwitch);
-                        for (int i = 0; i < ret.jsrPoints.size(); i++) {
-                            // generate gotos back to the JSR location
-                            cfw.markTableSwitchCase(startSwitch, c);
-                            cfw.add(ByteCode.GOTO, ret.jsrPoints.get(i).intValue());
-                            c++;
-                        }
-                    }
+                // start generating a dispatch table
+                int startSwitch = cfw.addTableSwitch(0, copy.returnLabels.size() - 1);
+                cfw.markTableSwitchDefault(startSwitch);
+                for (int i = 0; i < copy.returnLabels.size(); i++) {
+                    // generate gotos back to the JSR location
+                    cfw.markTableSwitchCase(startSwitch, i);
+                    cfw.add(ByteCode.GOTO, copy.returnLabels.get(i));
                 }
             }
         }
@@ -595,7 +602,7 @@ class BodyCodegen {
         }
 
         if (isGenerator) {
-            if (((FunctionNode) scriptOrFn).getResumptionPoints() != null) {
+            if (generatorDispatchLabel != -1) {
                 cfw.markTableSwitchDefault(generatorSwitch);
             }
 
@@ -943,38 +950,42 @@ class BodyCodegen {
                         break;
                     }
 
-                    if (compilerEnv.isGenerateObserverCount()) saveCurrentCodeOffset();
-                    // there is exactly one value on the stack when enterring
-                    // finally blocks: the return address (or its int encoding)
-                    cfw.setStackTop((short) 1);
-
-                    // Save return address in a new local
-                    int finallyRegister = getNewWordLocal();
-
-                    int finallyStart = cfw.acquireLabel();
-                    int finallyEnd = cfw.acquireLabel();
-                    cfw.markLabel(finallyStart);
-
-                    generateIntegerWrap();
-                    cfw.addAStore(finallyRegister);
-
-                    while (child != null) {
-                        generateStatement(child);
-                        child = child.getNext();
+                    // One copy for each frame a JSR reached this finally with. The
+                    // exception case is generated with the exception handler.
+                    Map<Object, FinallyCopy> copies = finallyCopies.remove(node);
+                    if (copies == null) {
+                        break;
                     }
+                    int savedStackTop = cfw.getStackTop();
+                    for (FinallyCopy copy : copies.values()) {
+                        if (compilerEnv.isGenerateObserverCount()) saveCurrentCodeOffset();
+                        node.resetTargets();
+                        // the return address (or its int encoding) is on top of the
+                        // stack of the JSRs
+                        cfw.markLabel(getTargetLabel(copy.entry), copy.stackTop + 1);
 
-                    cfw.addALoad(finallyRegister);
-                    cfw.add(ByteCode.CHECKCAST, "java/lang/Integer");
-                    generateIntegerUnwrap();
-                    FinallyReturnPoint ret = finallys.get(node);
-                    ret.tableLabel = cfw.acquireLabel();
-                    cfw.add(ByteCode.GOTO, ret.tableLabel);
+                        int[] savedLocals = locals.clone();
+                        int savedFirstFreeLocal = firstFreeLocal;
+                        reserveLocals(copy.usedLocals);
+                        // Save return address in a new local
+                        int finallyRegister = getNewWordLocal();
+                        generateIntegerWrap();
+                        cfw.addAStore(finallyRegister);
 
-                    // After this GOTO we expect stack to be empty again!
-                    cfw.setStackTop((short) 0);
+                        generateFinallyBody(node);
 
-                    releaseWordLocal((short) finallyRegister);
-                    cfw.markLabel(finallyEnd);
+                        cfw.addALoad(finallyRegister);
+                        cfw.add(ByteCode.CHECKCAST, "java/lang/Integer");
+                        generateIntegerUnwrap();
+                        copy.tableLabel = cfw.acquireLabel();
+                        cfw.add(ByteCode.GOTO, copy.tableLabel);
+                        emittedFinallyCopies.add(copy);
+
+                        releaseWordLocal((short) finallyRegister);
+                        locals = savedLocals;
+                        firstFreeLocal = savedFirstFreeLocal;
+                    }
+                    cfw.setStackTop((short) savedStackTop);
                 }
                 break;
 
@@ -1007,11 +1018,6 @@ class BodyCodegen {
                 "<init>",
                 "(Ljava/lang/Object;Ljava/lang/String;I)V");
         cfw.add(ByteCode.ATHROW);
-    }
-
-    private int getNextGeneratorState(Node node) {
-        int nodeIndex = ((FunctionNode) scriptOrFn).getResumptionPoints().indexOf(node);
-        return nodeIndex + GENERATOR_YIELD_START;
     }
 
     private void generateExpression(Node node, Node parent) {
@@ -1909,10 +1915,11 @@ class BodyCodegen {
     }
 
     private void generateYieldPoint(Node node, boolean exprContext) {
-        if (unnestedYields.containsKey(node)) {
+        // Removed on use, so that a yield in duplicated code is generated again.
+        String name = unnestedYields.remove(node);
+        if (name != null) {
             // Yield was previously moved up via the "nestedYield" code below.
             if (exprContext) {
-                String name = unnestedYields.get(node);
                 cfw.addALoad(variableObjectLocal);
                 cfw.addALoad(contextLocal);
                 addDynamicInvoke("NAME:GET:" + name, Signatures.NAME_GET);
@@ -1951,7 +1958,19 @@ class BodyCodegen {
         // save stack state from the top to the bottom
         final int top = cfw.getStackTop();
         maxStack = maxStack > top ? maxStack : top;
-        if (top != 0) {
+        // The types are needed to box primitives and cast values when they are restored
+        final String[] stackTypes = top == 0 ? null : cfw.getCurrentStackTypes();
+        if (stackTypes != null) {
+            for (int i = stackTypes.length - 1; i >= 0; i--) {
+                addBoxValue(stackTypes[i]);
+                generateGetGeneratorStackState();
+                cfw.add(ByteCode.SWAP);
+                cfw.addLoadConstant(i);
+                cfw.add(ByteCode.SWAP);
+                cfw.add(ByteCode.AASTORE);
+            }
+        } else if (top != 0) {
+            // Without the types, all the values are assumed to be Objects
             generateGetGeneratorStackState();
             for (int i = 0; i < top; i++) {
                 cfw.add(ByteCode.DUP_X1);
@@ -1982,19 +2001,32 @@ class BodyCodegen {
         }
 
         // change the resumption state
-        int nextState = getNextGeneratorState(node);
+        // States are allocated as each yield is emitted, so a yield in
+        // duplicated code gets a separate state for each copy.
+        int nextState = resumptionPoints.size();
         generateSetGeneratorResumptionPoint(nextState);
 
-        boolean hasLocals = generateSaveLocals(node);
+        SavedLocals liveLocals = generateSaveLocals();
 
         cfw.add(ByteCode.ARETURN);
 
         // We get back here after a "next" on the generator object itself
 
-        generateCheckForThrowOrClose(getTargetLabel(node), hasLocals, nextState);
+        generateCheckForThrowOrClose(nextState, liveLocals);
 
         // reconstruct the stack from the bottom to the top
-        if (top != 0) {
+        if (stackTypes != null) {
+            for (int i = 0; i < stackTypes.length; i++) {
+                if ("null".equals(stackTypes[i])) {
+                    cfw.add(ByteCode.ACONST_NULL);
+                    continue;
+                }
+                generateGetGeneratorStackState();
+                cfw.addLoadConstant(i);
+                cfw.add(ByteCode.AALOAD);
+                addUnboxValue(stackTypes[i]);
+            }
+        } else if (top != 0) {
             generateGetGeneratorStackState();
             for (int i = (top - 1); i >= 0; i--) {
                 cfw.add(ByteCode.DUP);
@@ -2011,9 +2043,71 @@ class BodyCodegen {
         }
     }
 
-    private void generateCheckForThrowOrClose(int label, boolean hasLocals, int nextState) {
+    /** Box the value on top of the stack, of the given type, to save it at a yield. */
+    private void addBoxValue(String type) {
+        if (type == null) {
+            return;
+        }
+        switch (type) {
+            case "I":
+                addBox("java/lang/Integer", "I");
+                break;
+            case "F":
+                addBox("java/lang/Float", "F");
+                break;
+            case "J":
+                addBox("java/lang/Long", "J");
+                break;
+            case "D":
+                addBox("java/lang/Double", "D");
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** Convert a value saved at a yield back to the given type. */
+    private void addUnboxValue(String type) {
+        if (type == null || type.equals("java/lang/Object")) {
+            return;
+        }
+        switch (type) {
+            case "I":
+                addUnbox("java/lang/Integer", "intValue", "I");
+                break;
+            case "F":
+                addUnbox("java/lang/Float", "floatValue", "F");
+                break;
+            case "J":
+                addUnbox("java/lang/Long", "longValue", "J");
+                break;
+            case "D":
+                addUnbox("java/lang/Double", "doubleValue", "D");
+                break;
+            default:
+                cfw.add(ByteCode.CHECKCAST, type);
+                break;
+        }
+    }
+
+    private void addBox(String boxClass, String primitive) {
+        cfw.addInvoke(
+                ByteCode.INVOKESTATIC,
+                boxClass,
+                "valueOf",
+                "(" + primitive + ")L" + boxClass + ";");
+    }
+
+    private void addUnbox(String boxClass, String method, String primitive) {
+        cfw.add(ByteCode.CHECKCAST, boxClass);
+        cfw.addInvoke(ByteCode.INVOKEVIRTUAL, boxClass, method, "()" + primitive);
+    }
+
+    private void generateCheckForThrowOrClose(int state, SavedLocals liveLocals) {
+        if (state != resumptionPoints.size()) throw Kit.codeBug();
         int throwLabel = cfw.acquireLabel();
         int closeLabel = cfw.acquireLabel();
+        int reentryLabel = cfw.acquireLabel();
 
         // throw the user provided object, if the operation is .throw()
         cfw.markLabel(throwLabel);
@@ -2026,13 +2120,20 @@ class BodyCodegen {
         cfw.add(ByteCode.CHECKCAST, "java/lang/Throwable");
         cfw.add(ByteCode.ATHROW);
 
-        // mark the re-entry point
-        // jump here after initializing the locals
-        if (label != -1) cfw.markLabel(label);
-        if (!hasLocals) {
-            // jump here directly if there are no locals
-            cfw.markTableSwitchCase(generatorSwitch, nextState);
+        // mark the re-entry point, the dispatch table jumps here after
+        // initializing the locals
+        cfw.markLabel(reentryLabel);
+        if (generatorDispatchFrame != null) {
+            // Only reached from the dispatch table, which is generated later
+            cfw.setCurrentFrame(
+                    liveLocals == null
+                            ? generatorDispatchFrame
+                            : cfw.frameWithLocals(
+                                    generatorDispatchFrame,
+                                    liveLocals.indexes,
+                                    liveLocals.restoredTypes()));
         }
+        resumptionPoints.add(new ResumptionPoint(state, reentryLabel, liveLocals));
 
         // see if we need to dispatch for .close() or .throw()
         cfw.addILoad(operationLocal);
@@ -2254,15 +2355,64 @@ class BodyCodegen {
         }
     }
 
+    /**
+     * Jump to the copy of a finally block for the current frame, and return here after it. JSRs can
+     * only share a copy if they have the same frame, as the frame at the start of the copy, and so
+     * at each return from it, is the merge of the frames of every JSR to it.
+     */
     private void addGotoWithReturn(Node target) {
-        FinallyReturnPoint ret = finallys.get(target);
-        cfw.addLoadConstant(ret.jsrPoints.size());
-        addGoto(target, ByteCode.GOTO);
+        Node fBlock = getFinallyAtTarget(target);
+        ClassFileWriter.Frame frame = cfw.getCurrentFrame();
+        // A JSR whose frame is not known gets a copy to itself
+        Object key = frame != null ? frame : new Object();
+        FinallyCopy copy =
+                finallyCopies
+                        .computeIfAbsent(fBlock, k -> new LinkedHashMap<>())
+                        .computeIfAbsent(key, k -> new FinallyCopy(cfw.getStackTop()));
+        for (int i = 0; i < localsMax; i++) {
+            if (locals[i] != 0) copy.usedLocals.set(i);
+        }
+
+        cfw.addLoadConstant(copy.returnLabels.size());
+        addGoto(copy.entry, ByteCode.GOTO);
         // Don't leave something on the stack here!
         cfw.add(ByteCode.POP);
         int retLabel = cfw.acquireLabel();
         cfw.markLabel(retLabel);
-        ret.jsrPoints.add(Integer.valueOf(retLabel));
+        // Only reached from the dispatch table, which is generated later. A yield in the
+        // finally block would leave the saved locals as Objects.
+        if (frame != null && !containsYield(fBlock)) {
+            cfw.setCurrentFrame(frame);
+        }
+        copy.returnLabels.add(retLabel);
+    }
+
+    private static boolean containsYield(Node node) {
+        for (Node child = node.getFirstChild(); child != null; child = child.getNext()) {
+            int type = child.getType();
+            if (type == Token.YIELD || type == Token.YIELD_STAR || containsYield(child)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void generateFinallyBody(Node fBlock) {
+        fBlock.resetTargets();
+        for (Node child = fBlock.getFirstChild(); child != null; child = child.getNext()) {
+            generateStatement(child);
+        }
+    }
+
+    /** Mark locals as in use, so that a finally copy doesn't reuse locals live at its JSRs. */
+    private void reserveLocals(BitSet usedLocals) {
+        for (int i = usedLocals.nextSetBit(0); i >= 0; i = usedLocals.nextSetBit(i + 1)) {
+            if (locals[i] == 0) locals[i] = 1;
+        }
+        while (locals[firstFreeLocal] != 0) {
+            firstFreeLocal++;
+        }
+        if (localsMax < firstFreeLocal) localsMax = firstFreeLocal;
     }
 
     private void generateArrayLiteralFactory(Node node, int count) {
@@ -3342,8 +3492,10 @@ class BodyCodegen {
          * and NodeTransformer;  Codegen just adds the java handlers for the
          * javascript catch and finally clauses.  */
 
+        // A try in an expression has the values of the expression on the stack
+        int stackTop = cfw.getStackTop();
         int startLabel = cfw.acquireLabel();
-        cfw.markLabel(startLabel, 0);
+        cfw.markLabel(startLabel, stackTop);
 
         Node catchTarget = node.target;
         Node finallyTarget = node.getFinally();
@@ -3363,18 +3515,6 @@ class BodyCodegen {
         }
         exceptionManager.pushTry(getFinallyAtTarget(finallyTarget), startLabel, handlerLabels);
 
-        // create a table for the equivalent of JSR returns
-        if (isGenerator && finallyTarget != null) {
-            FinallyReturnPoint ret = new FinallyReturnPoint();
-            if (finallys == null) {
-                finallys = new HashMap<>();
-            }
-            // add the finally target to hashtable
-            finallys.put(finallyTarget, ret);
-            // add the finally node as well to the hash table
-            finallys.put(finallyTarget.getNext(), ret);
-        }
-
         while (child != null) {
             if (child == catchTarget) {
                 exceptionManager.endHandlers(
@@ -3387,6 +3527,10 @@ class BodyCodegen {
                 exceptionManager.endHandlers(getTargetLabel(finallyTarget), FINALLY_EXCEPTION);
             }
             generateStatement(child);
+            if (child == catchTarget && isGenerator) {
+                // Reached from the handlers below, with the exception stored
+                cfw.setCurrentFrameWithUnknownLocals();
+            }
             child = child.getNext();
         }
 
@@ -3440,7 +3584,7 @@ class BodyCodegen {
             }
         }
 
-        // finally handler; catch all exceptions, store to a local; JSR to
+        // finally handler; catch all exceptions, store to a local; inline
         // the finally, then re-throw.
         if (finallyTarget != null) {
             int finallyEnd = cfw.acquireLabel();
@@ -3451,8 +3595,9 @@ class BodyCodegen {
             cfw.addALoad(savedVariableObject);
             cfw.addAStore(variableObjectLocal);
 
-            if (isGenerator) addGotoWithReturn(finallyTarget);
-            else {
+            if (isGenerator) {
+                generateFinallyBody(getFinallyAtTarget(finallyTarget));
+            } else {
                 inlineFinally(finallyTarget, handlerLabels[FINALLY_EXCEPTION], finallyEnd);
             }
 
@@ -3464,7 +3609,7 @@ class BodyCodegen {
             cfw.markLabel(finallyEnd);
         }
         releaseWordLocal(savedVariableObject);
-        cfw.markLabel(realEnd);
+        cfw.markLabel(realEnd, stackTop);
 
         exceptionManager.popTry();
     }
@@ -3555,19 +3700,15 @@ class BodyCodegen {
         throw Kit.codeBug("bad finally target");
     }
 
-    private boolean generateSaveLocals(Node node) {
+    private SavedLocals generateSaveLocals() {
         int count = 0;
         for (int i = 0; i < firstFreeLocal; i++) {
             if (locals[i] != 0) count++;
         }
 
         if (count == 0) {
-            ((FunctionNode) scriptOrFn).addLiveLocals(node, null);
-            return false;
+            return null;
         }
-
-        // calculate the max locals
-        maxLocals = maxLocals > count ? maxLocals : count;
 
         // create a locals list
         int[] ls = new int[count];
@@ -3579,21 +3720,83 @@ class BodyCodegen {
             }
         }
 
-        // save the locals
-        ((FunctionNode) scriptOrFn).addLiveLocals(node, ls);
+        // The types are needed to box primitives and cast values when they are
+        // restored. Locals that hold no value, including the second words of
+        // longs and doubles, are not saved.
+        String[] types = cfw.getCurrentLocalTypes(ls);
+        if (types != null) {
+            count = 0;
+            for (int i = 0; i < ls.length; i++) {
+                if (!"top".equals(types[i])) {
+                    ls[count] = ls[i];
+                    types[count] = types[i];
+                    count++;
+                }
+            }
+            if (count == 0) {
+                return null;
+            }
+            ls = Arrays.copyOf(ls, count);
+            types = Arrays.copyOf(types, count);
+        }
+        SavedLocals saved = new SavedLocals(ls, types);
+
+        // calculate the max locals
+        maxLocals = maxLocals > count ? maxLocals : count;
 
         // save locals
         generateGetGeneratorLocalsState();
         for (int i = 0; i < count; i++) {
             cfw.add(ByteCode.DUP);
             cfw.addLoadConstant(i);
-            cfw.addALoad(ls[i]);
+            addLoadLocal(saved.typeOf(i), ls[i]);
+            addBoxValue(saved.typeOf(i));
             cfw.add(ByteCode.AASTORE);
         }
         // pop the array off the stack
         cfw.add(ByteCode.POP);
 
-        return true;
+        return saved;
+    }
+
+    private void addLoadLocal(String type, int local) {
+        switch (type == null ? "" : type) {
+            case "I":
+                cfw.addILoad(local);
+                break;
+            case "F":
+                cfw.addFLoad(local);
+                break;
+            case "J":
+                cfw.addLLoad(local);
+                break;
+            case "D":
+                cfw.addDLoad(local);
+                break;
+            default:
+                cfw.addALoad(local);
+                break;
+        }
+    }
+
+    private void addStoreLocal(String type, int local) {
+        switch (type == null ? "" : type) {
+            case "I":
+                cfw.addIStore(local);
+                break;
+            case "F":
+                cfw.addFStore(local);
+                break;
+            case "J":
+                cfw.addLStore(local);
+                break;
+            case "D":
+                cfw.addDStore(local);
+                break;
+            default:
+                cfw.addAStore(local);
+                break;
+        }
     }
 
     private void visitSwitch(Jump switchNode, Node child) {
@@ -4866,7 +5069,6 @@ class BodyCodegen {
 
     static final int GENERATOR_TERMINATE = -1;
     static final int GENERATOR_START = 0;
-    static final int GENERATOR_YIELD_START = 1;
 
     private final ClassFileWriter cfw;
     Codegen codegen;
@@ -4912,15 +5114,62 @@ class BodyCodegen {
 
     private boolean isGenerator;
     private int generatorSwitch;
+    private int generatorDispatchLabel;
+    private ClassFileWriter.Frame generatorDispatchFrame;
+    private List<ResumptionPoint> resumptionPoints;
     private int maxLocals = 0;
     private int maxStack = 0;
 
-    private Map<Node, FinallyReturnPoint> finallys;
+    // For each FINALLY node in a generator, the copy of it for each frame it is reached with
+    private final IdentityHashMap<Node, Map<Object, FinallyCopy>> finallyCopies =
+            new IdentityHashMap<>();
+    private final List<FinallyCopy> emittedFinallyCopies = new ArrayList<>();
     private ArrayList<Node> literals;
 
-    static class FinallyReturnPoint {
-        public List<Integer> jsrPoints = new ArrayList<>();
-        public int tableLabel = 0;
+    private static final class FinallyCopy {
+        final Node entry = Node.newTarget();
+        // The stack depth at the JSRs to this copy
+        final int stackTop;
+        final List<Integer> returnLabels = new ArrayList<>();
+        // The locals in use at any of the JSRs to this copy
+        final BitSet usedLocals = new BitSet();
+        int tableLabel;
+
+        FinallyCopy(int stackTop) {
+            this.stackTop = stackTop;
+        }
+    }
+
+    /** The locals saved at a yield, and their types if they are known. */
+    private static final class SavedLocals {
+        final int[] indexes;
+        final String[] types;
+
+        SavedLocals(int[] indexes, String[] types) {
+            this.indexes = indexes;
+            this.types = types;
+        }
+
+        String typeOf(int i) {
+            return types == null ? null : types[i];
+        }
+
+        /** The types of the locals once they are restored, where unknown types are Objects. */
+        String[] restoredTypes() {
+            return types == null ? new String[indexes.length] : types;
+        }
+    }
+
+    private static final class ResumptionPoint {
+        final int state;
+        final int label;
+        final SavedLocals liveLocals;
+
+        ResumptionPoint(int state, int label, SavedLocals liveLocals) {
+            this.state = state;
+            this.label = label;
+            this.liveLocals = liveLocals;
+        }
     }
 
     private int unnestedYieldCount = 0;
