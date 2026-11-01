@@ -1,6 +1,7 @@
 package org.mozilla.javascript;
 
 import java.io.Serializable;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 
 /**
@@ -111,13 +112,21 @@ public abstract class ClassLiteralDescriptor implements Serializable {
         SETTER
     }
 
-    private static final class MemberEntry implements Serializable {
+    public static final class MemberEntry implements Serializable {
         final Object key;
         final ElementKind kind;
 
         MemberEntry(Object key, ElementKind kind) {
             this.key = key;
             this.kind = kind;
+        }
+
+        public Object getKey() {
+            return key;
+        }
+
+        public ElementKind getKind() {
+            return kind;
         }
     }
 
@@ -149,7 +158,12 @@ public abstract class ClassLiteralDescriptor implements Serializable {
         }
     }
 
-    private static final class SimpleClassLiteralDescriptor extends ClassLiteralDescriptor {
+    public static final class SimpleClassLiteralDescriptor extends ClassLiteralDescriptor {
+        public static SimpleClassLiteralDescriptor simpleClassLiteralConstant(
+                MethodHandles.Lookup lookup, String name, Class<?> type) {
+            return new SimpleClassLiteralDescriptor();
+        }
+
         @Override
         public Scriptable createClass(
                 Context cx,
@@ -161,11 +175,26 @@ public abstract class ClassLiteralDescriptor implements Serializable {
         }
     }
 
-    private static final class MethodClassLiteralDescriptor extends ClassLiteralDescriptor {
+    public static final class MethodClassLiteralDescriptor extends ClassLiteralDescriptor {
         private final MemberEntry[] members;
 
         MethodClassLiteralDescriptor(MemberEntry[] members) {
             this.members = members;
+        }
+
+        public MemberEntry[] getMembers() {
+            return members;
+        }
+
+        /** Bootstrap arguments are the key and kind of each member in turn. */
+        public static MethodClassLiteralDescriptor methodClassLiteralConstant(
+                MethodHandles.Lookup lookup, String name, Class<?> type, Object... keysAndKinds) {
+            var members = new MemberEntry[keysAndKinds.length / 2];
+            for (int i = 0; i < members.length; i++) {
+                members[i] =
+                        new MemberEntry(keysAndKinds[2 * i], (ElementKind) keysAndKinds[2 * i + 1]);
+            }
+            return new MethodClassLiteralDescriptor(members);
         }
 
         @Override

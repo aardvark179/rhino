@@ -35,6 +35,10 @@ import org.mozilla.classfile.DynamicDescriberRegistry;
 import org.mozilla.javascript.ArrayLiteralDescriptor;
 import org.mozilla.javascript.ArrayLiteralDescriptor.ComplexArrayLiteral;
 import org.mozilla.javascript.ArrayLiteralDescriptor.SimpleArrayLiteral;
+import org.mozilla.javascript.ClassLiteralDescriptor;
+import org.mozilla.javascript.ClassLiteralDescriptor.ElementKind;
+import org.mozilla.javascript.ClassLiteralDescriptor.MethodClassLiteralDescriptor;
+import org.mozilla.javascript.ClassLiteralDescriptor.SimpleClassLiteralDescriptor;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.DefiningClassLoader;
 import org.mozilla.javascript.EagerSourceCodeProvider;
@@ -57,6 +61,7 @@ import org.mozilla.javascript.TopLevel;
 import org.mozilla.javascript.Undefined;
 import org.mozilla.javascript.UniqueTag;
 import org.mozilla.javascript.optimizer.ArrayLiteralDescriptorDescribers;
+import org.mozilla.javascript.optimizer.ClassLiteralDescriptorDescribers;
 import org.mozilla.javascript.optimizer.EagerSourceCodeProviderDescriber;
 import org.mozilla.javascript.optimizer.ObjectLiteralDescriptorDescribers;
 import org.mozilla.javascript.optimizer.StringConcatBootstraps;
@@ -583,6 +588,37 @@ public class DynamicConstantTest {
     }
 
     @Test
+    public void simpleClassLiteralRoundTrips() throws Exception {
+        var resolved =
+                loadClassLiteral(
+                        "TestSimpleClassLiteral", new ClassLiteralDescriptor.Builder().build());
+        assertInstanceOf(SimpleClassLiteralDescriptor.class, resolved);
+    }
+
+    @Test
+    public void methodClassLiteralRoundTrips() throws Exception {
+        var builder = new ClassLiteralDescriptor.Builder();
+        builder.addMethod("a", ElementKind.METHOD);
+        builder.addMethod(1, ElementKind.GETTER);
+        builder.addComputedMethod(ElementKind.SETTER);
+        builder.addMethod(SymbolKey.ITERATOR, ElementKind.METHOD);
+        var resolved =
+                (MethodClassLiteralDescriptor)
+                        loadClassLiteral("TestMethodClassLiteral", builder.build());
+
+        var members = resolved.getMembers();
+        assertEquals(4, members.length);
+        assertEquals("a", members[0].getKey());
+        assertSame(ElementKind.METHOD, members[0].getKind());
+        assertEquals(1, members[1].getKey());
+        assertSame(ElementKind.GETTER, members[1].getKind());
+        assertSame(UniqueTag.COMPUTED_KEY, members[2].getKey());
+        assertSame(ElementKind.SETTER, members[2].getKind());
+        assertSame(SymbolKey.ITERATOR, members[3].getKey());
+        assertSame(ElementKind.METHOD, members[3].getKind());
+    }
+
+    @Test
     public void eagerSourceCodeProviderResolvesFromRawSource() throws Exception {
         // The source contains the "[" and ";" characters that a constant name may not, which is
         // why the describer passes it as a bootstrap argument instead.
@@ -1018,6 +1054,23 @@ public class DynamicConstantTest {
         var resolved = invoke(cfw, className, "get");
         assertSame(descriptor.getClass(), resolved.getClass());
         return (ObjectLiteralDescriptor) resolved;
+    }
+
+    private static ClassLiteralDescriptor loadClassLiteral(
+            String className, ClassLiteralDescriptor descriptor) throws Exception {
+        ClassFileWriter cfw = writer(className);
+        var registry = cfw.getDynamicDescriptorRegistry();
+        ClassLiteralDescriptorDescribers.register(registry);
+        new UniqueTagDescriber(registry);
+        new SymbolKeyDescriber(registry);
+        cfw.startMethod("get", "()Ljava/lang/Object;", (short) (ACC_PUBLIC | ACC_STATIC));
+        cfw.addLoadDynamicConstant(descriptor);
+        cfw.add(ByteCode.ARETURN);
+        cfw.stopMethod((short) 0);
+
+        var resolved = invoke(cfw, className, "get");
+        assertSame(descriptor.getClass(), resolved.getClass());
+        return (ClassLiteralDescriptor) resolved;
     }
 
     private static ClassFileWriter writer(String className) {

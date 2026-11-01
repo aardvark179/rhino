@@ -509,6 +509,7 @@ public class Codegen implements Evaluator {
         new UniqueTagDescriber(registry);
         ObjectLiteralDescriptorDescribers.register(registry);
         ArrayLiteralDescriptorDescribers.register(registry);
+        ClassLiteralDescriptorDescribers.register(registry);
         new MHJSScriptCodeDescriber(registry);
         new MHJSFunctionCodeDescriber(registry);
         new JSDescriptorBuilderDescriber(registry);
