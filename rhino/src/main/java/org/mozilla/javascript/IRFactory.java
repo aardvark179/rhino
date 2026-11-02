@@ -24,6 +24,7 @@ import org.mozilla.javascript.ast.BigIntLiteral;
 import org.mozilla.javascript.ast.Block;
 import org.mozilla.javascript.ast.BreakStatement;
 import org.mozilla.javascript.ast.CatchClause;
+import org.mozilla.javascript.ast.ClassNode;
 import org.mozilla.javascript.ast.ComputedPropertyKey;
 import org.mozilla.javascript.ast.ConditionalExpression;
 import org.mozilla.javascript.ast.ContinueStatement;
@@ -102,6 +103,11 @@ public final class IRFactory {
     private Parser parser;
     private AstNodePosition astNodePos;
     private boolean outerScopeIsStrict;
+    private boolean insideClassConstructor;
+    // The enclosing class's private-name scope id (see ClassNode.privateVarName), valid for the
+    // entire transform of that class's constructor/methods/field initializers - including inside
+    // arbitrarily nested functions, unlike insideClassConstructor which resets per function.
+    private String currentPrivateNameScopeId;
 
     public IRFactory(CompilerEnvirons env, String sourceString) {
         this(env, null, sourceString, env.getErrorReporter());
@@ -163,6 +169,8 @@ public final class IRFactory {
                 return transformBreak((BreakStatement) node);
             case Token.CALL:
                 return transformFunctionCall((FunctionCall) node);
+            case Token.CLASS:
+                return transformClass((ClassNode) node);
             case Token.CONTINUE:
                 return transformContinue((ContinueStatement) node);
             case Token.DO:
@@ -655,6 +663,8 @@ public final class IRFactory {
 
         var savedStrict = outerScopeIsStrict;
         outerScopeIsStrict |= fn.isInStrictMode();
+        boolean savedInsideClassConstructor = insideClassConstructor;
+        insideClassConstructor = fn.isClassConstructor();
         Parser.PerFunctionVariables savedVars = parser.createPerFunctionVariables(fn);
         try {
             // If we start needing to record much more codegen metadata during
@@ -767,6 +777,7 @@ public final class IRFactory {
             --parser.nestingOfFunction;
             savedVars.restore();
             outerScopeIsStrict = savedStrict;
+            insideClassConstructor = savedInsideClassConstructor;
         }
     }
 
@@ -791,9 +802,232 @@ public final class IRFactory {
             if (transformedTarget.getIntProp(Node.SUPER_PROPERTY_ACCESS, 0) == 1) {
                 call.putIntProp(Node.SUPER_PROPERTY_ACCESS, 1);
             }
+            if (transformedTarget.getType() == Token.SUPER) {
+                call.putIntProp(Node.SUPER_CONSTRUCTOR_CALL, 1);
+            }
             return call;
         } finally {
             astNodePos.pop();
+        }
+    }
+
+    /**
+     * Transforms a class declaration/expression into a {@link Token#CLASS} IR node.
+     *
+     * <p>Shape: {@code CLASS(superClassExprOrUndefined, EMPTY_OBJECT, RESULT_ACCUMULATOR,
+     * ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(method)...)}. This mirrors {@code
+     * transformObjectLiteral}'s shape exactly: the {@code EMPTY_OBJECT} node creates the (eventual)
+     * prototype object, and every accumulated function value (the constructor first, then each
+     * instance method/getter/setter, in source order) is built with {@code homeObject == } that
+     * prototype via the very same "peek the object under construction" convention object-literal
+     * methods already use - which is why the constructor and methods are parsed as method
+     * definitions. The class's shape (which accumulated values are the constructor vs. named
+     * members, and of what kind) is captured by a {@link ClassLiteralDescriptor} registered in the
+     * current script/function's literal pool, exactly like object/array literals register theirs.
+     */
+    private Node transformClass(ClassNode node) {
+        astNodePos.push(node);
+        String savedPrivateNameScopeId = currentPrivateNameScopeId;
+        currentPrivateNameScopeId = node.getPrivateNameScopeId();
+        try {
+            Node superExpr =
+                    node.getSuperClass() == null
+                            ? new Node(Token.UNDEFINED)
+                            : transform(node.getSuperClass());
+
+            Node classNode = new Node(Token.CLASS);
+            classNode.setLineColumnNumber(node.getLineno(), node.getColumn());
+            classNode.addChildToBack(superExpr);
+            classNode.addChildToBack(new Node(Token.EMPTY_OBJECT));
+
+            Node accumulator = new Node(Token.RESULT_ACCUMULATOR);
+            classNode.addChildToBack(accumulator);
+
+            ClassLiteralDescriptor.Builder builder = new ClassLiteralDescriptor.Builder();
+
+            injectFieldInitializers(node);
+            classNode.addChildToBack(
+                    new Node(Token.ACCUMULATE_RESULT, transform(node.getConstructor())));
+
+            List<String> methodNames = node.getMethodNames();
+            List<FunctionNode> methods = node.getMethods();
+            List<ClassNode.ElementKind> methodKinds = node.getMethodKinds();
+            List<AstNode> methodComputedKeys = node.getMethodComputedKeys();
+            for (int i = 0; i < methods.size(); i++) {
+                ClassLiteralDescriptor.ElementKind kind = toDescriptorKind(methodKinds.get(i));
+                String name = methodNames.get(i);
+                AstNode computedKeyExpr = methodComputedKeys.get(i);
+                Node keyValue;
+                if (computedKeyExpr != null) {
+                    keyValue = transform(computedKeyExpr);
+                } else if (isPrivateName(name)) {
+                    // A private name's key is the (hidden, per-class) SymbolKey value, resolved
+                    // the same way a user-written computed key would be.
+                    keyValue =
+                            parser.createName(
+                                    ClassNode.privateVarName(node.getPrivateNameScopeId(), name));
+                } else {
+                    keyValue = null;
+                }
+                if (keyValue != null) {
+                    classNode.addChildToBack(
+                            new Node(
+                                    Token.ACCUMULATE_RESULT, new Node(Token.TO_PROPKEY, keyValue)));
+                    Node methodValue = transform(methods.get(i));
+                    classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
+                    builder.addComputedMethod(kind);
+                } else {
+                    Node methodValue = transform(methods.get(i));
+                    classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
+                    builder.addMethod(name, kind);
+                }
+            }
+
+            accumulator.putIntProp(Node.RESULTS_SIZE_PROP, builder.getSize());
+            classNode.putIntProp(
+                    Node.LITERAL_INDEX_PROP, parser.currentScriptOrFn.addLiteral(builder.build()));
+
+            // Still a pure expression at this point, so it's safe to prepend the (also
+            // expression-shaped) private-name setup here, before branching into the
+            // statement-vs-expression forms below.
+            Node classValue = prependPrivateNameSetup(node, classNode);
+
+            if (node.isStatement() && node.getClassName() != null) {
+                Node assign =
+                        createAssignment(
+                                Token.ASSIGN,
+                                parser.createName(node.getClassName().getIdentifier()),
+                                classValue);
+                return createExprStatementNoReturn(assign, node.getLineno(), node.getColumn());
+            }
+            return classValue;
+        } finally {
+            currentPrivateNameScopeId = savedPrivateNameScopeId;
+            astNodePos.pop();
+        }
+    }
+
+    /** Returns whether {@code name} is a private name ({@code #name}, including the {@code #}). */
+    private static boolean isPrivateName(String name) {
+        return name != null && !name.isEmpty() && name.charAt(0) == '#';
+    }
+
+    /**
+     * Assigns each of the class's private names (see {@link ClassNode#getPrivateNames}) a fresh
+     * {@link SymbolKey}, once, before the class itself is evaluated: {@code (%priv#a =
+     * LOAD_LITERAL, %priv#b = LOAD_LITERAL, ..., <result>)}. Every reference to {@code #a}/{@code
+     * #b} (in field initializers or method bodies, however deeply nested) resolves the same
+     * SymbolKey via ordinary closure/scope-chain lookup of the hidden {@code %priv#a} binding
+     * declared (via {@code defineSymbol}) when the class was parsed.
+     *
+     * <p>Note: this SymbolKey is shared by every evaluation of a given class-literal source
+     * location (e.g. inside a loop), rather than being fresh per evaluation as the spec requires -
+     * a deliberate simplification.
+     */
+    private Node prependPrivateNameSetup(ClassNode node, Node result) {
+        for (String name : node.getPrivateNames()) {
+            Node literal = new Node(Token.LOAD_LITERAL);
+            literal.putIntProp(
+                    Node.LITERAL_INDEX_PROP,
+                    parser.currentScriptOrFn.addLiteral(
+                            new SymbolKey(name, org.mozilla.javascript.Symbol.Kind.PRIVATE)));
+            String varName = ClassNode.privateVarName(node.getPrivateNameScopeId(), name);
+            Node assign =
+                    new Node(
+                            Token.SETNAME,
+                            parser.createName(Token.BINDNAME, varName, null),
+                            literal);
+            if (result.getType() == Token.COMMA) {
+                result.addChildToFront(assign);
+            } else {
+                result = new Node(Token.COMMA, assign, result);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Desugars each instance field declaration into a {@code this.name = init;} (or {@code
+     * this.name = undefined;}) statement spliced into the (possibly synthesized) constructor's
+     * body, before the constructor is transformed - so instance field initialization rides on
+     * ordinary property-assignment codegen rather than needing new descriptor/opcode machinery.
+     * Statements are prepended to the front for a base class, or inserted right after the {@code
+     * super(...)} call for a derived class (falling back to the front if no such call is found).
+     */
+    private void injectFieldInitializers(ClassNode node) {
+        List<String> fieldNames = node.getFieldNames();
+        if (fieldNames.isEmpty()) {
+            return;
+        }
+        List<AstNode> fieldInits = node.getFieldInitializers();
+        Node body = node.getConstructor().getBody();
+
+        Node afterAnchor = node.getSuperClass() == null ? null : findSuperCallStatement(body);
+
+        List<AstNode> stmts = new ArrayList<>(fieldNames.size());
+        for (int i = 0; i < fieldNames.size(); i++) {
+            stmts.add(
+                    buildFieldInitStatement(
+                            node.getPrivateNameScopeId(),
+                            fieldNames.get(i),
+                            fieldInits.get(i),
+                            node.getPosition()));
+        }
+
+        if (afterAnchor == null) {
+            for (int i = stmts.size() - 1; i >= 0; i--) {
+                body.addChildToFront(stmts.get(i));
+            }
+        } else {
+            Node anchor = afterAnchor;
+            for (AstNode stmt : stmts) {
+                body.addChildAfter(stmt, anchor);
+                anchor = stmt;
+            }
+        }
+    }
+
+    /** Finds a top-level {@code super(...)} call statement in a constructor body, if any. */
+    private static Node findSuperCallStatement(Node body) {
+        for (Node stmt = body.getFirstChild(); stmt != null; stmt = stmt.getNext()) {
+            if (stmt instanceof ExpressionStatement) {
+                AstNode expr = ((ExpressionStatement) stmt).getExpression();
+                if (expr instanceof FunctionCall) {
+                    AstNode target = ((FunctionCall) expr).getTarget();
+                    if (target != null && target.getType() == Token.SUPER) {
+                        return stmt;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static AstNode buildFieldInitStatement(
+            String privateNameScopeId, String name, AstNode initializer, int pos) {
+        KeywordLiteral thisExpr = new KeywordLiteral(pos, 0, Token.THIS);
+        AstNode target;
+        if (isPrivateName(name)) {
+            // this[%priv#x] = init; - the hidden variable holds this class's SymbolKey for #x.
+            String varName = ClassNode.privateVarName(privateNameScopeId, name);
+            target = new ElementGet(thisExpr, new Name(pos, varName));
+        } else {
+            target = new PropertyGet(thisExpr, new Name(pos, name));
+        }
+        AstNode value =
+                initializer != null ? initializer : new KeywordLiteral(pos, 0, Token.UNDEFINED);
+        Assignment assign = new Assignment(Token.ASSIGN, target, value, pos);
+        return new ExpressionStatement(assign);
+    }
+
+    private static ClassLiteralDescriptor.ElementKind toDescriptorKind(ClassNode.ElementKind kind) {
+        switch (kind) {
+            case GETTER:
+                return ClassLiteralDescriptor.ElementKind.GETTER;
+            case SETTER:
+                return ClassLiteralDescriptor.ElementKind.SETTER;
+            default:
+                return ClassLiteralDescriptor.ElementKind.METHOD;
         }
     }
 
@@ -989,10 +1223,10 @@ public final class IRFactory {
 
     private Node transformLiteral(AstNode node) {
         // Trying to call super as a function. See 15.4.2 Static Semantics: HasDirectSuper
-        // Note that this will need to change when classes are implemented, because in a class
-        // constructor calling "super()" _is_ allowed.
-        if (node.getParent() instanceof FunctionCall && node.getType() == Token.SUPER)
-            parser.reportError("msg.super.shorthand.function");
+        // this is only allowed directly inside a class constructor.
+        if (node.getParent() instanceof FunctionCall
+                && node.getType() == Token.SUPER
+                && !insideClassConstructor) parser.reportError("msg.super.shorthand.function");
         return node;
     }
 
@@ -1175,6 +1409,20 @@ public final class IRFactory {
     private Node transformPropertyGet(PropertyGet node) {
         Node target = transform(node.getTarget());
         String name = node.getProperty().getIdentifier();
+        if (isPrivateName(name)) {
+            // obj.#x - the hidden %priv#x variable holds the enclosing class's SymbolKey for #x;
+            // access it the same way any other computed member (obj[expr]) would be.
+            Node getElem =
+                    new Node(
+                            Token.GETELEM,
+                            target,
+                            parser.createName(
+                                    ClassNode.privateVarName(currentPrivateNameScopeId, name)));
+            if (node.type == Token.QUESTION_DOT) {
+                getElem.putIntProp(Node.OPTIONAL_CHAINING, 1);
+            }
+            return getElem;
+        }
         return createPropertyGet(target, null, name, 0, node.type);
     }
 

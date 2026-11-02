@@ -83,6 +83,7 @@ public class FunctionNode extends ScriptNode {
     private int rp = -1;
     private boolean hasRestParameter;
     private boolean isShorthand;
+    private boolean isClassConstructor;
 
     @Override
     public List<Object> getDefaultParams() {
@@ -380,6 +381,14 @@ public class FunctionNode extends ScriptNode {
 
     public void setIsShorthand() {
         isShorthand = true;
+    }
+
+    public boolean isClassConstructor() {
+        return isClassConstructor;
+    }
+
+    public void setIsClassConstructor(boolean isClassConstructor) {
+        this.isClassConstructor = isClassConstructor;
     }
 
     public void addResumptionPoint(Node target) {

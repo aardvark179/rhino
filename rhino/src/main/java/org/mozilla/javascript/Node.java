@@ -74,7 +74,8 @@ public class Node implements Iterable<Node> {
             LITERAL_INDEX_PROP = 35, // int index into the shared literals table
             RESULTS_SIZE_PROP = 36, // int index into the shared literals table
             ESCAPED_IDENTIFIER_PROP = 37, // marks a Name whose source contained a unicode escape
-            LAST_PROP = ESCAPED_IDENTIFIER_PROP,
+            SUPER_CONSTRUCTOR_CALL = 38, // marks a CALL node as a super(...) constructor call
+            LAST_PROP = SUPER_CONSTRUCTOR_CALL,
             FIRST_PROP = FUNCTION_PROP;
 
     // values of ISNUMBER_PROP to specify
@@ -471,6 +472,8 @@ public class Node implements Iterable<Node> {
                 return "results_size_prop:";
             case ESCAPED_IDENTIFIER_PROP:
                 return "escaped_identifier_prop";
+            case SUPER_CONSTRUCTOR_CALL:
+                return "super_constructor_call";
 
             default:
                 Kit.codeBug();

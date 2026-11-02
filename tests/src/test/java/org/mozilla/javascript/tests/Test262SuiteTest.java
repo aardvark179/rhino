@@ -118,9 +118,6 @@ public class Test262SuiteTest {
                     Arrays.asList(
                             "Atomics",
                             "IsHTMLDDA",
-                            "class",
-                            "class-fields-private",
-                            "class-fields-public",
                             "tail-call-optimization",
                             "Temporal",
                             "upsert",

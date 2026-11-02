@@ -27,6 +27,7 @@ import org.mozilla.javascript.ast.BigIntLiteral;
 import org.mozilla.javascript.ast.Block;
 import org.mozilla.javascript.ast.BreakStatement;
 import org.mozilla.javascript.ast.CatchClause;
+import org.mozilla.javascript.ast.ClassNode;
 import org.mozilla.javascript.ast.Comment;
 import org.mozilla.javascript.ast.ComputedPropertyKey;
 import org.mozilla.javascript.ast.ConditionalExpression;
@@ -148,6 +149,7 @@ public class Parser {
     // during function parsing.  See PerFunctionVariables class below.
     ScriptNode currentScriptOrFn;
     private boolean insideMethod;
+    private boolean insideClassConstructor;
     Scope currentScope;
     private int endFlags;
     private boolean inForInit; // bound temporarily during forStatement()
@@ -1098,6 +1100,12 @@ public class Parser {
 
     private FunctionNode function(int type, boolean isMethodDefiniton, boolean isAsync)
             throws IOException {
+        return function(type, isMethodDefiniton, isAsync, false);
+    }
+
+    private FunctionNode function(
+            int type, boolean isMethodDefiniton, boolean isAsync, boolean isClassConstructor)
+            throws IOException {
         boolean isGenerator = false;
         int syntheticType = type;
         int baseLineno = lineNumber(); // line number where source starts
@@ -1162,6 +1170,9 @@ public class Parser {
         if (isAsync) {
             fnNode.setIsAsync();
         }
+        if (isClassConstructor) {
+            fnNode.setIsClassConstructor(true);
+        }
         if (lpPos != -1) fnNode.setLp(lpPos - functionSourceStart);
 
         fnNode.setJsDocNode(getAndResetJsDoc());
@@ -1169,6 +1180,8 @@ public class Parser {
         PerFunctionVariables savedVars = new PerFunctionVariables(fnNode);
         boolean wasInsideMethod = insideMethod;
         insideMethod = isMethodDefiniton;
+        boolean wasInsideClassConstructor = insideClassConstructor;
+        insideClassConstructor = isClassConstructor;
         try {
             parseFunctionParams(fnNode);
             AstNode body = parseFunctionBody(type, fnNode);
@@ -1187,6 +1200,7 @@ public class Parser {
         } finally {
             savedVars.restore();
             insideMethod = wasInsideMethod;
+            insideClassConstructor = wasInsideClassConstructor;
         }
 
         if (memberExprNode != null) {
@@ -1235,6 +1249,231 @@ public class Parser {
             // Function statements define a symbol in the enclosing scope
             defineSymbol(Symbol.Type.FUNCTION_VAR, name.getIdentifier());
         }
+    }
+
+    /**
+     * Parses an ES6 class declaration or expression.
+     *
+     * <p>This is a minimal, phase-1 implementation: only an optional {@code extends} clause and a
+     * single {@code constructor(...)} member are supported. Any other class member is a parse error
+     * for now.
+     */
+    private ClassNode parseClass(boolean isStatement) throws IOException {
+        int pos = ts.tokenBeg;
+        int lineno = lineNumber();
+        int column = columnNumber();
+
+        ClassNode classNode = new ClassNode(pos);
+        classNode.setLineColumnNumber(lineno, column);
+        classNode.setIsStatement(isStatement);
+
+        Name className = null;
+        if (matchToken(Token.NAME, true)) {
+            className = createNameNode(true, Token.NAME);
+            classNode.setClassName(className);
+        } else if (isStatement) {
+            reportError("msg.unnamed.class.stmt");
+        }
+
+        if (matchToken(Token.EXTENDS, true)) {
+            classNode.setSuperClass(assignExpr());
+        }
+
+        mustMatchToken(Token.LC, "msg.no.brace.class", true);
+
+        boolean savedStrict = inUseStrictDirective;
+        inUseStrictDirective = true;
+
+        FunctionNode constructor = null;
+        while (peekToken() != Token.RC && peekToken() != Token.EOF) {
+            if (peekToken() == Token.SEMI) {
+                consumeToken();
+                continue;
+            }
+
+            int tt = peekToken();
+            String memberName = null;
+            boolean isComputed = false;
+            AstNode computedKeyExpr = null;
+            if (tt == Token.NAME || tt == Token.STRING) {
+                consumeToken();
+                memberName = ts.getString();
+            } else if (tt == Token.PRIVATE_NAME) {
+                consumeToken();
+                memberName = ts.getString();
+                definePrivateNameIfNew(classNode, memberName);
+            } else if (tt == Token.LB) {
+                isComputed = true;
+                consumeToken();
+                computedKeyExpr = assignExpr();
+                mustMatchToken(Token.RB, "msg.no.bracket.index", true);
+            } else {
+                reportError("msg.class.member.not.supported");
+                // Best-effort resync: if this looks like a method, consume it as one so
+                // parsing of the rest of the class body (and the file) can continue.
+                if (peekToken() == Token.LP) {
+                    function(FunctionNode.FUNCTION_EXPRESSION, true, false);
+                } else {
+                    consumeToken();
+                }
+                continue;
+            }
+
+            if (!isComputed && "constructor".equals(memberName) && peekToken() == Token.LP) {
+                if (constructor != null) {
+                    reportError("msg.dup.ctor");
+                }
+                constructor = function(FunctionNode.FUNCTION_EXPRESSION, true, false, true);
+                continue;
+            }
+
+            // Check for 'get'/'set' accessor modifier before the member name.
+            ClassNode.ElementKind accessorKind = ClassNode.ElementKind.METHOD;
+            if (!isComputed
+                    && ("get".equals(memberName) || "set".equals(memberName))
+                    && (peekToken() == Token.NAME
+                            || peekToken() == Token.STRING
+                            || peekToken() == Token.LB
+                            || peekToken() == Token.PRIVATE_NAME)) {
+                accessorKind =
+                        "get".equals(memberName)
+                                ? ClassNode.ElementKind.GETTER
+                                : ClassNode.ElementKind.SETTER;
+                if (peekToken() == Token.LB) {
+                    isComputed = true;
+                    memberName = null;
+                    consumeToken();
+                    computedKeyExpr = assignExpr();
+                    mustMatchToken(Token.RB, "msg.no.bracket.index", true);
+                } else if (peekToken() == Token.PRIVATE_NAME) {
+                    consumeToken();
+                    memberName = ts.getString();
+                    definePrivateNameIfNew(classNode, memberName);
+                } else {
+                    consumeToken();
+                    memberName = ts.getString();
+                }
+            }
+
+            if (peekToken() != Token.LP) {
+                if (accessorKind != ClassNode.ElementKind.METHOD) {
+                    // A get/set accessor must be a method.
+                    reportError("msg.class.member.not.supported");
+                    continue;
+                }
+                // Field declaration: name = expr; or name;
+                if (!isComputed && "constructor".equals(memberName)) {
+                    reportError("msg.unexpected.token");
+                }
+                AstNode initializer = null;
+                if (peekToken() == Token.ASSIGN) {
+                    consumeToken();
+                    initializer = assignExpr();
+                }
+                if (peekToken() == Token.SEMI) {
+                    consumeToken();
+                }
+                if (isComputed) {
+                    // Computed field keys are not yet supported.
+                    reportError("msg.class.member.not.supported");
+                } else {
+                    classNode.addField(memberName, initializer);
+                }
+                continue;
+            }
+
+            FunctionNode method = function(FunctionNode.FUNCTION_EXPRESSION, true, false);
+            if (accessorKind == ClassNode.ElementKind.GETTER) {
+                if (method.getParamCount() != 0) {
+                    reportError("msg.getter.no.parms");
+                }
+                method.setFunctionIsGetterMethod();
+            } else if (accessorKind == ClassNode.ElementKind.SETTER) {
+                if (method.getParamCount() != 1 || method.hasRestParameter()) {
+                    reportError("msg.setter.one.parm");
+                }
+                method.setFunctionIsSetterMethod();
+            }
+            if (isComputed) {
+                classNode.addComputedMethod(computedKeyExpr, method, accessorKind);
+            } else {
+                classNode.addMethod(memberName, method, accessorKind);
+            }
+        }
+
+        mustMatchToken(Token.RC, "msg.no.brace.class", true);
+
+        inUseStrictDirective = savedStrict;
+
+        if (constructor == null) {
+            constructor = createDefaultConstructor(pos, classNode.getSuperClass() != null);
+        }
+        classNode.setConstructor(constructor);
+
+        if (isStatement && className != null) {
+            defineSymbol(Token.LET, className.getIdentifier());
+        }
+
+        int end = ts.tokenEnd;
+        classNode.setLength(end - pos);
+        constructor.setRawSourceBounds(pos, end);
+
+        return classNode;
+    }
+
+    /**
+     * The first time a given private name is seen in a class, defines its hidden per-class-
+     * definition-evaluation binding (see {@link ClassNode#privateVarName}) as a real, closure-
+     * capturable symbol of the scope enclosing the class, so every method/field/accessor
+     * referencing {@code #name} - however deeply nested - can resolve it via ordinary scope-chain
+     * lookup.
+     */
+    private void definePrivateNameIfNew(ClassNode classNode, String privateName) {
+        if (classNode.addPrivateNameIfNew(privateName)) {
+            if (classNode.getPrivateNameScopeId() == null) {
+                classNode.setPrivateNameScopeId(currentScriptOrFn.getNextTempName());
+            }
+            defineSymbol(
+                    Token.LET,
+                    ClassNode.privateVarName(classNode.getPrivateNameScopeId(), privateName),
+                    true);
+        }
+    }
+
+    private FunctionNode createDefaultConstructor(int pos, boolean isDerived) {
+        FunctionNode fn = new FunctionNode(pos);
+        fn.setFunctionType(FunctionNode.FUNCTION_EXPRESSION);
+        fn.setMethodDefinition(true);
+        fn.setIsClassConstructor(true);
+
+        Block body = new Block(pos);
+
+        if (isDerived) {
+            // Derived default constructor: constructor(...args) { super(...args); }
+            fn.setHasRestParameter(true);
+            Name argsParam = new Name(pos, "args");
+            fn.addParam(argsParam);
+            fn.putSymbol(new Symbol(Symbol.Type.LP, "args"));
+
+            KeywordLiteral superTarget = new KeywordLiteral(pos, 0);
+            superTarget.setType(Token.SUPER);
+
+            Spread spread = new Spread(pos, 0);
+            spread.setExpression(new Name(pos, "args"));
+
+            FunctionCall superCall = new FunctionCall(pos);
+            superCall.setTarget(superTarget);
+            List<AstNode> callArgs = new ArrayList<>(1);
+            callArgs.add(spread);
+            superCall.setArguments(callArgs);
+
+            body.addStatement(new ExpressionStatement(superCall));
+        }
+
+        fn.setBody(body);
+        fn.setLength(0);
+
+        return fn;
     }
 
     private ParenthesizedExpression callArgsToArrowParams(FunctionCall call) {
@@ -1668,6 +1907,10 @@ public class Parser {
                 }
                 // Pre-ES6: legacy behavior
                 return function(FunctionNode.FUNCTION_EXPRESSION_STATEMENT);
+
+            case Token.CLASS:
+                consumeToken();
+                return parseClass(true);
 
             case Token.DEFAULT:
                 pn = defaultXmlNamespace();
@@ -3827,6 +4070,11 @@ public class Parser {
                 ref = propertyName(-1, memberTypeFlags);
                 break;
 
+            case Token.PRIVATE_NAME:
+                // handles: obj.#name
+                ref = propertyName(-1, memberTypeFlags);
+                break;
+
             case Token.MUL:
                 if (compilerEnv.isXmlAvailable()) {
                     // handles: *, *::name, *::*, *::[expr]
@@ -3850,6 +4098,8 @@ public class Parser {
                 }
 
             case Token.RESERVED:
+            case Token.EXTENDS:
+            case Token.CLASS:
                 {
                     String name = ts.getString();
                     saveNameTokenData(ts.tokenBeg, name, lineNumber(), columnNumber());
@@ -4088,6 +4338,10 @@ public class Parser {
                 consumeToken();
                 return function(FunctionNode.FUNCTION_EXPRESSION);
 
+            case Token.CLASS:
+                consumeToken();
+                return parseClass(false);
+
             case Token.LB:
                 consumeToken();
                 return arrayLiteral();
@@ -4176,7 +4430,8 @@ public class Parser {
                 }
 
             case Token.SUPER:
-                if (((insideFunctionParams() || insideFunctionBody()) && insideMethod)
+                if (((insideFunctionParams() || insideFunctionBody())
+                                && (insideMethod || insideClassConstructor))
                         || compilerEnv.isAllowSuper()) {
                     consumeToken();
                     pos = ts.tokenBeg;
@@ -4813,6 +5068,9 @@ public class Parser {
                     int column = columnNumber();
                     pname = objliteralProperty();
 
+                    if (pname == null) {
+                        return null;
+                    }
                     pname = new GeneratorMethodDefinition(pos, ts.tokenEnd - pos, pname);
                     pname.setLineColumnNumber(lineno, column);
                 } else {
@@ -4821,6 +5079,9 @@ public class Parser {
                 }
                 break;
 
+            case Token.PRIVATE_NAME:
+                addError("msg.private.name", ts.getString());
+                return null;
             default:
                 if (compilerEnv.isReservedKeywordAsIdentifier()
                         && TokenStream.isKeyword(

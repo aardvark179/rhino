@@ -804,6 +804,8 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Token.ACCUMULATE_KEYVALUES] = new DoAccumulateKeyValues();
         instructionObjs[base + Token.MAKE_OBJECT] = new DoMakeObject();
         instructionObjs[base + Token.MAKE_ARRAAY] = new DoMakeArray();
+        instructionObjs[base + Token.MAKE_CLASS] = new DoMakeClass();
+        instructionObjs[base + Icode.PUSH_SUPER_CONSTRUCTOR] = new DoPushSuperConstructor();
         instructionObjs[base + Token.TO_PROPKEY] = new DoToPropKey();
         instructionObjs[base + Icode.ENTERDQ] = new DoEnterDotQuery();
         instructionObjs[base + Icode.LEAVEDQ] = new DoLeaveDotQuery();
@@ -2960,15 +2962,13 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                 var compilerData = (InterpreterData<JSFunction>) desc.getConstructor();
                 if (frame.fnOrScript.getDescriptor().getSecurityDomain()
                         == desc.getSecurityDomain()) {
-                    if (cx.getLanguageVersion() >= Context.VERSION_ES6
-                            && f.getHomeObject() != null) {
-                        // Only methods have home objects associated with
-                        // them
-                        throw ScriptRuntime.typeErrorById("msg.not.ctor", f.getFunctionName());
-                    }
-
-                    Scriptable newInstance =
-                            f.getHomeObject() == null ? f.createObject(cx, frame.scope) : null;
+                    // Methods have a non-null home object but no constructor bytecode (see
+                    // CodeGenUtils.setConstructor), so they never reach this branch at all - the
+                    // `instanceof InterpreterData` check above already excludes them. A non-null
+                    // home object here can only mean this is a class constructor (for method
+                    // `super.x` resolution), which still needs a normally auto-created `this`
+                    // like any other constructor.
+                    Scriptable newInstance = f.createObject(cx, frame.scope);
                     CallFrame calleeFrame =
                             initFrame(
                                     cx,
@@ -3616,6 +3616,22 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         }
     }
 
+    private static class DoPushSuperConstructor extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            // super(...) resolves via GetSuperConstructor: the currently executing (class
+            // constructor) function's own [[Prototype]] - see ClassLiteralDescriptor.setupClass,
+            // which sets that up to be the superclass. Calls go through the same
+            // lookup-result-based CALL bytecode as any other call, invoked with the current
+            // `this` per the "same-this" model of super().
+            Object superConstructor = ((Scriptable) frame.fnOrScript).getPrototype();
+            frame.stack[++frame.stackTop] =
+                    new ScriptRuntime.LookupResult(
+                            superConstructor, (Scriptable) frame.thisObj, "super");
+            return null;
+        }
+    }
+
     private static class DoHomeObj extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
@@ -4165,6 +4181,23 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
             var obj = (Scriptable) frame.stack[frame.stackTop];
             frame.stack[frame.stackTop] =
                     desc.createObject(cx, frame.scope, obj, results.getResults());
+            return null;
+        }
+    }
+
+    private static class DoMakeClass extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            var desc =
+                    (ClassLiteralDescriptor) frame.compilerData.itsLiterals[state.indexReg];
+            var results = (ResultAccumulator) frame.stack[frame.stackTop--];
+            var prototype = (Scriptable) frame.stack[frame.stackTop--];
+            var superClass = frame.stack[frame.stackTop];
+            if (superClass == DOUBLE_MARK) {
+                superClass = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
+            }
+            frame.stack[frame.stackTop] =
+                    desc.createClass(cx, frame.scope, superClass, prototype, results.getResults());
             return null;
         }
     }
