@@ -42,6 +42,10 @@ public class SymbolKeyDescriber extends DynamicConstantDescriber<SymbolKey> {
             ConstantDescs.ofConstantBootstrap(
                     CD_SYMBOL_KEY, "symbolConstant", CD_SYMBOL_KEY, ConstantDescs.CD_int);
 
+    private static final DirectMethodHandleDesc SYMBOL_PRIVATE =
+            ConstantDescs.ofConstantBootstrap(
+                    CD_SYMBOL_KEY, "privateSymbolConstant", CD_SYMBOL_KEY, ConstantDescs.CD_int);
+
     public SymbolKeyDescriber(DynamicDescriberRegistry registry) {
         super(registry);
     }
@@ -63,6 +67,12 @@ public class SymbolKeyDescriber extends DynamicConstantDescriber<SymbolKey> {
             case REGULAR ->
                     DynamicConstantDesc.ofNamed(
                             SYMBOL_REGULAR,
+                            value.getName(),
+                            CD_SYMBOL_KEY,
+                            Integer.valueOf(System.identityHashCode(value)));
+            case PRIVATE ->
+                    DynamicConstantDesc.ofNamed(
+                            SYMBOL_PRIVATE,
                             value.getName(),
                             CD_SYMBOL_KEY,
                             Integer.valueOf(System.identityHashCode(value)));

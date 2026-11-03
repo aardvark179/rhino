@@ -88,4 +88,9 @@ public class SymbolKey implements Symbol, Serializable {
             MethodHandles.Lookup lookup, String name, Class<?> type, int dedupHash) {
         return new SymbolKey(name, Kind.REGULAR);
     }
+
+    public static SymbolKey privateSymbolConstant(
+            MethodHandles.Lookup lookup, String name, Class<?> type, int dedupHash) {
+        return new SymbolKey(name, Kind.PRIVATE);
+    }
 }
