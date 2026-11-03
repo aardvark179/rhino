@@ -1368,14 +1368,13 @@ public class Parser {
                 AstNode initializer = null;
                 if (peekToken() == Token.ASSIGN) {
                     consumeToken();
-                    initializer = fieldInitializer(classNode);
+                    initializer = fieldInitializer(classNode, isComputed);
                 }
                 if (peekToken() == Token.SEMI) {
                     consumeToken();
                 }
                 if (isComputed) {
-                    // Computed field keys are not yet supported.
-                    reportError("msg.class.member.not.supported");
+                    classNode.addComputedField(computedKeyExpr, initializer);
                 } else {
                     classNode.addField(memberName, initializer);
                 }
@@ -1427,9 +1426,10 @@ public class Parser {
      * Parses a class field's initializer expression inside the class's synthesized field
      * initializer method (see {@link ClassNode#getFieldInitializer}), creating that method for the
      * first initializer, so that every initializer is evaluated with the instance as {@code this}
-     * and the prototype as its home object.
+     * and the prototype as its home object. A field with a computed key receives that key as a new
+     * parameter of the method.
      */
-    private AstNode fieldInitializer(ClassNode classNode) throws IOException {
+    private AstNode fieldInitializer(ClassNode classNode, boolean isComputed) throws IOException {
         FunctionNode fn = classNode.getFieldInitializer();
         if (fn == null) {
             fn = new FunctionNode(ts.tokenEnd);
@@ -1447,6 +1447,11 @@ public class Parser {
         insideClassConstructor = false;
         ++nestingOfFunction;
         try {
+            if (isComputed) {
+                String paramName = ClassNode.fieldKeyParamName(fn.getParamCount());
+                fn.addParam(new Name(ts.tokenBeg, paramName));
+                defineSymbol(Token.LP, paramName);
+            }
             return assignExpr();
         } finally {
             --nestingOfFunction;

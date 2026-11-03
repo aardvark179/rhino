@@ -821,16 +821,24 @@ public final class IRFactory {
         Node body = new Node(Token.BLOCK);
         List<String> fieldNames = node.getFieldNames();
         List<AstNode> fieldInits = node.getFieldInitializers();
+        int computedKeyIndex = 0;
         for (int i = 0; i < fieldNames.size(); i++) {
             AstNode init = fieldInits.get(i);
             if (init == null) {
                 continue;
             }
             String name = fieldNames.get(i);
-            Node key = isPrivateName(name) ? privateNameKey(name) : Node.newString(name);
+            Node key;
+            if (name == null) {
+                key = parser.createName(ClassNode.fieldKeyParamName(computedKeyIndex++));
+            } else if (isPrivateName(name)) {
+                key = privateNameKey(name);
+            } else {
+                key = Node.newString(name);
+            }
             Node set =
                     new Node(
-                            isPrivateName(name) ? Token.SETELEM : Token.SETPROP,
+                            name == null || isPrivateName(name) ? Token.SETELEM : Token.SETPROP,
                             new Node(Token.THIS),
                             key,
                             transform(init));
@@ -886,18 +894,19 @@ public final class IRFactory {
      *
      * <p>Shape: {@code CLASS(superClassExprOrUndefined, EMPTY_OBJECT, RESULT_ACCUMULATOR,
      * ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(method)..., ACCUMULATE_RESULT(field
-     * initializer))}, where computed method keys precede their method, and the single field
-     * initializer, which defines the fields with initializers, is only present if some field has
-     * one. Private names are not accumulated: their {@link SymbolKey}s are stored directly as keys
-     * on the descriptor. This mirrors {@code transformObjectLiteral}'s shape exactly: the {@code
-     * EMPTY_OBJECT} node creates the (eventual) prototype object, and every accumulated function
-     * value (the constructor first, then each instance method/getter/setter, in source order) is
-     * built with {@code homeObject == } that prototype via the very same "peek the object under
-     * construction" convention object-literal methods already use - which is why the constructor
-     * and methods are parsed as method definitions. The class's shape (which accumulated values are
-     * the constructor vs. named members, and of what kind) is captured by a {@link
-     * ClassLiteralDescriptor} registered in the current script/function's literal pool, exactly
-     * like object/array literals register theirs.
+     * key)..., ACCUMULATE_RESULT(field initializer))}, where computed method keys precede their
+     * method, the field keys are those of the computed fields in declaration order, and the single
+     * field initializer, which defines the fields with initializers, is only present if some field
+     * has one. Private names are not accumulated: their {@link SymbolKey}s are stored directly as
+     * keys on the descriptor. This mirrors {@code transformObjectLiteral}'s shape exactly: the
+     * {@code EMPTY_OBJECT} node creates the (eventual) prototype object, and every accumulated
+     * function value (the constructor first, then each instance method/getter/setter, in source
+     * order) is built with {@code homeObject == } that prototype via the very same "peek the object
+     * under construction" convention object-literal methods already use - which is why the
+     * constructor and methods are parsed as method definitions. The class's shape (which
+     * accumulated values are the constructor vs. named members, and of what kind) is captured by a
+     * {@link ClassLiteralDescriptor} registered in the current script/function's literal pool,
+     * exactly like object/array literals register theirs.
      */
     private Node transformClass(ClassNode node) {
         astNodePos.push(node);
@@ -942,6 +951,15 @@ public final class IRFactory {
                 }
                 Node methodValue = transform(methods.get(i));
                 classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
+            }
+
+            for (AstNode computedKeyExpr : node.getFieldComputedKeys()) {
+                if (computedKeyExpr != null) {
+                    classNode.addChildToBack(
+                            new Node(
+                                    Token.ACCUMULATE_RESULT,
+                                    new Node(Token.TO_PROPKEY, transform(computedKeyExpr))));
+                }
             }
 
             if (node.getFieldInitializer() != null) {
@@ -993,11 +1011,16 @@ public final class IRFactory {
         List<String> fieldNames = node.getFieldNames();
         List<AstNode> fieldInits = node.getFieldInitializers();
         for (int i = 0; i < fieldNames.size(); i++) {
-            if (fieldInits.get(i) != null) {
-                continue;
-            }
             String name = fieldNames.get(i);
-            builder.addField(isPrivateName(name) ? privateNames.get(name) : name);
+            if (name == null) {
+                if (fieldInits.get(i) != null) {
+                    builder.addComputedInitializedField();
+                } else {
+                    builder.addComputedField();
+                }
+            } else if (fieldInits.get(i) == null) {
+                builder.addField(isPrivateName(name) ? privateNames.get(name) : name);
+            }
         }
         if (node.getFieldInitializer() != null) {
             builder.addFieldInitializer();

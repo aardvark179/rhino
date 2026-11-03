@@ -14,9 +14,10 @@ import java.util.Arrays;
  * <p>{@code values[0]} is always the (already-built) constructor function. The rest of {@code
  * values} holds, per member entry in order: the computed key value (only for entries whose key is
  * {@link UniqueTag#COMPUTED_KEY}) followed by the member's function value. After the members come
- * the computed key values of any instance fields without initializers that have computed keys and,
- * if any field has an initializer, a single field initializer function, which creates the fields
- * with initializers on its {@code this} in declaration order. {@code prototype} is a freshly
+ * the computed key values of any instance fields with computed keys, in declaration order, and, if
+ * any field has an initializer, a single field initializer function, which creates the fields with
+ * initializers on its {@code this} in declaration order. The field initializer is passed the
+ * computed keys of the fields with initializers as its arguments. {@code prototype} is a freshly
  * created plain object (built the same way as an object literal's {@code EMPTY_OBJECT}) that
  * becomes the constructor's {@code .prototype}; methods/the constructor are all built with {@code
  * homeObject == prototype} via the same "peek the object under construction" convention
@@ -35,8 +36,9 @@ public abstract class ClassLiteralDescriptor implements Serializable {
     /**
      * Initializes the instance fields of class constructor {@code constructor} on {@code thisObj},
      * and returns {@code thisObj}: first the fields with initializers, by calling the field
-     * initializer, and then the rest, as {@code undefined}. The computed keys and field initializer
-     * captured when the class was evaluated are held by the constructor.
+     * initializer with the computed keys of those fields, and then the rest, as {@code undefined}.
+     * The computed keys and field initializer captured when the class was evaluated are held by the
+     * constructor.
      */
     public Object initializeFields(Context cx, VarScope scope, Object constructor, Object thisObj) {
         return thisObj;
@@ -211,6 +213,15 @@ public abstract class ClassLiteralDescriptor implements Serializable {
             size++;
         }
 
+        /**
+         * Adds an instance field with an initializer whose key value occupies the next {@code
+         * values} slot. Fields must be added after all methods.
+         */
+        public void addComputedInitializedField() {
+            fieldKeys.add(UniqueTag.COMPUTED_INITIALIZED_FIELD);
+            size++;
+        }
+
         /** Adds the field initializer, which occupies the final {@code values} slot. */
         public void addFieldInitializer() {
             hasFieldInitializer = true;
@@ -304,7 +315,11 @@ public abstract class ClassLiteralDescriptor implements Serializable {
             return members;
         }
 
-        /** The keys of the fields without initializers. */
+        /**
+         * The keys of the fields without initializers, with {@link
+         * UniqueTag#COMPUTED_INITIALIZED_FIELD} marking the position of each computed key of a
+         * field with an initializer.
+         */
         public Object[] getFieldKeys() {
             return fieldKeys;
         }
@@ -355,11 +370,24 @@ public abstract class ClassLiteralDescriptor implements Serializable {
             }
             Scriptable self = (Scriptable) thisObj;
             if (hasFieldInitializer) {
+                ArrayList<Object> initializerKeys = new ArrayList<>();
+                int v = 0;
+                for (Object key : fieldKeys) {
+                    if (key == UniqueTag.COMPUTED_INITIALIZED_FIELD) {
+                        initializerKeys.add(fieldValues[v++]);
+                    } else if (key == UniqueTag.COMPUTED_KEY) {
+                        v++;
+                    }
+                }
                 Callable initializer = (Callable) fieldValues[fieldValues.length - 1];
-                initializer.call(cx, scope, self, ScriptRuntime.emptyArgs);
+                initializer.call(cx, scope, self, initializerKeys.toArray());
             }
             int v = 0;
             for (Object key : fieldKeys) {
+                if (key == UniqueTag.COMPUTED_INITIALIZED_FIELD) {
+                    v++;
+                    continue;
+                }
                 if (key == UniqueTag.COMPUTED_KEY) {
                     key = fieldValues[v++];
                 }

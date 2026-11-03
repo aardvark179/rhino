@@ -52,6 +52,71 @@ public class ClassFieldsTest {
     }
 
     @Test
+    public void computedFieldNames() {
+        String code =
+                "var s = Symbol('s');\n"
+                        + "class C { ['a' + 'b']; c; [s]; [1 + 1]; }\n"
+                        + "var o = new C();\n"
+                        + "Object.keys(o).join() + ',' + o.ab + ',' + o.hasOwnProperty('ab')"
+                        + " + ',' + o.hasOwnProperty(s) + ',' + o.hasOwnProperty('2')";
+        Utils.assertWithAllModes_ES6("2,ab,c,undefined,true,true,true", code);
+    }
+
+    @Test
+    public void computedFieldNamesAreEvaluatedOnceAtClassDefinition() {
+        String code =
+                "var log = [];\n"
+                        + "var key = { toString() { log.push('key'); return 'k'; } };\n"
+                        + "class C { [(log.push('expr'), key)]; }\n"
+                        + "log.push('defined');\n"
+                        + "var o1 = new C(), o2 = new C();\n"
+                        + "log.join() + ',' + o1.hasOwnProperty('k') + ',' + o2.hasOwnProperty('k')";
+        Utils.assertWithAllModes_ES6("expr,key,defined,true,true", code);
+    }
+
+    @Test
+    public void computedFieldNamesWithInitializers() {
+        String code =
+                "var s = Symbol('s');\n"
+                        + "class C { ['a' + 'b'] = 7; c = 1; [s] = this.ab + this.c; [2]; ['d'] = this[2]; }\n"
+                        + "var o = new C();\n"
+                        + "Object.keys(o).join() + ',' + o.ab + ',' + o[s] + ',' + o.d";
+        Utils.assertWithAllModes_ES6("2,ab,c,d,7,8,undefined", code);
+    }
+
+    @Test
+    public void computedFieldKeysAreEvaluatedInOrderOnceAndInitializersPerInstance() {
+        String code =
+                "var log = [];\n"
+                        + "class C { [log.push('k1')] = log.push('i1'); [log.push('k2')];"
+                        + " [log.push('k3')] = log.push('i3'); }\n"
+                        + "log.push('defined');\n"
+                        + "new C(); new C();\n"
+                        + "log.join()";
+        Utils.assertWithAllModes_ES6("k1,k2,k3,defined,i1,i3,i1,i3", code);
+    }
+
+    @Test
+    public void computedFieldKeysAreFreshPerClassEvaluation() {
+        String code =
+                "var classes = [];\n"
+                        + "for (let k of ['x', 'y']) { classes.push(class { [k] = k; }); }\n"
+                        + "var a = new classes[0](), b = new classes[1]();\n"
+                        + "Object.keys(a).join() + ',' + a.x + ',' + Object.keys(b).join() + ',' + b.y";
+        Utils.assertWithAllModes_ES6("x,x,y,y", code);
+    }
+
+    @Test
+    public void computedFieldNamesWithInitializersAndMethods() {
+        String code =
+                "class A { ['m' + 1]() { return 'm'; } [`x`]; y = 2; }\n"
+                        + "class B extends A { ['z']; }\n"
+                        + "var o = new B();\n"
+                        + "Object.keys(o).join() + ',' + o.m1()";
+        Utils.assertWithAllModes_ES6("y,x,z,m", code);
+    }
+
+    @Test
     public void fieldsAreInitializedBeforeConstructorBody() {
         String code =
                 "class A { a = 1; constructor(x) { this.b = this.a + x; } }\n"

@@ -20,7 +20,7 @@ import org.mozilla.javascript.Token;
  *
  * <p>A class is a (possibly synthesized) constructor, an optional {@code extends} clause, instance
  * methods/getters/setters and instance fields with literal, computed, or private ({@code #name})
- * keys. Static members and computed field keys are not yet supported.
+ * keys. Static members are not yet supported.
  *
  * <p>Private names flow through the same method/field lists as ordinary members - a name starting
  * with {@code #} is recognized specially wherever it matters (see {@link
@@ -55,6 +55,7 @@ public class ClassNode extends AstNode {
     private List<AstNode> methodComputedKeys;
     private List<String> fieldNames;
     private List<AstNode> fieldInitializers;
+    private List<AstNode> fieldComputedKeys;
     private FunctionNode fieldInitializer;
     private final Set<String> privateNames = new LinkedHashSet<>();
 
@@ -169,12 +170,37 @@ public class ClassNode extends AstNode {
      * parented there rather than to this node.
      */
     public void addField(String name, AstNode initializer) {
+        addFieldInternal(name, null, initializer);
+    }
+
+    /**
+     * Adds an instance field declaration whose property key is computed at runtime (e.g. {@code
+     * [expr];} or {@code [expr] = init;}). The key is evaluated exactly once, at class-definition
+     * time; if the field has an initializer, it is passed to the field initializer method as the
+     * parameter named by {@link #fieldKeyParamName}.
+     */
+    public void addComputedField(AstNode keyExpr, AstNode initializer) {
+        addFieldInternal(null, keyExpr, initializer);
+        keyExpr.setParent(this);
+    }
+
+    /**
+     * The name of the field initializer method's parameter holding the computed key of the {@code
+     * index}th computed field with an initializer.
+     */
+    public static String fieldKeyParamName(int index) {
+        return "%key" + index;
+    }
+
+    private void addFieldInternal(String name, AstNode keyExpr, AstNode initializer) {
         if (fieldNames == null) {
             fieldNames = new ArrayList<>();
             fieldInitializers = new ArrayList<>();
+            fieldComputedKeys = new ArrayList<>();
         }
         fieldNames.add(name);
         fieldInitializers.add(initializer);
+        fieldComputedKeys.add(keyExpr);
     }
 
     /**
@@ -202,6 +228,11 @@ public class ClassNode extends AstNode {
 
     public List<AstNode> getFieldInitializers() {
         return fieldInitializers == null ? Collections.emptyList() : fieldInitializers;
+    }
+
+    /** The computed key expression of each field, or {@code null} for a field with a name. */
+    public List<AstNode> getFieldComputedKeys() {
+        return fieldComputedKeys == null ? Collections.emptyList() : fieldComputedKeys;
     }
 
     /**
@@ -234,7 +265,14 @@ public class ClassNode extends AstNode {
         if (fieldNames != null) {
             for (int i = 0; i < fieldNames.size(); i++) {
                 sb.append(makeIndent(depth + 1));
-                sb.append(fieldNames.get(i));
+                String name = fieldNames.get(i);
+                if (name == null) {
+                    sb.append("[");
+                    sb.append(fieldComputedKeys.get(i).toSource(0));
+                    sb.append("]");
+                } else {
+                    sb.append(name);
+                }
                 AstNode init = fieldInitializers.get(i);
                 if (init != null) {
                     sb.append(" = ");
@@ -295,6 +333,13 @@ public class ClassNode extends AstNode {
                         methodComputedKeys.get(i).visit(v);
                     }
                     methods.get(i).visit(v);
+                }
+            }
+            if (fieldComputedKeys != null) {
+                for (AstNode keyExpr : fieldComputedKeys) {
+                    if (keyExpr != null) {
+                        keyExpr.visit(v);
+                    }
                 }
             }
             if (fieldInitializer != null) {
