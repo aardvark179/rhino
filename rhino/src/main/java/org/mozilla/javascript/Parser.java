@@ -1291,6 +1291,12 @@ public class Parser {
                 continue;
             }
 
+            boolean isGenerator = false;
+            if (peekToken() == Token.MUL) {
+                consumeToken();
+                isGenerator = true;
+            }
+
             int tt = peekToken();
             String memberName = null;
             boolean isComputed = false;
@@ -1320,6 +1326,9 @@ public class Parser {
             }
 
             if (!isComputed && "constructor".equals(memberName) && peekToken() == Token.LP) {
+                if (isGenerator) {
+                    reportError("msg.generator.ctor");
+                }
                 if (constructor != null) {
                     reportError("msg.dup.ctor");
                 }
@@ -1330,6 +1339,7 @@ public class Parser {
             // Check for 'get'/'set' accessor modifier before the member name.
             ClassNode.ElementKind accessorKind = ClassNode.ElementKind.METHOD;
             if (!isComputed
+                    && !isGenerator
                     && ("get".equals(memberName) || "set".equals(memberName))
                     && (peekToken() == Token.NAME
                             || peekToken() == Token.STRING
@@ -1356,8 +1366,8 @@ public class Parser {
             }
 
             if (peekToken() != Token.LP) {
-                if (accessorKind != ClassNode.ElementKind.METHOD) {
-                    // A get/set accessor must be a method.
+                if (accessorKind != ClassNode.ElementKind.METHOD || isGenerator) {
+                    // A get/set accessor or generator must be a method.
                     reportError("msg.class.member.not.supported");
                     continue;
                 }
@@ -1392,6 +1402,8 @@ public class Parser {
                     reportError("msg.setter.one.parm");
                 }
                 method.setFunctionIsSetterMethod();
+            } else if (isGenerator) {
+                method.setIsES6Generator();
             }
             if (isComputed) {
                 classNode.addComputedMethod(computedKeyExpr, method, accessorKind);
