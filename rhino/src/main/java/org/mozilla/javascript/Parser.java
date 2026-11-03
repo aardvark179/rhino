@@ -1301,7 +1301,7 @@ public class Parser {
             } else if (tt == Token.PRIVATE_NAME) {
                 consumeToken();
                 memberName = ts.getString();
-                definePrivateNameIfNew(classNode, memberName);
+                classNode.addPrivateName(memberName);
             } else if (tt == Token.LB) {
                 isComputed = true;
                 consumeToken();
@@ -1348,7 +1348,7 @@ public class Parser {
                 } else if (peekToken() == Token.PRIVATE_NAME) {
                     consumeToken();
                     memberName = ts.getString();
-                    definePrivateNameIfNew(classNode, memberName);
+                    classNode.addPrivateName(memberName);
                 } else {
                     consumeToken();
                     memberName = ts.getString();
@@ -1490,25 +1490,6 @@ public class Parser {
         fn.setRawSourceBounds(start, end);
         fn.setLength(end - start);
         fn.setEndLineno(last.getLineno());
-    }
-
-    /**
-     * The first time a given private name is seen in a class, defines its hidden per-class-
-     * definition-evaluation binding (see {@link ClassNode#privateVarName}) as a real, closure-
-     * capturable symbol of the scope enclosing the class, so every method/field/accessor
-     * referencing {@code #name} - however deeply nested - can resolve it via ordinary scope-chain
-     * lookup.
-     */
-    private void definePrivateNameIfNew(ClassNode classNode, String privateName) {
-        if (classNode.addPrivateNameIfNew(privateName)) {
-            if (classNode.getPrivateNameScopeId() == null) {
-                classNode.setPrivateNameScopeId(currentScriptOrFn.getNextTempName());
-            }
-            defineSymbol(
-                    Token.LET,
-                    ClassNode.privateVarName(classNode.getPrivateNameScopeId(), privateName),
-                    true);
-        }
     }
 
     private FunctionNode createDefaultConstructor(int pos, boolean isDerived) {

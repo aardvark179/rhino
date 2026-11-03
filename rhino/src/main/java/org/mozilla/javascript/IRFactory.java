@@ -8,6 +8,7 @@ package org.mozilla.javascript;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -110,10 +111,9 @@ public final class IRFactory {
     // The descriptor of the class whose constructor is being transformed, if it has fields.
     private ClassLiteralDescriptor classConstructorDescriptor;
     private final Map<ClassNode, ClassLiteralDescriptor> classDescriptors = new IdentityHashMap<>();
-    // The enclosing class's private-name scope id (see ClassNode.privateVarName), valid for the
-    // entire transform of that class's constructor/methods/field initializers - including inside
-    // arbitrarily nested functions, unlike insideClassConstructor which resets per function.
-    private String currentPrivateNameScopeId;
+    // The private names of each enclosing class, innermost first, valid for the entire transform
+    // of that class - including inside arbitrarily nested functions.
+    private final ArrayDeque<Map<String, SymbolKey>> privateNameScopes = new ArrayDeque<>();
 
     public IRFactory(CompilerEnvirons env, String sourceString) {
         this(env, null, sourceString, env.getErrorReporter());
@@ -827,11 +827,7 @@ public final class IRFactory {
                 continue;
             }
             String name = fieldNames.get(i);
-            Node key =
-                    isPrivateName(name)
-                            ? parser.createName(
-                                    ClassNode.privateVarName(node.getPrivateNameScopeId(), name))
-                            : Node.newString(name);
+            Node key = isPrivateName(name) ? privateNameKey(name) : Node.newString(name);
             Node set =
                     new Node(
                             isPrivateName(name) ? Token.SETELEM : Token.SETPROP,
@@ -890,23 +886,26 @@ public final class IRFactory {
      *
      * <p>Shape: {@code CLASS(superClassExprOrUndefined, EMPTY_OBJECT, RESULT_ACCUMULATOR,
      * ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(method)..., ACCUMULATE_RESULT(field
-     * key)..., ACCUMULATE_RESULT(field initializer))}, where computed or private method keys
-     * precede their method, only the computed or private keys of fields without initializers are
-     * accumulated, and the single field initializer, which defines the fields with initializers, is
-     * only present if some field has one. This mirrors {@code transformObjectLiteral}'s shape
-     * exactly: the {@code EMPTY_OBJECT} node creates the (eventual) prototype object, and every
-     * accumulated function value (the constructor first, then each instance method/getter/setter,
-     * in source order) is built with {@code homeObject == } that prototype via the very same "peek
-     * the object under construction" convention object-literal methods already use - which is why
-     * the constructor and methods are parsed as method definitions. The class's shape (which
-     * accumulated values are the constructor vs. named members, and of what kind) is captured by a
-     * {@link ClassLiteralDescriptor} registered in the current script/function's literal pool,
-     * exactly like object/array literals register theirs.
+     * initializer))}, where computed method keys precede their method, and the single field
+     * initializer, which defines the fields with initializers, is only present if some field has
+     * one. Private names are not accumulated: their {@link SymbolKey}s are stored directly as keys
+     * on the descriptor. This mirrors {@code transformObjectLiteral}'s shape exactly: the {@code
+     * EMPTY_OBJECT} node creates the (eventual) prototype object, and every accumulated function
+     * value (the constructor first, then each instance method/getter/setter, in source order) is
+     * built with {@code homeObject == } that prototype via the very same "peek the object under
+     * construction" convention object-literal methods already use - which is why the constructor
+     * and methods are parsed as method definitions. The class's shape (which accumulated values are
+     * the constructor vs. named members, and of what kind) is captured by a {@link
+     * ClassLiteralDescriptor} registered in the current script/function's literal pool, exactly
+     * like object/array literals register theirs.
      */
     private Node transformClass(ClassNode node) {
         astNodePos.push(node);
-        String savedPrivateNameScopeId = currentPrivateNameScopeId;
-        currentPrivateNameScopeId = node.getPrivateNameScopeId();
+        Map<String, SymbolKey> privateNames = new HashMap<>();
+        for (String name : node.getPrivateNames()) {
+            privateNames.put(name, new SymbolKey(name, org.mozilla.javascript.Symbol.Kind.PRIVATE));
+        }
+        privateNameScopes.push(privateNames);
         try {
             Node superExpr =
                     node.getSuperClass() == null
@@ -922,7 +921,7 @@ public final class IRFactory {
             classNode.addChildToBack(accumulator);
 
             ClassLiteralDescriptor.Builder builder = new ClassLiteralDescriptor.Builder();
-            describeClass(node, builder);
+            describeClass(node, builder, privateNames);
             ClassLiteralDescriptor descriptor = builder.build();
             classDescriptors.put(node, descriptor);
 
@@ -934,49 +933,17 @@ public final class IRFactory {
             List<ClassNode.ElementKind> methodKinds = node.getMethodKinds();
             List<AstNode> methodComputedKeys = node.getMethodComputedKeys();
             for (int i = 0; i < methods.size(); i++) {
-                ClassLiteralDescriptor.ElementKind kind = toDescriptorKind(methodKinds.get(i));
-                String name = methodNames.get(i);
                 AstNode computedKeyExpr = methodComputedKeys.get(i);
-                Node keyValue;
                 if (computedKeyExpr != null) {
-                    keyValue = transform(computedKeyExpr);
-                } else if (isPrivateName(name)) {
-                    // A private name's key is the (hidden, per-class) SymbolKey value, resolved
-                    // the same way a user-written computed key would be.
-                    keyValue =
-                            parser.createName(
-                                    ClassNode.privateVarName(node.getPrivateNameScopeId(), name));
-                } else {
-                    keyValue = null;
-                }
-                if (keyValue != null) {
                     classNode.addChildToBack(
                             new Node(
-                                    Token.ACCUMULATE_RESULT, new Node(Token.TO_PROPKEY, keyValue)));
-                    Node methodValue = transform(methods.get(i));
-                    classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
-                } else {
-                    Node methodValue = transform(methods.get(i));
-                    classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
+                                    Token.ACCUMULATE_RESULT,
+                                    new Node(Token.TO_PROPKEY, transform(computedKeyExpr))));
                 }
+                Node methodValue = transform(methods.get(i));
+                classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
             }
 
-            List<String> fieldNames = node.getFieldNames();
-            List<AstNode> fieldInits = node.getFieldInitializers();
-            for (int i = 0; i < fieldNames.size(); i++) {
-                String name = fieldNames.get(i);
-                if (fieldInits.get(i) != null) {
-                    continue;
-                }
-                if (isPrivateName(name)) {
-                    Node keyValue =
-                            parser.createName(
-                                    ClassNode.privateVarName(node.getPrivateNameScopeId(), name));
-                    classNode.addChildToBack(
-                            new Node(
-                                    Token.ACCUMULATE_RESULT, new Node(Token.TO_PROPKEY, keyValue)));
-                }
-            }
             if (node.getFieldInitializer() != null) {
                 classNode.addChildToBack(
                         new Node(Token.ACCUMULATE_RESULT, transform(node.getFieldInitializer())));
@@ -986,22 +953,17 @@ public final class IRFactory {
             classNode.putIntProp(
                     Node.LITERAL_INDEX_PROP, parser.currentScriptOrFn.addLiteral(descriptor));
 
-            // Still a pure expression at this point, so it's safe to prepend the (also
-            // expression-shaped) private-name setup here, before branching into the
-            // statement-vs-expression forms below.
-            Node classValue = prependPrivateNameSetup(node, classNode);
-
             if (node.isStatement() && node.getClassName() != null) {
                 Node assign =
                         createAssignment(
                                 Token.ASSIGN,
                                 parser.createName(node.getClassName().getIdentifier()),
-                                classValue);
+                                classNode);
                 return createExprStatementNoReturn(assign, node.getLineno(), node.getColumn());
             }
-            return classValue;
+            return classNode;
         } finally {
-            currentPrivateNameScopeId = savedPrivateNameScopeId;
+            privateNameScopes.pop();
             astNodePos.pop();
         }
     }
@@ -1010,15 +972,20 @@ public final class IRFactory {
      * Records the shape of {@code node}'s members in {@code builder}. This is done before any of
      * the class is transformed so that its constructor can refer to the finished descriptor.
      */
-    private static void describeClass(ClassNode node, ClassLiteralDescriptor.Builder builder) {
+    private static void describeClass(
+            ClassNode node,
+            ClassLiteralDescriptor.Builder builder,
+            Map<String, SymbolKey> privateNames) {
         List<String> methodNames = node.getMethodNames();
         List<ClassNode.ElementKind> methodKinds = node.getMethodKinds();
         List<AstNode> methodComputedKeys = node.getMethodComputedKeys();
         for (int i = 0; i < methodNames.size(); i++) {
             ClassLiteralDescriptor.ElementKind kind = toDescriptorKind(methodKinds.get(i));
             String name = methodNames.get(i);
-            if (methodComputedKeys.get(i) != null || isPrivateName(name)) {
+            if (methodComputedKeys.get(i) != null) {
                 builder.addComputedMethod(kind);
+            } else if (isPrivateName(name)) {
+                builder.addMethod(privateNames.get(name), kind);
             } else {
                 builder.addMethod(name, kind);
             }
@@ -1030,11 +997,7 @@ public final class IRFactory {
                 continue;
             }
             String name = fieldNames.get(i);
-            if (isPrivateName(name)) {
-                builder.addComputedField();
-            } else {
-                builder.addField(name);
-            }
+            builder.addField(isPrivateName(name) ? privateNames.get(name) : name);
         }
         if (node.getFieldInitializer() != null) {
             builder.addFieldInitializer();
@@ -1047,37 +1010,25 @@ public final class IRFactory {
     }
 
     /**
-     * Assigns each of the class's private names (see {@link ClassNode#getPrivateNames}) a fresh
-     * {@link SymbolKey}, once, before the class itself is evaluated: {@code (%priv#a =
-     * LOAD_LITERAL, %priv#b = LOAD_LITERAL, ..., <result>)}. Every reference to {@code #a}/{@code
-     * #b} (in field initializers or method bodies, however deeply nested) resolves the same
-     * SymbolKey via ordinary closure/scope-chain lookup of the hidden {@code %priv#a} binding
-     * declared (via {@code defineSymbol}) when the class was parsed.
+     * Returns a node loading the {@link SymbolKey} of private name {@code name}, as declared by the
+     * innermost enclosing class that declares it.
      *
      * <p>Note: this SymbolKey is shared by every evaluation of a given class-literal source
      * location (e.g. inside a loop), rather than being fresh per evaluation as the spec requires -
      * a deliberate simplification.
      */
-    private Node prependPrivateNameSetup(ClassNode node, Node result) {
-        for (String name : node.getPrivateNames()) {
-            Node literal = new Node(Token.LOAD_LITERAL);
-            literal.putIntProp(
-                    Node.LITERAL_INDEX_PROP,
-                    parser.currentScriptOrFn.addLiteral(
-                            new SymbolKey(name, org.mozilla.javascript.Symbol.Kind.PRIVATE)));
-            String varName = ClassNode.privateVarName(node.getPrivateNameScopeId(), name);
-            Node assign =
-                    new Node(
-                            Token.SETNAME,
-                            parser.createName(Token.BINDNAME, varName, null),
-                            literal);
-            if (result.getType() == Token.COMMA) {
-                result.addChildToFront(assign);
-            } else {
-                result = new Node(Token.COMMA, assign, result);
+    private Node privateNameKey(String name) {
+        for (Map<String, SymbolKey> scope : privateNameScopes) {
+            SymbolKey key = scope.get(name);
+            if (key != null) {
+                Node literal = new Node(Token.LOAD_LITERAL);
+                literal.putIntProp(
+                        Node.LITERAL_INDEX_PROP, parser.currentScriptOrFn.addLiteral(key));
+                return literal;
             }
         }
-        return result;
+        parser.reportError("msg.private.name", name);
+        return null;
     }
 
     private static ClassLiteralDescriptor.ElementKind toDescriptorKind(ClassNode.ElementKind kind) {
@@ -1470,14 +1421,8 @@ public final class IRFactory {
         Node target = transform(node.getTarget());
         String name = node.getProperty().getIdentifier();
         if (isPrivateName(name)) {
-            // obj.#x - the hidden %priv#x variable holds the enclosing class's SymbolKey for #x;
-            // access it the same way any other computed member (obj[expr]) would be.
-            Node getElem =
-                    new Node(
-                            Token.GETELEM,
-                            target,
-                            parser.createName(
-                                    ClassNode.privateVarName(currentPrivateNameScopeId, name)));
+            // obj.#x is accessed the same way any other computed member (obj[expr]) would be.
+            Node getElem = new Node(Token.GETELEM, target, privateNameKey(name));
             if (node.type == Token.QUESTION_DOT) {
                 getElem.putIntProp(Node.OPTIONAL_CHAINING, 1);
             }

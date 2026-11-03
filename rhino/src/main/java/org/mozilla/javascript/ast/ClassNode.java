@@ -25,7 +25,7 @@ import org.mozilla.javascript.Token;
  * <p>Private names flow through the same method/field lists as ordinary members - a name starting
  * with {@code #} is recognized specially wherever it matters (see {@link
  * org.mozilla.javascript.IRFactory#transformClass}). {@link #getPrivateNames} returns the distinct
- * private names declared in this class, for which a hidden per-class binding needs to be set up.
+ * private names declared in this class, each of which is given its own private symbol.
  *
  * <pre>
  * <i>ClassDeclaration</i> :
@@ -57,7 +57,6 @@ public class ClassNode extends AstNode {
     private List<AstNode> fieldInitializers;
     private FunctionNode fieldInitializer;
     private final Set<String> privateNames = new LinkedHashSet<>();
-    private String privateNameScopeId;
 
     {
         type = Token.CLASS;
@@ -206,41 +205,16 @@ public class ClassNode extends AstNode {
     }
 
     /**
-     * Registers a private name ({@code #name}, including the leading {@code #}) used somewhere in
-     * this class - as a field/method/accessor key. Returns {@code true} the first time a given name
-     * is registered (the caller should only set up the name's hidden binding then).
+     * Registers a private name ({@code #name}, including the leading {@code #}) declared in this
+     * class - as a field/method/accessor key.
      */
-    public boolean addPrivateNameIfNew(String name) {
-        return privateNames.add(name);
+    public void addPrivateName(String name) {
+        privateNames.add(name);
     }
 
     /** Returns the distinct private names ({@code #name}) declared anywhere in this class. */
     public Set<String> getPrivateNames() {
         return privateNames;
-    }
-
-    /**
-     * A scope-unique identifier for this specific class-literal site, used (via {@link
-     * #privateVarName}) to disambiguate private name hidden variables from those of any other class
-     * sharing the same enclosing scope and the same private name. Set once, at parse time.
-     */
-    public void setPrivateNameScopeId(String privateNameScopeId) {
-        this.privateNameScopeId = privateNameScopeId;
-    }
-
-    public String getPrivateNameScopeId() {
-        return privateNameScopeId;
-    }
-
-    /**
-     * The identifier of the hidden, per-class-definition-evaluation binding that holds the {@link
-     * org.mozilla.javascript.SymbolKey} for a given private name. Not a valid JS identifier, so it
-     * can't collide with anything user-written; scoped by {@code scopeId} (see {@link
-     * #setPrivateNameScopeId}) so two unrelated classes declaring the same private name in the same
-     * enclosing scope don't clash.
-     */
-    public static String privateVarName(String scopeId, String privateName) {
-        return "%priv" + scopeId + privateName;
     }
 
     @Override

@@ -108,10 +108,25 @@ public class ClassFieldsTest {
 
     @Test
     public void privateFields() {
-        String code =
+        assertInterpretedModes(
+                "1,undefined,2,b",
                 "class A { #a = 1; b = 2; #c; getA() { return this.#a + ',' + this.#c; } }\n"
                         + "var o = new A();\n"
-                        + "o.getA() + ',' + o.b + ',' + Object.keys(o).join()";
+                        + "o.getA() + ',' + o.b + ',' + Object.keys(o).join()");
+    }
+
+    @Test
+    public void privateNameFromEnclosingClass() {
+        assertInterpretedModes(
+                "1,2",
+                "class A { #a = 1; m(o) {\n"
+                        + "  class B { #a = 2; get(x) { return x.#a; } }\n"
+                        + "  class C { get(x) { return x.#a; } }\n"
+                        + "  return new C().get(this) + ',' + new B().get(new B()); } }\n"
+                        + "new A().m()");
+    }
+
+    private static void assertInterpretedModes(String expected, String code) {
         // Private names cannot yet be compiled to class files.
         for (var mode :
                 new Context.EvaluationMethod[] {
@@ -121,9 +136,7 @@ public class ClassFieldsTest {
                     cx -> {
                         cx.setLanguageVersion(Context.VERSION_ES6);
                         var scope = cx.initStandardObjects();
-                        assertEquals(
-                                "1,undefined,2,b",
-                                cx.evaluateString(scope, code, "test.js", 1, null));
+                        assertEquals(expected, cx.evaluateString(scope, code, "test.js", 1, null));
                         return null;
                     },
                     mode);

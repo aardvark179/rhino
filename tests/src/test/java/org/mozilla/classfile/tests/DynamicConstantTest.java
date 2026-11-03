@@ -625,7 +625,7 @@ public class DynamicConstantTest {
         builder.addMethod("m", ElementKind.METHOD);
         builder.addComputedMethod(ElementKind.GETTER);
         builder.addField("a");
-        builder.addComputedField();
+        builder.addField(SymbolKey.ITERATOR);
         builder.addFieldInitializer();
         var resolved =
                 (FieldClassLiteralDescriptor)
@@ -641,7 +641,7 @@ public class DynamicConstantTest {
         var fieldKeys = resolved.getFieldKeys();
         assertEquals(2, fieldKeys.length);
         assertEquals("a", fieldKeys[0]);
-        assertSame(UniqueTag.COMPUTED_KEY, fieldKeys[1]);
+        assertSame(SymbolKey.ITERATOR, fieldKeys[1]);
     }
 
     @Test
