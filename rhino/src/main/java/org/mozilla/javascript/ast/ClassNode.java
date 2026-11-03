@@ -55,6 +55,7 @@ public class ClassNode extends AstNode {
     private List<AstNode> methodComputedKeys;
     private List<String> fieldNames;
     private List<AstNode> fieldInitializers;
+    private FunctionNode fieldInitializer;
     private final Set<String> privateNames = new LinkedHashSet<>();
     private String privateNameScopeId;
 
@@ -163,7 +164,11 @@ public class ClassNode extends AstNode {
         return methodComputedKeys == null ? Collections.emptyList() : methodComputedKeys;
     }
 
-    /** Adds an instance field declaration. {@code initializer} may be {@code null}. */
+    /**
+     * Adds an instance field declaration. {@code initializer} may be {@code null}; otherwise it is
+     * an element of the {@link #getFieldInitializer field initializer} method's result, and is
+     * parented there rather than to this node.
+     */
     public void addField(String name, AstNode initializer) {
         if (fieldNames == null) {
             fieldNames = new ArrayList<>();
@@ -171,8 +176,20 @@ public class ClassNode extends AstNode {
         }
         fieldNames.add(name);
         fieldInitializers.add(initializer);
-        if (initializer != null) {
-            initializer.setParent(this);
+    }
+
+    /**
+     * The synthesized method that evaluates all field initializers, returning an array of their
+     * values in declaration order, or {@code null} if no field has an initializer.
+     */
+    public FunctionNode getFieldInitializer() {
+        return fieldInitializer;
+    }
+
+    public void setFieldInitializer(FunctionNode fieldInitializer) {
+        this.fieldInitializer = fieldInitializer;
+        if (fieldInitializer != null) {
+            fieldInitializer.setParent(this);
         }
     }
 
@@ -306,12 +323,8 @@ public class ClassNode extends AstNode {
                     methods.get(i).visit(v);
                 }
             }
-            if (fieldInitializers != null) {
-                for (AstNode init : fieldInitializers) {
-                    if (init != null) {
-                        init.visit(v);
-                    }
-                }
+            if (fieldInitializer != null) {
+                fieldInitializer.visit(v);
             }
         }
     }

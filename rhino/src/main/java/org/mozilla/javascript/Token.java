@@ -156,10 +156,13 @@ public class Token {
             // Produces undefined on the stack. Used inside the finally branch of destructuring
             // (and similar) lowerings so the iterator is closed even on exception /
             // generator-return.
-            ITERATOR_CLOSE_ABRUPT = ENUM_ASYNC_STEP + 1;
+            ITERATOR_CLOSE_ABRUPT = ENUM_ASYNC_STEP + 1,
+            // Initializes the current class constructor's instance fields on `this`, then
+            // pushes `this`.
+            INIT_FIELDS = ITERATOR_CLOSE_ABRUPT + 1;
 
     // End of interpreter bytecodes
-    public static final int LAST_BYTECODE_TOKEN = ITERATOR_CLOSE_ABRUPT,
+    public static final int LAST_BYTECODE_TOKEN = INIT_FIELDS,
             TRY = LAST_BYTECODE_TOKEN + 1,
             SEMI = TRY + 1, // semicolon
             LB = SEMI + 1, // left and right brackets
@@ -680,6 +683,8 @@ public class Token {
                 return "EXTENDS";
             case PRIVATE_NAME:
                 return "PRIVATE_NAME";
+            case INIT_FIELDS:
+                return "INIT_FIELDS";
             case TO_OBJECT_COERCIBLE:
                 return "TO_OBJECT_COERCIBLE";
             case ITERATOR_CLOSE_ABRUPT:

@@ -763,6 +763,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         instructionObjs[base + Icode.HOMEOBJ] = new DoHomeObj();
         instructionObjs[base + Token.THISFN] = new DoThisFunction();
         instructionObjs[base + Token.NEW_TARGET] = new DoNewTarget();
+        instructionObjs[base + Token.INIT_FIELDS] = new DoInitFields();
         instructionObjs[base + Token.FALSE] = new DoFalse();
         instructionObjs[base + Token.TRUE] = new DoTrue();
         instructionObjs[base + Icode.UNDEF] = new DoUndef();
@@ -3655,6 +3656,16 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
         }
     }
 
+    private static class DoInitFields extends InstructionClass {
+        @Override
+        NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            frame.stack[++frame.stackTop] =
+                    ClassLiteralDescriptor.initializeFields(
+                            cx, frame.scope, frame.fnOrScript, frame.thisObj);
+            return null;
+        }
+    }
+
     private static class DoNewTarget extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
@@ -4188,8 +4199,7 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
     private static class DoMakeClass extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            var desc =
-                    (ClassLiteralDescriptor) frame.compilerData.itsLiterals[state.indexReg];
+            var desc = (ClassLiteralDescriptor) frame.compilerData.itsLiterals[state.indexReg];
             var results = (ResultAccumulator) frame.stack[frame.stackTop--];
             var prototype = (Scriptable) frame.stack[frame.stackTop--];
             var superClass = frame.stack[frame.stackTop];

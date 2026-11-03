@@ -1252,6 +1252,22 @@ class BodyCodegen {
                 cfw.addALoad(funObjLocal);
                 break;
 
+            case Token.INIT_FIELDS:
+                cfw.addALoad(contextLocal);
+                cfw.addALoad(variableObjectLocal);
+                cfw.addALoad(funObjLocal);
+                cfw.addALoad(thisObjLocal);
+                cfw.addInvoke(
+                        ByteCode.INVOKESTATIC,
+                        "org/mozilla/javascript/ClassLiteralDescriptor",
+                        "initializeFields",
+                        "(Lorg/mozilla/javascript/Context;"
+                                + "Lorg/mozilla/javascript/VarScope;"
+                                + "Ljava/lang/Object;"
+                                + "Ljava/lang/Object;"
+                                + ")Ljava/lang/Object;");
+                break;
+
             case Token.NEW_TARGET:
                 if (isGenerator) {
                     // Generators cannot be constructors, so new.target is always undefined.

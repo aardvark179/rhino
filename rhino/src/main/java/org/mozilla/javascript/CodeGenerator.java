@@ -1215,6 +1215,7 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
             case Token.SUPER:
             case Token.THISFN:
             case Token.NEW_TARGET:
+            case Token.INIT_FIELDS:
             case Token.FALSE:
             case Token.TRUE:
                 addToken(type);

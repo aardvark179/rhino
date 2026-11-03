@@ -13,6 +13,7 @@ public class JSFunction extends BaseFunction implements ScriptOrFn<JSFunction> {
     private final Object lexicalThis;
     private final Object lexicalNewTarget;
     private final Scriptable homeObject;
+    private ClassLiteralDescriptor.InstanceFields instanceFields;
 
     public JSFunction(
             Context cx,
@@ -51,6 +52,14 @@ public class JSFunction extends BaseFunction implements ScriptOrFn<JSFunction> {
     @Override
     protected void setPrototypeProperty(Object prototype) {
         super.setPrototypeProperty(prototype);
+    }
+
+    ClassLiteralDescriptor.InstanceFields getInstanceFields() {
+        return instanceFields;
+    }
+
+    void setInstanceFields(ClassLiteralDescriptor.InstanceFields instanceFields) {
+        this.instanceFields = instanceFields;
     }
 
     @Override

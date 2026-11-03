@@ -3,6 +3,7 @@ package org.mozilla.javascript;
 import java.io.Serializable;
 import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 /**
  * Runtime descriptor for an ES6 class literal, playing the same role for classes that {@link
@@ -12,19 +13,58 @@ import java.util.ArrayList;
  *
  * <p>{@code values[0]} is always the (already-built) constructor function. The rest of {@code
  * values} holds, per member entry in order: the computed key value (only for entries whose key is
- * {@link UniqueTag#COMPUTED_KEY}) followed by the member's function value. {@code prototype} is a
- * freshly created plain object (built the same way as an object literal's {@code EMPTY_OBJECT})
- * that becomes the constructor's {@code .prototype}; methods/the constructor are all built with
- * {@code homeObject == prototype} via the same "peek the object under construction" convention
+ * {@link UniqueTag#COMPUTED_KEY}) followed by the member's function value. After the members come
+ * the computed key values of any instance fields without initializers that have computed keys and,
+ * if any field has an initializer, a single field initializer function, which creates the fields
+ * with initializers on its {@code this} in declaration order. {@code prototype} is a freshly
+ * created plain object (built the same way as an object literal's {@code EMPTY_OBJECT}) that
+ * becomes the constructor's {@code .prototype}; methods/the constructor are all built with {@code
+ * homeObject == prototype} via the same "peek the object under construction" convention
  * object-literal methods already use.
  *
- * <p>Static members, fields, and private names will add further subclasses in later phases,
- * mirroring how {@link ObjectLiteralDescriptor} grew from a simple case to a complex one.
+ * <p>Instance fields are not installed by {@link #createClass}: the field initializer and the keys
+ * of the fields without initializers are recorded on the constructor, and {@link #initializeFields}
+ * defines them on each new instance once its {@code this} value is available - at the start of a
+ * base class constructor, or after the {@code super(...)} call of a derived one.
  */
 public abstract class ClassLiteralDescriptor implements Serializable {
 
     public abstract Scriptable createClass(
             Context cx, VarScope scope, Object superClass, Scriptable prototype, Object[] values);
+
+    /**
+     * Defines this class's instance fields on {@code thisObj}: first those with initializers, by
+     * calling the field initializer, and then the rest, as {@code undefined}. {@code fieldValues}
+     * holds the computed keys and field initializer captured when the class was evaluated.
+     */
+    public void initializeFields(
+            Context cx, VarScope scope, Scriptable thisObj, Object[] fieldValues) {}
+
+    /**
+     * Runtime entry point used by all backends: initializes the instance fields of class
+     * constructor {@code constructor} on {@code thisObj}, and returns {@code thisObj}.
+     */
+    public static Object initializeFields(
+            Context cx, VarScope scope, Object constructor, Object thisObj) {
+        if (constructor instanceof JSFunction && thisObj instanceof Scriptable) {
+            InstanceFields fields = ((JSFunction) constructor).getInstanceFields();
+            if (fields != null) {
+                fields.descriptor.initializeFields(cx, scope, (Scriptable) thisObj, fields.values);
+            }
+        }
+        return thisObj;
+    }
+
+    /** The instance fields of one evaluation of a class literal, held by its constructor. */
+    static final class InstanceFields implements Serializable {
+        final ClassLiteralDescriptor descriptor;
+        final Object[] values;
+
+        InstanceFields(ClassLiteralDescriptor descriptor, Object[] values) {
+            this.descriptor = descriptor;
+            this.values = values;
+        }
+    }
 
     /**
      * Wires up the constructor/prototype relationship described in ES2015 15.7.14
@@ -58,6 +98,37 @@ public abstract class ClassLiteralDescriptor implements Serializable {
                     .defineProperty("constructor", constructor, ScriptableObject.DONTENUM);
         }
         return constructor;
+    }
+
+    /** Installs {@code members} on {@code target}, returning the index of the next unused value. */
+    private static int installMembers(
+            ScriptableObject target, MemberEntry[] members, Object[] values) {
+        int v = 1;
+        for (MemberEntry member : members) {
+            Object key = member.key == UniqueTag.COMPUTED_KEY ? values[v++] : member.key;
+            Object value = values[v++];
+            installMember(target, key, member.kind, value);
+        }
+        return v;
+    }
+
+    private static void defineField(Object key, Object value, Context cx, Scriptable thisObj) {
+        if (!(thisObj instanceof ScriptableObject)) {
+            ScriptRuntime.setObjectElem(thisObj, key, value, cx);
+            return;
+        }
+        ScriptableObject so = (ScriptableObject) thisObj;
+        if (key instanceof Symbol) {
+            so.defineProperty((Symbol) key, value, ScriptableObject.EMPTY);
+            return;
+        }
+        var s = ScriptRuntime.toStringIdOrIndex(key);
+        if (s.stringId != null) {
+            so.defineProperty(s.stringId, value, ScriptableObject.EMPTY);
+        } else {
+            so.put(s.index, so, value);
+            so.setAttributes(s.index, ScriptableObject.EMPTY);
+        }
     }
 
     private static void installMember(
@@ -133,7 +204,9 @@ public abstract class ClassLiteralDescriptor implements Serializable {
     /** Builds the appropriate {@link ClassLiteralDescriptor} subclass for a class literal. */
     public static class Builder {
         private final ArrayList<MemberEntry> members = new ArrayList<>();
+        private final ArrayList<Object> fieldKeys = new ArrayList<>();
         private int size = 1; // values[0] is always the constructor
+        private boolean hasFieldInitializer;
 
         public void addMethod(Object key, ElementKind kind) {
             members.add(new MemberEntry(key, kind));
@@ -146,11 +219,39 @@ public abstract class ClassLiteralDescriptor implements Serializable {
             size += 2;
         }
 
+        /**
+         * Adds an instance field without an initializer. Fields must be added after all methods.
+         */
+        public void addField(Object key) {
+            fieldKeys.add(key);
+        }
+
+        /**
+         * Adds an instance field without an initializer whose key value occupies the next {@code
+         * values} slot.
+         */
+        public void addComputedField() {
+            fieldKeys.add(UniqueTag.COMPUTED_KEY);
+            size++;
+        }
+
+        /** Adds the field initializer, which occupies the final {@code values} slot. */
+        public void addFieldInitializer() {
+            hasFieldInitializer = true;
+            size++;
+        }
+
         public int getSize() {
             return size;
         }
 
         public ClassLiteralDescriptor build() {
+            if (!fieldKeys.isEmpty() || hasFieldInitializer) {
+                return new FieldClassLiteralDescriptor(
+                        members.toArray(new MemberEntry[0]),
+                        fieldKeys.toArray(),
+                        hasFieldInitializer);
+            }
             if (members.isEmpty()) {
                 return new SimpleClassLiteralDescriptor();
             }
@@ -205,14 +306,83 @@ public abstract class ClassLiteralDescriptor implements Serializable {
                 Scriptable prototype,
                 Object[] values) {
             BaseFunction constructor = setupClass((BaseFunction) values[0], prototype, superClass);
-            ScriptableObject target = (ScriptableObject) prototype;
-            int v = 1;
-            for (MemberEntry member : members) {
-                Object key = member.key == UniqueTag.COMPUTED_KEY ? values[v++] : member.key;
-                Object value = values[v++];
-                installMember(target, key, member.kind, value);
-            }
+            installMembers((ScriptableObject) prototype, members, values);
             return constructor;
+        }
+    }
+
+    /** A class with instance fields, and optionally methods. */
+    public static final class FieldClassLiteralDescriptor extends ClassLiteralDescriptor {
+        private final MemberEntry[] members;
+        private final Object[] fieldKeys;
+        private final boolean hasFieldInitializer;
+
+        FieldClassLiteralDescriptor(
+                MemberEntry[] members, Object[] fieldKeys, boolean hasFieldInitializer) {
+            this.members = members;
+            this.fieldKeys = fieldKeys;
+            this.hasFieldInitializer = hasFieldInitializer;
+        }
+
+        public MemberEntry[] getMembers() {
+            return members;
+        }
+
+        /** The keys of the fields without initializers. */
+        public Object[] getFieldKeys() {
+            return fieldKeys;
+        }
+
+        public boolean hasFieldInitializer() {
+            return hasFieldInitializer;
+        }
+
+        /**
+         * Bootstrap arguments are the number of members, the key and kind of each member in turn,
+         * whether there is a field initializer, and then the key of each field without one.
+         */
+        public static FieldClassLiteralDescriptor fieldClassLiteralConstant(
+                MethodHandles.Lookup lookup, String name, Class<?> type, Object... args) {
+            int memberCount = (Integer) args[0];
+            var members = new MemberEntry[memberCount];
+            for (int i = 0; i < memberCount; i++) {
+                members[i] = new MemberEntry(args[1 + 2 * i], (ElementKind) args[2 + 2 * i]);
+            }
+            int base = 1 + 2 * memberCount;
+            boolean hasFieldInitializer = (Boolean) args[base];
+            Object[] fieldKeys = Arrays.copyOfRange(args, base + 1, args.length);
+            return new FieldClassLiteralDescriptor(members, fieldKeys, hasFieldInitializer);
+        }
+
+        @Override
+        public Scriptable createClass(
+                Context cx,
+                VarScope scope,
+                Object superClass,
+                Scriptable prototype,
+                Object[] values) {
+            BaseFunction constructor = setupClass((BaseFunction) values[0], prototype, superClass);
+            int v = installMembers((ScriptableObject) prototype, members, values);
+            ((JSFunction) constructor)
+                    .setInstanceFields(
+                            new InstanceFields(this, Arrays.copyOfRange(values, v, values.length)));
+            return constructor;
+        }
+
+        @Override
+        public void initializeFields(
+                Context cx, VarScope scope, Scriptable thisObj, Object[] fieldValues) {
+            if (hasFieldInitializer) {
+                Callable initializer = (Callable) fieldValues[fieldValues.length - 1];
+                initializer.call(cx, scope, thisObj, ScriptRuntime.emptyArgs);
+            }
+            int v = 0;
+            for (Object key : fieldKeys) {
+                if (key == UniqueTag.COMPUTED_KEY) {
+                    key = fieldValues[v++];
+                }
+                defineField(key, Undefined.instance, cx, thisObj);
+            }
         }
     }
 }

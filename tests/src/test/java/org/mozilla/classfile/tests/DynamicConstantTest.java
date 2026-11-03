@@ -37,6 +37,7 @@ import org.mozilla.javascript.ArrayLiteralDescriptor.ComplexArrayLiteral;
 import org.mozilla.javascript.ArrayLiteralDescriptor.SimpleArrayLiteral;
 import org.mozilla.javascript.ClassLiteralDescriptor;
 import org.mozilla.javascript.ClassLiteralDescriptor.ElementKind;
+import org.mozilla.javascript.ClassLiteralDescriptor.FieldClassLiteralDescriptor;
 import org.mozilla.javascript.ClassLiteralDescriptor.MethodClassLiteralDescriptor;
 import org.mozilla.javascript.ClassLiteralDescriptor.SimpleClassLiteralDescriptor;
 import org.mozilla.javascript.Context;
@@ -616,6 +617,55 @@ public class DynamicConstantTest {
         assertSame(ElementKind.SETTER, members[2].getKind());
         assertSame(SymbolKey.ITERATOR, members[3].getKey());
         assertSame(ElementKind.METHOD, members[3].getKind());
+    }
+
+    @Test
+    public void fieldClassLiteralRoundTrips() throws Exception {
+        var builder = new ClassLiteralDescriptor.Builder();
+        builder.addMethod("m", ElementKind.METHOD);
+        builder.addComputedMethod(ElementKind.GETTER);
+        builder.addField("a");
+        builder.addComputedField();
+        builder.addFieldInitializer();
+        var resolved =
+                (FieldClassLiteralDescriptor)
+                        loadClassLiteral("TestFieldClassLiteral", builder.build());
+
+        var members = resolved.getMembers();
+        assertEquals(2, members.length);
+        assertEquals("m", members[0].getKey());
+        assertSame(ElementKind.METHOD, members[0].getKind());
+        assertSame(UniqueTag.COMPUTED_KEY, members[1].getKey());
+        assertSame(ElementKind.GETTER, members[1].getKind());
+        assertTrue(resolved.hasFieldInitializer());
+        var fieldKeys = resolved.getFieldKeys();
+        assertEquals(2, fieldKeys.length);
+        assertEquals("a", fieldKeys[0]);
+        assertSame(UniqueTag.COMPUTED_KEY, fieldKeys[1]);
+    }
+
+    @Test
+    public void fieldOnlyClassLiteralRoundTrips() throws Exception {
+        var builder = new ClassLiteralDescriptor.Builder();
+        builder.addField("a");
+        var resolved =
+                (FieldClassLiteralDescriptor)
+                        loadClassLiteral("TestFieldOnlyClassLiteral", builder.build());
+        assertEquals(0, resolved.getMembers().length);
+        assertFalse(resolved.hasFieldInitializer());
+        assertEquals(1, resolved.getFieldKeys().length);
+        assertEquals("a", resolved.getFieldKeys()[0]);
+    }
+
+    @Test
+    public void fieldInitializerOnlyClassLiteralRoundTrips() throws Exception {
+        var builder = new ClassLiteralDescriptor.Builder();
+        builder.addFieldInitializer();
+        var resolved =
+                (FieldClassLiteralDescriptor)
+                        loadClassLiteral("TestFieldInitializerOnlyClassLiteral", builder.build());
+        assertTrue(resolved.hasFieldInitializer());
+        assertEquals(0, resolved.getFieldKeys().length);
     }
 
     @Test

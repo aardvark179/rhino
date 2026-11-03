@@ -90,6 +90,7 @@ import org.mozilla.javascript.interpreterv2.instruction.IfNotNullUndefined;
 import org.mozilla.javascript.interpreterv2.instruction.IfNullUndefined;
 import org.mozilla.javascript.interpreterv2.instruction.In;
 import org.mozilla.javascript.interpreterv2.instruction.InitConstVar;
+import org.mozilla.javascript.interpreterv2.instruction.InitFields;
 import org.mozilla.javascript.interpreterv2.instruction.Instanceof;
 import org.mozilla.javascript.interpreterv2.instruction.Instruction;
 import org.mozilla.javascript.interpreterv2.instruction.Int;
@@ -1009,6 +1010,9 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 return;
             case Token.NEW_TARGET:
                 addInstruction(NewTarget.instance);
+                return;
+            case Token.INIT_FIELDS:
+                addInstruction(InitFields.instance);
                 return;
             case Token.FALSE:
                 addInstruction(PushConstant.pushFalse);

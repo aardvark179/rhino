@@ -1368,7 +1368,7 @@ public class Parser {
                 AstNode initializer = null;
                 if (peekToken() == Token.ASSIGN) {
                     consumeToken();
-                    initializer = assignExpr();
+                    initializer = fieldInitializer(classNode);
                 }
                 if (peekToken() == Token.SEMI) {
                     consumeToken();
@@ -1405,6 +1405,8 @@ public class Parser {
 
         inUseStrictDirective = savedStrict;
 
+        finishFieldInitializer(classNode);
+
         if (constructor == null) {
             constructor = createDefaultConstructor(pos, classNode.getSuperClass() != null);
         }
@@ -1419,6 +1421,75 @@ public class Parser {
         constructor.setRawSourceBounds(pos, end);
 
         return classNode;
+    }
+
+    /**
+     * Parses a class field's initializer expression inside the class's synthesized field
+     * initializer method (see {@link ClassNode#getFieldInitializer}), creating that method for the
+     * first initializer, so that every initializer is evaluated with the instance as {@code this}
+     * and the prototype as its home object.
+     */
+    private AstNode fieldInitializer(ClassNode classNode) throws IOException {
+        FunctionNode fn = classNode.getFieldInitializer();
+        if (fn == null) {
+            fn = new FunctionNode(ts.tokenEnd);
+            fn.setFunctionType(FunctionNode.FUNCTION_EXPRESSION);
+            fn.setMethodDefinition(true);
+            fn.setSourceName(sourceURI);
+            fn.setLineColumnNumber(lineNumber(), columnNumber());
+            classNode.setFieldInitializer(fn);
+        }
+
+        PerFunctionVariables savedVars = new PerFunctionVariables(fn);
+        boolean wasInsideMethod = insideMethod;
+        insideMethod = true;
+        boolean wasInsideClassConstructor = insideClassConstructor;
+        insideClassConstructor = false;
+        ++nestingOfFunction;
+        try {
+            return assignExpr();
+        } finally {
+            --nestingOfFunction;
+            savedVars.restore();
+            insideMethod = wasInsideMethod;
+            insideClassConstructor = wasInsideClassConstructor;
+        }
+    }
+
+    /**
+     * Gives the class's field initializer method, if it has one, a body of one expression statement
+     * per field initializer, in declaration order. {@link IRFactory} turns each into the definition
+     * of its field on {@code this}.
+     */
+    private void finishFieldInitializer(ClassNode classNode) {
+        FunctionNode fn = classNode.getFieldInitializer();
+        if (fn == null) {
+            return;
+        }
+        List<AstNode> inits = new ArrayList<>();
+        for (AstNode init : classNode.getFieldInitializers()) {
+            if (init != null) {
+                inits.add(init);
+            }
+        }
+        AstNode first = inits.get(0);
+        AstNode last = inits.get(inits.size() - 1);
+        int start = first.getPosition();
+        int end = last.getPosition() + last.getLength();
+
+        Block body = new Block(start, end - start);
+        body.setLineColumnNumber(first.getLineno(), first.getColumn());
+        for (AstNode init : inits) {
+            ExpressionStatement stmt = new ExpressionStatement(init);
+            stmt.setLineColumnNumber(init.getLineno(), init.getColumn());
+            body.addStatement(stmt);
+        }
+
+        fn.setPosition(start);
+        fn.setBody(body);
+        fn.setRawSourceBounds(start, end);
+        fn.setLength(end - start);
+        fn.setEndLineno(last.getLineno());
     }
 
     /**

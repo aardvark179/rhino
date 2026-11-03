@@ -104,6 +104,8 @@ public final class IRFactory {
     private AstNodePosition astNodePos;
     private boolean outerScopeIsStrict;
     private boolean insideClassConstructor;
+    // Whether the class constructor being transformed belongs to a class with instance fields.
+    private boolean classConstructorHasFields;
     // The enclosing class's private-name scope id (see ClassNode.privateVarName), valid for the
     // entire transform of that class's constructor/methods/field initializers - including inside
     // arbitrarily nested functions, unlike insideClassConstructor which resets per function.
@@ -664,7 +666,14 @@ public final class IRFactory {
         var savedStrict = outerScopeIsStrict;
         outerScopeIsStrict |= fn.isInStrictMode();
         boolean savedInsideClassConstructor = insideClassConstructor;
+        boolean savedClassConstructorHasFields = classConstructorHasFields;
         insideClassConstructor = fn.isClassConstructor();
+        ClassNode constructorClass =
+                insideClassConstructor && fn.getParent() instanceof ClassNode
+                        ? (ClassNode) fn.getParent()
+                        : null;
+        classConstructorHasFields =
+                constructorClass != null && constructorClass.getFieldCount() > 0;
         Parser.PerFunctionVariables savedVars = parser.createPerFunctionVariables(fn);
         try {
             // If we start needing to record much more codegen metadata during
@@ -682,7 +691,10 @@ public final class IRFactory {
 
             int lineno = fn.getBody().getLineno(), column = fn.getBody().getColumn();
             ++parser.nestingOfFunction; // only for body, not params
-            Node body = transform(fn.getBody());
+            Node body =
+                    isFieldInitializer(fn)
+                            ? transformFieldInitializerBody((ClassNode) fn.getParent())
+                            : transform(fn.getBody());
 
             /* Process simple default parameters */
             List<Object> defaultParams = fn.getDefaultParams();
@@ -758,6 +770,13 @@ public final class IRFactory {
                 }
             }
 
+            if (classConstructorHasFields && constructorClass.getSuperClass() == null) {
+                // A base class's fields are initialized before anything else in its constructor;
+                // a derived class's are initialized by its super(...) call instead.
+                body.addChildToFront(
+                        new Node(Token.EXPR_VOID, new Node(Token.INIT_FIELDS), lineno, column));
+            }
+
             int syntheticType = fn.getFunctionType();
             Node pn = initFunction(fn, index, body, syntheticType);
             if (mexpr != null) {
@@ -778,7 +797,43 @@ public final class IRFactory {
             savedVars.restore();
             outerScopeIsStrict = savedStrict;
             insideClassConstructor = savedInsideClassConstructor;
+            classConstructorHasFields = savedClassConstructorHasFields;
         }
+    }
+
+    private static boolean isFieldInitializer(FunctionNode fn) {
+        return fn.getParent() instanceof ClassNode
+                && ((ClassNode) fn.getParent()).getFieldInitializer() == fn;
+    }
+
+    /**
+     * Builds the body of a class's field initializer: the creation on {@code this} of each field
+     * that has an initializer, in declaration order.
+     */
+    private Node transformFieldInitializerBody(ClassNode node) {
+        Node body = new Node(Token.BLOCK);
+        List<String> fieldNames = node.getFieldNames();
+        List<AstNode> fieldInits = node.getFieldInitializers();
+        for (int i = 0; i < fieldNames.size(); i++) {
+            AstNode init = fieldInits.get(i);
+            if (init == null) {
+                continue;
+            }
+            String name = fieldNames.get(i);
+            Node key =
+                    isPrivateName(name)
+                            ? parser.createName(
+                                    ClassNode.privateVarName(node.getPrivateNameScopeId(), name))
+                            : Node.newString(name);
+            Node set =
+                    new Node(
+                            isPrivateName(name) ? Token.SETELEM : Token.SETPROP,
+                            new Node(Token.THIS),
+                            key,
+                            transform(init));
+            body.addChildToBack(new Node(Token.EXPR_VOID, set, init.getLineno(), init.getColumn()));
+        }
+        return body;
     }
 
     private Node transformFunctionCall(FunctionCall node) {
@@ -804,6 +859,10 @@ public final class IRFactory {
             }
             if (transformedTarget.getType() == Token.SUPER) {
                 call.putIntProp(Node.SUPER_CONSTRUCTOR_CALL, 1);
+                if (classConstructorHasFields) {
+                    // Once super(...) has set up `this`, initialize this class's fields on it.
+                    return new Node(Token.COMMA, call, new Node(Token.INIT_FIELDS));
+                }
             }
             return call;
         } finally {
@@ -815,15 +874,19 @@ public final class IRFactory {
      * Transforms a class declaration/expression into a {@link Token#CLASS} IR node.
      *
      * <p>Shape: {@code CLASS(superClassExprOrUndefined, EMPTY_OBJECT, RESULT_ACCUMULATOR,
-     * ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(method)...)}. This mirrors {@code
-     * transformObjectLiteral}'s shape exactly: the {@code EMPTY_OBJECT} node creates the (eventual)
-     * prototype object, and every accumulated function value (the constructor first, then each
-     * instance method/getter/setter, in source order) is built with {@code homeObject == } that
-     * prototype via the very same "peek the object under construction" convention object-literal
-     * methods already use - which is why the constructor and methods are parsed as method
-     * definitions. The class's shape (which accumulated values are the constructor vs. named
-     * members, and of what kind) is captured by a {@link ClassLiteralDescriptor} registered in the
-     * current script/function's literal pool, exactly like object/array literals register theirs.
+     * ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(method)..., ACCUMULATE_RESULT(field
+     * key)..., ACCUMULATE_RESULT(field initializer))}, where computed or private method keys
+     * precede their method, only the computed or private keys of fields without initializers are
+     * accumulated, and the single field initializer, which defines the fields with initializers, is
+     * only present if some field has one. This mirrors {@code transformObjectLiteral}'s shape
+     * exactly: the {@code EMPTY_OBJECT} node creates the (eventual) prototype object, and every
+     * accumulated function value (the constructor first, then each instance method/getter/setter,
+     * in source order) is built with {@code homeObject == } that prototype via the very same "peek
+     * the object under construction" convention object-literal methods already use - which is why
+     * the constructor and methods are parsed as method definitions. The class's shape (which
+     * accumulated values are the constructor vs. named members, and of what kind) is captured by a
+     * {@link ClassLiteralDescriptor} registered in the current script/function's literal pool,
+     * exactly like object/array literals register theirs.
      */
     private Node transformClass(ClassNode node) {
         astNodePos.push(node);
@@ -845,7 +908,6 @@ public final class IRFactory {
 
             ClassLiteralDescriptor.Builder builder = new ClassLiteralDescriptor.Builder();
 
-            injectFieldInitializers(node);
             classNode.addChildToBack(
                     new Node(Token.ACCUMULATE_RESULT, transform(node.getConstructor())));
 
@@ -881,6 +943,31 @@ public final class IRFactory {
                     classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
                     builder.addMethod(name, kind);
                 }
+            }
+
+            List<String> fieldNames = node.getFieldNames();
+            List<AstNode> fieldInits = node.getFieldInitializers();
+            for (int i = 0; i < fieldNames.size(); i++) {
+                String name = fieldNames.get(i);
+                if (fieldInits.get(i) != null) {
+                    continue;
+                }
+                if (isPrivateName(name)) {
+                    Node keyValue =
+                            parser.createName(
+                                    ClassNode.privateVarName(node.getPrivateNameScopeId(), name));
+                    classNode.addChildToBack(
+                            new Node(
+                                    Token.ACCUMULATE_RESULT, new Node(Token.TO_PROPKEY, keyValue)));
+                    builder.addComputedField();
+                } else {
+                    builder.addField(name);
+                }
+            }
+            if (node.getFieldInitializer() != null) {
+                classNode.addChildToBack(
+                        new Node(Token.ACCUMULATE_RESULT, transform(node.getFieldInitializer())));
+                builder.addFieldInitializer();
             }
 
             accumulator.putIntProp(Node.RESULTS_SIZE_PROP, builder.getSize());
@@ -944,80 +1031,6 @@ public final class IRFactory {
             }
         }
         return result;
-    }
-
-    /**
-     * Desugars each instance field declaration into a {@code this.name = init;} (or {@code
-     * this.name = undefined;}) statement spliced into the (possibly synthesized) constructor's
-     * body, before the constructor is transformed - so instance field initialization rides on
-     * ordinary property-assignment codegen rather than needing new descriptor/opcode machinery.
-     * Statements are prepended to the front for a base class, or inserted right after the {@code
-     * super(...)} call for a derived class (falling back to the front if no such call is found).
-     */
-    private void injectFieldInitializers(ClassNode node) {
-        List<String> fieldNames = node.getFieldNames();
-        if (fieldNames.isEmpty()) {
-            return;
-        }
-        List<AstNode> fieldInits = node.getFieldInitializers();
-        Node body = node.getConstructor().getBody();
-
-        Node afterAnchor = node.getSuperClass() == null ? null : findSuperCallStatement(body);
-
-        List<AstNode> stmts = new ArrayList<>(fieldNames.size());
-        for (int i = 0; i < fieldNames.size(); i++) {
-            stmts.add(
-                    buildFieldInitStatement(
-                            node.getPrivateNameScopeId(),
-                            fieldNames.get(i),
-                            fieldInits.get(i),
-                            node.getPosition()));
-        }
-
-        if (afterAnchor == null) {
-            for (int i = stmts.size() - 1; i >= 0; i--) {
-                body.addChildToFront(stmts.get(i));
-            }
-        } else {
-            Node anchor = afterAnchor;
-            for (AstNode stmt : stmts) {
-                body.addChildAfter(stmt, anchor);
-                anchor = stmt;
-            }
-        }
-    }
-
-    /** Finds a top-level {@code super(...)} call statement in a constructor body, if any. */
-    private static Node findSuperCallStatement(Node body) {
-        for (Node stmt = body.getFirstChild(); stmt != null; stmt = stmt.getNext()) {
-            if (stmt instanceof ExpressionStatement) {
-                AstNode expr = ((ExpressionStatement) stmt).getExpression();
-                if (expr instanceof FunctionCall) {
-                    AstNode target = ((FunctionCall) expr).getTarget();
-                    if (target != null && target.getType() == Token.SUPER) {
-                        return stmt;
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    private static AstNode buildFieldInitStatement(
-            String privateNameScopeId, String name, AstNode initializer, int pos) {
-        KeywordLiteral thisExpr = new KeywordLiteral(pos, 0, Token.THIS);
-        AstNode target;
-        if (isPrivateName(name)) {
-            // this[%priv#x] = init; - the hidden variable holds this class's SymbolKey for #x.
-            String varName = ClassNode.privateVarName(privateNameScopeId, name);
-            target = new ElementGet(thisExpr, new Name(pos, varName));
-        } else {
-            target = new PropertyGet(thisExpr, new Name(pos, name));
-        }
-        AstNode value =
-                initializer != null ? initializer : new KeywordLiteral(pos, 0, Token.UNDEFINED);
-        Assignment assign = new Assignment(Token.ASSIGN, target, value, pos);
-        return new ExpressionStatement(assign);
     }
 
     private static ClassLiteralDescriptor.ElementKind toDescriptorKind(ClassNode.ElementKind kind) {

@@ -13,6 +13,7 @@ import java.lang.constant.DirectMethodHandleDesc;
 import java.lang.constant.DynamicConstantDesc;
 import org.mozilla.classfile.DynamicConstantDescriber;
 import org.mozilla.classfile.DynamicDescriberRegistry;
+import org.mozilla.javascript.ClassLiteralDescriptor.FieldClassLiteralDescriptor;
 import org.mozilla.javascript.ClassLiteralDescriptor.MethodClassLiteralDescriptor;
 import org.mozilla.javascript.ClassLiteralDescriptor.SimpleClassLiteralDescriptor;
 
@@ -29,6 +30,7 @@ public final class ClassLiteralDescriptorDescribers {
     public static void register(DynamicDescriberRegistry registry) {
         new SimpleDescriber(registry);
         new MethodDescriber(registry);
+        new FieldDescriber(registry);
     }
 
     public static class SimpleDescriber
@@ -93,6 +95,53 @@ public final class ClassLiteralDescriptorDescribers {
                 descs[2 * i + 1] = members[i].getKind().describeConstable().orElseThrow();
             }
             return DynamicConstantDesc.ofNamed(METHOD_CONSTANT, "classLiteral", CD_METHOD, descs);
+        }
+    }
+
+    /**
+     * Bootstrap arguments are the number of members, then each member's key and kind as for {@link
+     * MethodDescriber}, whether there is a field initializer, and finally the key of each field
+     * without an initializer, all keys being described through the registry.
+     */
+    public static class FieldDescriber
+            extends DynamicConstantDescriber<FieldClassLiteralDescriptor> {
+
+        private static final ClassDesc CD_FIELD =
+                ClassDesc.of(FieldClassLiteralDescriptor.class.getName());
+
+        private static final DirectMethodHandleDesc FIELD_CONSTANT =
+                ConstantDescs.ofConstantBootstrap(
+                        CD_FIELD,
+                        "fieldClassLiteralConstant",
+                        CD_FIELD,
+                        ConstantDescs.CD_Object.arrayType());
+
+        public FieldDescriber(DynamicDescriberRegistry registry) {
+            super(registry);
+        }
+
+        @Override
+        public Class<FieldClassLiteralDescriptor> describedType() {
+            return FieldClassLiteralDescriptor.class;
+        }
+
+        @Override
+        public DynamicConstantDesc<FieldClassLiteralDescriptor> describe(
+                FieldClassLiteralDescriptor value) {
+            var members = value.getMembers();
+            var fieldKeys = value.getFieldKeys();
+            var descs = new ConstantDesc[2 + members.length * 2 + fieldKeys.length];
+            descs[0] = members.length;
+            for (int i = 0; i < members.length; i++) {
+                descs[1 + 2 * i] = getRegistry().describe(members[i].getKey());
+                descs[2 + 2 * i] = members[i].getKind().describeConstable().orElseThrow();
+            }
+            int base = 1 + 2 * members.length;
+            descs[base] = value.hasFieldInitializer() ? ConstantDescs.TRUE : ConstantDescs.FALSE;
+            for (int i = 0; i < fieldKeys.length; i++) {
+                descs[base + 1 + i] = getRegistry().describe(fieldKeys[i]);
+            }
+            return DynamicConstantDesc.ofNamed(FIELD_CONSTANT, "classLiteral", CD_FIELD, descs);
         }
     }
 }
