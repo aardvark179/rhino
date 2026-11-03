@@ -1253,12 +1253,15 @@ class BodyCodegen {
                 break;
 
             case Token.INIT_FIELDS:
+                cfw.addLoadDynamicConstant(
+                        codegen.getConstant(
+                                scriptOrFn, node.getIntProp(Node.LITERAL_INDEX_PROP, 0)));
                 cfw.addALoad(contextLocal);
                 cfw.addALoad(variableObjectLocal);
                 cfw.addALoad(funObjLocal);
                 cfw.addALoad(thisObjLocal);
                 cfw.addInvoke(
-                        ByteCode.INVOKESTATIC,
+                        ByteCode.INVOKEVIRTUAL,
                         "org/mozilla/javascript/ClassLiteralDescriptor",
                         "initializeFields",
                         "(Lorg/mozilla/javascript/Context;"

@@ -3659,9 +3659,9 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
     private static class DoInitFields extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
+            var desc = (ClassLiteralDescriptor) frame.compilerData.itsLiterals[state.indexReg];
             frame.stack[++frame.stackTop] =
-                    ClassLiteralDescriptor.initializeFields(
-                            cx, frame.scope, frame.fnOrScript, frame.thisObj);
+                    desc.initializeFields(cx, frame.scope, frame.fnOrScript, frame.thisObj);
             return null;
         }
     }

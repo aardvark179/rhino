@@ -1012,7 +1012,12 @@ public class Compiler<T extends ScriptOrFn<T>> {
                 addInstruction(NewTarget.instance);
                 return;
             case Token.INIT_FIELDS:
-                addInstruction(InitFields.instance);
+                addInstruction(
+                        new InitFields(
+                                new LiteralOperand(
+                                        generateLiteral(
+                                                node.getExistingIntProp(
+                                                        Node.LITERAL_INDEX_PROP)))));
                 return;
             case Token.FALSE:
                 addInstruction(PushConstant.pushFalse);

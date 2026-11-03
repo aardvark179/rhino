@@ -8,6 +8,7 @@ package org.mozilla.javascript;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -106,6 +107,9 @@ public final class IRFactory {
     private boolean insideClassConstructor;
     // Whether the class constructor being transformed belongs to a class with instance fields.
     private boolean classConstructorHasFields;
+    // The descriptor of the class whose constructor is being transformed, if it has fields.
+    private ClassLiteralDescriptor classConstructorDescriptor;
+    private final Map<ClassNode, ClassLiteralDescriptor> classDescriptors = new IdentityHashMap<>();
     // The enclosing class's private-name scope id (see ClassNode.privateVarName), valid for the
     // entire transform of that class's constructor/methods/field initializers - including inside
     // arbitrarily nested functions, unlike insideClassConstructor which resets per function.
@@ -667,6 +671,7 @@ public final class IRFactory {
         outerScopeIsStrict |= fn.isInStrictMode();
         boolean savedInsideClassConstructor = insideClassConstructor;
         boolean savedClassConstructorHasFields = classConstructorHasFields;
+        ClassLiteralDescriptor savedClassConstructorDescriptor = classConstructorDescriptor;
         insideClassConstructor = fn.isClassConstructor();
         ClassNode constructorClass =
                 insideClassConstructor && fn.getParent() instanceof ClassNode
@@ -674,6 +679,8 @@ public final class IRFactory {
                         : null;
         classConstructorHasFields =
                 constructorClass != null && constructorClass.getFieldCount() > 0;
+        classConstructorDescriptor =
+                classConstructorHasFields ? classDescriptors.get(constructorClass) : null;
         Parser.PerFunctionVariables savedVars = parser.createPerFunctionVariables(fn);
         try {
             // If we start needing to record much more codegen metadata during
@@ -773,8 +780,7 @@ public final class IRFactory {
             if (classConstructorHasFields && constructorClass.getSuperClass() == null) {
                 // A base class's fields are initialized before anything else in its constructor;
                 // a derived class's are initialized by its super(...) call instead.
-                body.addChildToFront(
-                        new Node(Token.EXPR_VOID, new Node(Token.INIT_FIELDS), lineno, column));
+                body.addChildToFront(new Node(Token.EXPR_VOID, newInitFields(), lineno, column));
             }
 
             int syntheticType = fn.getFunctionType();
@@ -798,6 +804,7 @@ public final class IRFactory {
             outerScopeIsStrict = savedStrict;
             insideClassConstructor = savedInsideClassConstructor;
             classConstructorHasFields = savedClassConstructorHasFields;
+            classConstructorDescriptor = savedClassConstructorDescriptor;
         }
     }
 
@@ -836,6 +843,14 @@ public final class IRFactory {
         return body;
     }
 
+    private Node newInitFields() {
+        Node node = new Node(Token.INIT_FIELDS);
+        node.putIntProp(
+                Node.LITERAL_INDEX_PROP,
+                parser.currentScriptOrFn.addLiteral(classConstructorDescriptor));
+        return node;
+    }
+
     private Node transformFunctionCall(FunctionCall node) {
         astNodePos.push(node);
         try {
@@ -861,7 +876,7 @@ public final class IRFactory {
                 call.putIntProp(Node.SUPER_CONSTRUCTOR_CALL, 1);
                 if (classConstructorHasFields) {
                     // Once super(...) has set up `this`, initialize this class's fields on it.
-                    return new Node(Token.COMMA, call, new Node(Token.INIT_FIELDS));
+                    return new Node(Token.COMMA, call, newInitFields());
                 }
             }
             return call;
@@ -907,6 +922,9 @@ public final class IRFactory {
             classNode.addChildToBack(accumulator);
 
             ClassLiteralDescriptor.Builder builder = new ClassLiteralDescriptor.Builder();
+            describeClass(node, builder);
+            ClassLiteralDescriptor descriptor = builder.build();
+            classDescriptors.put(node, descriptor);
 
             classNode.addChildToBack(
                     new Node(Token.ACCUMULATE_RESULT, transform(node.getConstructor())));
@@ -937,11 +955,9 @@ public final class IRFactory {
                                     Token.ACCUMULATE_RESULT, new Node(Token.TO_PROPKEY, keyValue)));
                     Node methodValue = transform(methods.get(i));
                     classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
-                    builder.addComputedMethod(kind);
                 } else {
                     Node methodValue = transform(methods.get(i));
                     classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
-                    builder.addMethod(name, kind);
                 }
             }
 
@@ -959,20 +975,16 @@ public final class IRFactory {
                     classNode.addChildToBack(
                             new Node(
                                     Token.ACCUMULATE_RESULT, new Node(Token.TO_PROPKEY, keyValue)));
-                    builder.addComputedField();
-                } else {
-                    builder.addField(name);
                 }
             }
             if (node.getFieldInitializer() != null) {
                 classNode.addChildToBack(
                         new Node(Token.ACCUMULATE_RESULT, transform(node.getFieldInitializer())));
-                builder.addFieldInitializer();
             }
 
             accumulator.putIntProp(Node.RESULTS_SIZE_PROP, builder.getSize());
             classNode.putIntProp(
-                    Node.LITERAL_INDEX_PROP, parser.currentScriptOrFn.addLiteral(builder.build()));
+                    Node.LITERAL_INDEX_PROP, parser.currentScriptOrFn.addLiteral(descriptor));
 
             // Still a pure expression at this point, so it's safe to prepend the (also
             // expression-shaped) private-name setup here, before branching into the
@@ -991,6 +1003,41 @@ public final class IRFactory {
         } finally {
             currentPrivateNameScopeId = savedPrivateNameScopeId;
             astNodePos.pop();
+        }
+    }
+
+    /**
+     * Records the shape of {@code node}'s members in {@code builder}. This is done before any of
+     * the class is transformed so that its constructor can refer to the finished descriptor.
+     */
+    private static void describeClass(ClassNode node, ClassLiteralDescriptor.Builder builder) {
+        List<String> methodNames = node.getMethodNames();
+        List<ClassNode.ElementKind> methodKinds = node.getMethodKinds();
+        List<AstNode> methodComputedKeys = node.getMethodComputedKeys();
+        for (int i = 0; i < methodNames.size(); i++) {
+            ClassLiteralDescriptor.ElementKind kind = toDescriptorKind(methodKinds.get(i));
+            String name = methodNames.get(i);
+            if (methodComputedKeys.get(i) != null || isPrivateName(name)) {
+                builder.addComputedMethod(kind);
+            } else {
+                builder.addMethod(name, kind);
+            }
+        }
+        List<String> fieldNames = node.getFieldNames();
+        List<AstNode> fieldInits = node.getFieldInitializers();
+        for (int i = 0; i < fieldNames.size(); i++) {
+            if (fieldInits.get(i) != null) {
+                continue;
+            }
+            String name = fieldNames.get(i);
+            if (isPrivateName(name)) {
+                builder.addComputedField();
+            } else {
+                builder.addField(name);
+            }
+        }
+        if (node.getFieldInitializer() != null) {
+            builder.addFieldInitializer();
         }
     }
 

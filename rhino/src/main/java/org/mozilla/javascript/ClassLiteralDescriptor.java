@@ -33,37 +33,13 @@ public abstract class ClassLiteralDescriptor implements Serializable {
             Context cx, VarScope scope, Object superClass, Scriptable prototype, Object[] values);
 
     /**
-     * Defines this class's instance fields on {@code thisObj}: first those with initializers, by
-     * calling the field initializer, and then the rest, as {@code undefined}. {@code fieldValues}
-     * holds the computed keys and field initializer captured when the class was evaluated.
+     * Initializes the instance fields of class constructor {@code constructor} on {@code thisObj},
+     * and returns {@code thisObj}: first the fields with initializers, by calling the field
+     * initializer, and then the rest, as {@code undefined}. The computed keys and field initializer
+     * captured when the class was evaluated are held by the constructor.
      */
-    public void initializeFields(
-            Context cx, VarScope scope, Scriptable thisObj, Object[] fieldValues) {}
-
-    /**
-     * Runtime entry point used by all backends: initializes the instance fields of class
-     * constructor {@code constructor} on {@code thisObj}, and returns {@code thisObj}.
-     */
-    public static Object initializeFields(
-            Context cx, VarScope scope, Object constructor, Object thisObj) {
-        if (constructor instanceof JSFunction && thisObj instanceof Scriptable) {
-            InstanceFields fields = ((JSFunction) constructor).getInstanceFields();
-            if (fields != null) {
-                fields.descriptor.initializeFields(cx, scope, (Scriptable) thisObj, fields.values);
-            }
-        }
+    public Object initializeFields(Context cx, VarScope scope, Object constructor, Object thisObj) {
         return thisObj;
-    }
-
-    /** The instance fields of one evaluation of a class literal, held by its constructor. */
-    static final class InstanceFields implements Serializable {
-        final ClassLiteralDescriptor descriptor;
-        final Object[] values;
-
-        InstanceFields(ClassLiteralDescriptor descriptor, Object[] values) {
-            this.descriptor = descriptor;
-            this.values = values;
-        }
     }
 
     /**
@@ -363,26 +339,33 @@ public abstract class ClassLiteralDescriptor implements Serializable {
                 Object[] values) {
             BaseFunction constructor = setupClass((BaseFunction) values[0], prototype, superClass);
             int v = installMembers((ScriptableObject) prototype, members, values);
-            ((JSFunction) constructor)
-                    .setInstanceFields(
-                            new InstanceFields(this, Arrays.copyOfRange(values, v, values.length)));
+            ((JSFunction) constructor).setFieldValues(Arrays.copyOfRange(values, v, values.length));
             return constructor;
         }
 
         @Override
-        public void initializeFields(
-                Context cx, VarScope scope, Scriptable thisObj, Object[] fieldValues) {
+        public Object initializeFields(
+                Context cx, VarScope scope, Object constructor, Object thisObj) {
+            if (!(constructor instanceof JSFunction) || !(thisObj instanceof Scriptable)) {
+                return thisObj;
+            }
+            Object[] fieldValues = ((JSFunction) constructor).getFieldValues();
+            if (fieldValues == null) {
+                return thisObj;
+            }
+            Scriptable self = (Scriptable) thisObj;
             if (hasFieldInitializer) {
                 Callable initializer = (Callable) fieldValues[fieldValues.length - 1];
-                initializer.call(cx, scope, thisObj, ScriptRuntime.emptyArgs);
+                initializer.call(cx, scope, self, ScriptRuntime.emptyArgs);
             }
             int v = 0;
             for (Object key : fieldKeys) {
                 if (key == UniqueTag.COMPUTED_KEY) {
                     key = fieldValues[v++];
                 }
-                defineField(key, Undefined.instance, cx, thisObj);
+                defineField(key, Undefined.instance, cx, self);
             }
+            return thisObj;
         }
     }
 }
