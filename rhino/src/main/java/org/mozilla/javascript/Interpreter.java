@@ -4207,7 +4207,13 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
                 superClass = ScriptRuntime.wrapNumber(frame.doubleStack[frame.stackTop]);
             }
             frame.stack[frame.stackTop] =
-                    desc.createClass(cx, frame.scope, superClass, prototype, results.getResults());
+                    desc.createClass(
+                            cx,
+                            frame.scope,
+                            frame.fnOrScript.getDescriptor(),
+                            superClass,
+                            prototype,
+                            results.getResults());
             return null;
         }
     }

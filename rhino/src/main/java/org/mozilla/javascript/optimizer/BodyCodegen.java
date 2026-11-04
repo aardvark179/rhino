@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import org.mozilla.classfile.ByteCode;
 import org.mozilla.classfile.ClassFileWriter;
+import org.mozilla.javascript.ClassLiteralDescriptor;
 import org.mozilla.javascript.CompilerEnvirons;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.Kit;
@@ -2965,15 +2966,21 @@ class BodyCodegen {
 
     private void visitClassLiteral(Node node, Node superExprChild) {
         // Children: [superClassExpr (or UNDEFINED), EMPTY_OBJECT, RESULT_ACCUMULATOR,
-        // ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(method)...] - see visitLiteral's
-        // EMPTY_OBJECT/RESULT_ACCUMULATOR/ACCUMULATE_RESULT handling, which this mirrors so that
-        // method/constructor closures pick up the prototype object as their home object via
-        // the stackl.
+        // ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(computed key)...] - see
+        // visitLiteral's EMPTY_OBJECT/RESULT_ACCUMULATOR/ACCUMULATE_RESULT handling, which this
+        // mirrors so that the constructor and field initializer closures pick up the prototype
+        // object as their home object via the stack.
         var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
-        Object constant = codegen.getConstant(scriptOrFn, index);
-        cfw.addLoadDynamicConstant(constant);
+        // Compiled descriptors have no nested functions to look the class's methods up in, so
+        // the class descriptor constant carries its members' function descriptors itself.
+        var descriptor = (ClassLiteralDescriptor) codegen.getConstant(scriptOrFn, index);
+        cfw.addLoadDynamicConstant(
+                descriptor.withMemberFunctions(
+                        i -> codegen.builders[codegen.getIndex(scriptOrFn.getFunctionNode(i))]));
         cfw.addALoad(contextLocal);
         cfw.addALoad(variableObjectLocal);
+        cfw.add(ByteCode.ACONST_NULL);
+        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/JSDescriptor");
         generateExpression(superExprChild, node);
 
         Node child = superExprChild.getNext();
@@ -3043,6 +3050,7 @@ class BodyCodegen {
                 "("
                         + "Lorg/mozilla/javascript/Context;"
                         + "Lorg/mozilla/javascript/VarScope;"
+                        + "Lorg/mozilla/javascript/JSDescriptor;"
                         + "Ljava/lang/Object;"
                         + "Lorg/mozilla/javascript/Scriptable;"
                         + "[Ljava/lang/Object;"

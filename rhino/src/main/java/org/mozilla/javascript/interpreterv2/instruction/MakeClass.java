@@ -36,7 +36,12 @@ public class MakeClass extends Instruction {
         var superClass = superClassOp.retrieve(cx, frame);
         frame.push(
                 descriptor.createClass(
-                        cx, frame.scope, superClass, prototype, results.getResults()));
+                        cx,
+                        frame.scope,
+                        frame.fnOrScript.getDescriptor(),
+                        superClass,
+                        prototype,
+                        results.getResults()));
     }
 
     @Override

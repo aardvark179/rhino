@@ -18,9 +18,9 @@ import org.mozilla.javascript.Token;
  *
  * <p>Node type is {@link Token#CLASS}.
  *
- * <p>A class is a (possibly synthesized) constructor, an optional {@code extends} clause, instance
- * methods/getters/setters and instance and static fields with literal, computed, or private ({@code
- * #name}) keys. Static methods and accessors are not yet supported.
+ * <p>A class is a (possibly synthesized) constructor, an optional {@code extends} clause, and
+ * instance and static methods/getters/setters and fields with literal, computed, or private ({@code
+ * #name}) keys.
  *
  * <p>Private names flow through the same method/field lists as ordinary members - a name starting
  * with {@code #} is recognized specially wherever it matters (see {@link
@@ -52,6 +52,7 @@ public class ClassNode extends AstNode {
     private List<String> methodNames;
     private List<FunctionNode> methods;
     private List<ElementKind> methodKinds;
+    private List<Boolean> methodStatic;
     private List<AstNode> methodComputedKeys;
     private List<String> fieldNames;
     private List<AstNode> fieldInitializers;
@@ -116,34 +117,42 @@ public class ClassNode extends AstNode {
         this.isStatement = isStatement;
     }
 
-    public void addMethod(String name, FunctionNode fn, ElementKind kind) {
-        addMethodInternal(name, null, fn, kind);
+    public void addMethod(String name, FunctionNode fn, ElementKind kind, boolean isStatic) {
+        addMethodInternal(name, null, fn, kind, isStatic);
     }
 
     /**
      * Adds a method/getter/setter whose property key is computed at runtime (e.g. {@code
      * [expr]()}). The key is evaluated exactly once, at class-definition time.
      */
-    public void addComputedMethod(AstNode keyExpr, FunctionNode fn, ElementKind kind) {
-        addMethodInternal(null, keyExpr, fn, kind);
+    public void addComputedMethod(
+            AstNode keyExpr, FunctionNode fn, ElementKind kind, boolean isStatic) {
+        addMethodInternal(null, keyExpr, fn, kind, isStatic);
     }
 
     private void addMethodInternal(
-            String name, AstNode keyExpr, FunctionNode fn, ElementKind kind) {
+            String name, AstNode keyExpr, FunctionNode fn, ElementKind kind, boolean isStatic) {
         if (methodNames == null) {
             methodNames = new ArrayList<>();
             methods = new ArrayList<>();
             methodKinds = new ArrayList<>();
             methodComputedKeys = new ArrayList<>();
+            methodStatic = new ArrayList<>();
         }
         methodNames.add(name);
         methods.add(fn);
         methodKinds.add(kind);
         methodComputedKeys.add(keyExpr);
+        methodStatic.add(isStatic);
         fn.setParent(this);
         if (keyExpr != null) {
             keyExpr.setParent(this);
         }
+    }
+
+    /** Whether the {@code index}th method/getter/setter is static. */
+    public boolean isMethodStatic(int index) {
+        return methodStatic.get(index);
     }
 
     public int getMethodCount() {
@@ -325,6 +334,9 @@ public class ClassNode extends AstNode {
         if (methodNames != null) {
             for (int i = 0; i < methodNames.size(); i++) {
                 sb.append(makeIndent(depth + 1));
+                if (methodStatic.get(i)) {
+                    sb.append("static ");
+                }
                 ElementKind kind = methodKinds.get(i);
                 if (kind == ElementKind.GETTER) {
                     sb.append("get ");

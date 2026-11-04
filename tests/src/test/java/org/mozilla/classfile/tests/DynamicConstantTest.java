@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -599,10 +600,10 @@ public class DynamicConstantTest {
     @Test
     public void methodClassLiteralRoundTrips() throws Exception {
         var builder = new ClassLiteralDescriptor.Builder();
-        builder.addMethod("a", ElementKind.METHOD);
-        builder.addMethod(1, ElementKind.GETTER);
-        builder.addComputedMethod(ElementKind.SETTER);
-        builder.addMethod(SymbolKey.ITERATOR, ElementKind.METHOD);
+        builder.addMethod("a", ElementKind.METHOD, false, 0);
+        builder.addMethod(1, ElementKind.GETTER, false, 1);
+        builder.addComputedMethod(ElementKind.SETTER, false, 2);
+        builder.addMethod(SymbolKey.ITERATOR, ElementKind.METHOD, false, 3);
         var resolved =
                 (MethodClassLiteralDescriptor)
                         loadClassLiteral("TestMethodClassLiteral", builder.build());
@@ -617,13 +618,17 @@ public class DynamicConstantTest {
         assertSame(ElementKind.SETTER, members[2].getKind());
         assertSame(SymbolKey.ITERATOR, members[3].getKey());
         assertSame(ElementKind.METHOD, members[3].getKind());
+        for (int i = 0; i < members.length; i++) {
+            assertEquals(i, members[i].getFunctionIndex());
+            assertNull(members[i].getFunction());
+        }
     }
 
     @Test
     public void fieldClassLiteralRoundTrips() throws Exception {
         var builder = new ClassLiteralDescriptor.Builder();
-        builder.addMethod("m", ElementKind.METHOD);
-        builder.addComputedMethod(ElementKind.GETTER);
+        builder.addMethod("m", ElementKind.METHOD, false, 0);
+        builder.addComputedMethod(ElementKind.GETTER, false, 1);
         builder.addField("a");
         builder.addField(SymbolKey.ITERATOR);
         builder.addFieldInitializer();
@@ -642,6 +647,27 @@ public class DynamicConstantTest {
         assertEquals(2, fieldKeys.length);
         assertEquals("a", fieldKeys[0]);
         assertSame(SymbolKey.ITERATOR, fieldKeys[1]);
+    }
+
+    @Test
+    public void staticMethodClassLiteralRoundTrips() throws Exception {
+        var builder = new ClassLiteralDescriptor.Builder();
+        builder.addMethod("m", ElementKind.METHOD, false, 0);
+        builder.addMethod("s", ElementKind.GETTER, true, 1);
+        builder.addComputedMethod(ElementKind.METHOD, true, 2);
+        var resolved =
+                (MethodClassLiteralDescriptor)
+                        loadClassLiteral("TestStaticMethodClassLiteral", builder.build());
+
+        var members = resolved.getMembers();
+        assertEquals(3, members.length);
+        assertEquals("m", members[0].getKey());
+        assertFalse(members[0].isStatic());
+        assertEquals("s", members[1].getKey());
+        assertSame(ElementKind.GETTER, members[1].getKind());
+        assertTrue(members[1].isStatic());
+        assertSame(UniqueTag.COMPUTED_KEY, members[2].getKey());
+        assertTrue(members[2].isStatic());
     }
 
     @Test

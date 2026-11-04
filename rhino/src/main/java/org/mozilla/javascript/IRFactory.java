@@ -900,21 +900,21 @@ public final class IRFactory {
      * Transforms a class declaration/expression into a {@link Token#CLASS} IR node.
      *
      * <p>Shape: {@code CLASS(superClassExprOrUndefined, EMPTY_OBJECT, RESULT_ACCUMULATOR,
-     * ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(method)..., ACCUMULATE_RESULT(field
+     * ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(method key)..., ACCUMULATE_RESULT(field
      * key)..., ACCUMULATE_RESULT(field initializer), ACCUMULATE_RESULT(static field key)...,
-     * ACCUMULATE_RESULT(static field initializer))}, where computed method keys precede their
-     * method, the (static) field keys are those of the computed (static) fields in declaration
-     * order, and the single (static) field initializer, which defines the (static) fields with
-     * initializers, is only present if some such field has one. Private names are not accumulated:
-     * their {@link SymbolKey}s are stored directly as keys on the descriptor. This mirrors {@code
-     * transformObjectLiteral}'s shape exactly: the {@code EMPTY_OBJECT} node creates the (eventual)
-     * prototype object, and every accumulated function value (the constructor first, then each
-     * instance method/getter/setter, in source order) is built with {@code homeObject == } that
+     * ACCUMULATE_RESULT(static field initializer))}, where the method keys are those of the
+     * computed methods, the (static) field keys are those of the computed (static) fields, all in
+     * declaration order, and the single (static) field initializer, which defines the (static)
+     * fields with initializers, is only present if some such field has one. Private names are not
+     * accumulated: their {@link SymbolKey}s are stored directly as keys on the descriptor. Nor are
+     * the methods: the descriptor records each one's function index, and creates the methods itself
+     * with the right home object. This mirrors {@code transformObjectLiteral}'s shape: the {@code
+     * EMPTY_OBJECT} node creates the (eventual) prototype object, and every accumulated function
+     * value (the constructor and field initializers) is built with {@code homeObject == } that
      * prototype via the very same "peek the object under construction" convention object-literal
-     * methods already use - which is why the constructor and methods are parsed as method
-     * definitions. The class's shape (which accumulated values are the constructor vs. named
-     * members, and of what kind) is captured by a {@link ClassLiteralDescriptor} registered in the
-     * current script/function's literal pool, exactly like object/array literals register theirs.
+     * methods already use - which is why they are parsed as method definitions. The class's shape
+     * is captured by a {@link ClassLiteralDescriptor} registered in the current script/function's
+     * literal pool, exactly like object/array literals register theirs.
      */
     private Node transformClass(ClassNode node) {
         astNodePos.push(node);
@@ -937,28 +937,30 @@ public final class IRFactory {
             Node accumulator = new Node(Token.RESULT_ACCUMULATOR);
             classNode.addChildToBack(accumulator);
 
+            // Methods are not accumulated: the descriptor creates them from their function
+            // descriptors, so only their function indices are needed.
+            List<FunctionNode> methods = node.getMethods();
+            int[] methodFunctionIndices = new int[methods.size()];
+            for (int i = 0; i < methods.size(); i++) {
+                methodFunctionIndices[i] =
+                        transform(methods.get(i)).getExistingIntProp(Node.FUNCTION_PROP);
+            }
+
             ClassLiteralDescriptor.Builder builder = new ClassLiteralDescriptor.Builder();
-            describeClass(node, builder, privateNames);
+            describeClass(node, builder, privateNames, methodFunctionIndices);
             ClassLiteralDescriptor descriptor = builder.build();
             classDescriptors.put(node, descriptor);
 
             classNode.addChildToBack(
                     new Node(Token.ACCUMULATE_RESULT, transform(node.getConstructor())));
 
-            List<String> methodNames = node.getMethodNames();
-            List<FunctionNode> methods = node.getMethods();
-            List<ClassNode.ElementKind> methodKinds = node.getMethodKinds();
-            List<AstNode> methodComputedKeys = node.getMethodComputedKeys();
-            for (int i = 0; i < methods.size(); i++) {
-                AstNode computedKeyExpr = methodComputedKeys.get(i);
+            for (AstNode computedKeyExpr : node.getMethodComputedKeys()) {
                 if (computedKeyExpr != null) {
                     classNode.addChildToBack(
                             new Node(
                                     Token.ACCUMULATE_RESULT,
                                     new Node(Token.TO_PROPKEY, transform(computedKeyExpr))));
                 }
-                Node methodValue = transform(methods.get(i));
-                classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
             }
 
             addFieldValues(classNode, node, false, node.getFieldInitializer());
@@ -1005,25 +1007,29 @@ public final class IRFactory {
     }
 
     /**
-     * Records the shape of {@code node}'s members in {@code builder}. This is done before any of
-     * the class is transformed so that its constructor can refer to the finished descriptor.
+     * Records the shape of {@code node}'s members in {@code builder}, given the function index of
+     * each of its methods. This is done before the constructor is transformed so that it can refer
+     * to the finished descriptor.
      */
     private static void describeClass(
             ClassNode node,
             ClassLiteralDescriptor.Builder builder,
-            Map<String, SymbolKey> privateNames) {
+            Map<String, SymbolKey> privateNames,
+            int[] methodFunctionIndices) {
         List<String> methodNames = node.getMethodNames();
         List<ClassNode.ElementKind> methodKinds = node.getMethodKinds();
         List<AstNode> methodComputedKeys = node.getMethodComputedKeys();
         for (int i = 0; i < methodNames.size(); i++) {
             ClassLiteralDescriptor.ElementKind kind = toDescriptorKind(methodKinds.get(i));
             String name = methodNames.get(i);
+            boolean isStatic = node.isMethodStatic(i);
+            int fnIndex = methodFunctionIndices[i];
             if (methodComputedKeys.get(i) != null) {
-                builder.addComputedMethod(kind);
+                builder.addComputedMethod(kind, isStatic, fnIndex);
             } else if (isPrivateName(name)) {
-                builder.addMethod(privateNames.get(name), kind);
+                builder.addMethod(privateNames.get(name), kind, isStatic, fnIndex);
             } else {
-                builder.addMethod(name, kind);
+                builder.addMethod(name, kind, isStatic, fnIndex);
             }
         }
         List<String> fieldNames = node.getFieldNames();

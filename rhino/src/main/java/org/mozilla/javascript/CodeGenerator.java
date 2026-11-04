@@ -1741,7 +1741,7 @@ class CodeGenerator<T extends ScriptOrFn<T>> {
 
     private void visitClassLiteral(Node node, Node superExprChild) {
         // Children: [superClassExpr (or UNDEFINED), EMPTY_OBJECT, RESULT_ACCUMULATOR,
-        // ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(method)...] - the EMPTY_OBJECT/
+        // ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(computed key)...] - the EMPTY_OBJECT/
         // RESULT_ACCUMULATOR/ACCUMULATE_RESULT shape exactly mirrors an object literal's, so that
         // method/constructor closures (which use isMethodDefinition()) pick up the prototype
         // object as their home object via the same "peek the object under construction"

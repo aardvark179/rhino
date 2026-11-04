@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.function.IntFunction;
 
 /**
  * Runtime descriptor for an ES6 class literal, playing the same role for classes that {@link
@@ -12,17 +13,21 @@ import java.util.Arrays;
  * #createClass} call.
  *
  * <p>{@code values[0]} is always the (already-built) constructor function. The rest of {@code
- * values} holds, per member entry in order: the computed key value (only for entries whose key is
- * {@link UniqueTag#COMPUTED_KEY}) followed by the member's function value. After the members come
- * the computed key values of any instance fields with computed keys, in declaration order, and, if
- * any field has an initializer, a single field initializer function, which creates the fields with
- * initializers on its {@code this} in declaration order. The field initializer is passed the
- * computed keys of the fields with initializers as its arguments. The static fields' computed key
- * values and static field initializer follow in the same way. {@code prototype} is a freshly
- * created plain object (built the same way as an object literal's {@code EMPTY_OBJECT}) that
- * becomes the constructor's {@code .prototype}; methods/the constructor are all built with {@code
- * homeObject == prototype} via the same "peek the object under construction" convention
- * object-literal methods already use.
+ * values} holds the computed key value of each member entry whose key is {@link
+ * UniqueTag#COMPUTED_KEY}, in order. The members' functions are not among the values: {@link
+ * #createClass} creates them from their {@link JSDescriptor}s, with the prototype, or for static
+ * members the constructor, as their home object. A member's descriptor is either held by its entry
+ * or, if not, found by its function index among the nested functions of the {@code parent}
+ * descriptor passed to {@link #createClass}. After the members come the computed key values of any
+ * instance fields with computed keys, in declaration order, and, if any field has an initializer, a
+ * single field initializer function, which creates the fields with initializers on its {@code this}
+ * in declaration order. The field initializer is passed the computed keys of the fields with
+ * initializers as its arguments. The static fields' computed key values and static field
+ * initializer follow in the same way. {@code prototype} is a freshly created plain object (built
+ * the same way as an object literal's {@code EMPTY_OBJECT}) that becomes the constructor's {@code
+ * .prototype}; the constructor and field initializers are built with {@code homeObject ==
+ * prototype} via the same "peek the object under construction" convention object-literal methods
+ * already use.
  *
  * <p>Static fields are defined on the constructor by {@link #createClass}, once its members are
  * installed: first those with initializers, by calling the static field initializer with the
@@ -36,7 +41,22 @@ import java.util.Arrays;
 public abstract class ClassLiteralDescriptor implements Serializable {
 
     public abstract Scriptable createClass(
-            Context cx, VarScope scope, Object superClass, Scriptable prototype, Object[] values);
+            Context cx,
+            VarScope scope,
+            JSDescriptor<?> parent,
+            Object superClass,
+            Scriptable prototype,
+            Object[] values);
+
+    /**
+     * Returns a copy of this descriptor whose members hold their function descriptors, as given for
+     * each function index by {@code functions}, so that {@link #createClass} does not need a parent
+     * descriptor to find them. Used by compiled code, where the values are {@link
+     * JSDescriptor.Builder}s to be described as constants, which resolve to {@link JSDescriptor}s.
+     */
+    public ClassLiteralDescriptor withMemberFunctions(IntFunction<Object> functions) {
+        return this;
+    }
 
     /**
      * Initializes the instance fields of class constructor {@code constructor} on {@code thisObj},
@@ -83,16 +103,48 @@ public abstract class ClassLiteralDescriptor implements Serializable {
         return constructor;
     }
 
-    /** Installs {@code members} on {@code target}, returning the index of the next unused value. */
+    /**
+     * Creates the functions of {@code members} in {@code scope} and installs them on {@code
+     * prototype}, or, for static members, on {@code constructor}, which is also their home object
+     * in place of {@code prototype}. Returns the index of the next unused value.
+     */
+    @SuppressWarnings("unchecked")
     private static int installMembers(
-            ScriptableObject target, MemberEntry[] members, Object[] values) {
+            Context cx,
+            VarScope scope,
+            JSDescriptor<?> parent,
+            ScriptableObject prototype,
+            BaseFunction constructor,
+            MemberEntry[] members,
+            Object[] values) {
         int v = 1;
         for (MemberEntry member : members) {
             Object key = member.key == UniqueTag.COMPUTED_KEY ? values[v++] : member.key;
-            Object value = values[v++];
-            installMember(target, key, member.kind, value);
+            JSDescriptor<JSFunction> desc =
+                    member.function != null
+                            ? (JSDescriptor<JSFunction>) member.function
+                            : parent.getFunction(member.functionIndex);
+            ScriptableObject target = member.isStatic ? constructor : prototype;
+            JSFunction fn = new JSFunction(cx, scope, desc, null, Undefined.instance, target);
+            installMember(target, key, member.kind, fn);
         }
         return v;
+    }
+
+    private static MemberEntry[] withMemberFunctions(
+            MemberEntry[] members, IntFunction<Object> functions) {
+        var result = new MemberEntry[members.length];
+        for (int i = 0; i < members.length; i++) {
+            MemberEntry m = members[i];
+            result[i] =
+                    new MemberEntry(
+                            m.key,
+                            m.kind,
+                            m.isStatic,
+                            m.functionIndex,
+                            functions.apply(m.functionIndex));
+        }
+        return result;
     }
 
     private static void defineField(Object key, Object value, Context cx, Scriptable thisObj) {
@@ -159,6 +211,28 @@ public abstract class ClassLiteralDescriptor implements Serializable {
         }
     }
 
+    /** The number of bootstrap arguments describing each member. */
+    public static final int MEMBER_ARG_COUNT = 5;
+
+    /**
+     * Reads {@code count} members, each as key, kind, staticness, function index, and function
+     * descriptor (or {@code null}), from {@code args[start]}.
+     */
+    private static MemberEntry[] readMembers(Object[] args, int start, int count) {
+        var members = new MemberEntry[count];
+        for (int i = 0; i < count; i++) {
+            int a = start + MEMBER_ARG_COUNT * i;
+            members[i] =
+                    new MemberEntry(
+                            args[a],
+                            (ElementKind) args[a + 1],
+                            (Boolean) args[a + 2],
+                            (Integer) args[a + 3],
+                            args[a + 4]);
+        }
+        return members;
+    }
+
     /** Kind of a class member that is a function: normal method, getter, or setter. */
     public enum ElementKind {
         METHOD,
@@ -169,10 +243,21 @@ public abstract class ClassLiteralDescriptor implements Serializable {
     public static final class MemberEntry implements Serializable {
         final Object key;
         final ElementKind kind;
+        final boolean isStatic;
+        final int functionIndex;
+        final Object function;
 
-        MemberEntry(Object key, ElementKind kind) {
+        MemberEntry(
+                Object key,
+                ElementKind kind,
+                boolean isStatic,
+                int functionIndex,
+                Object function) {
             this.key = key;
             this.kind = kind;
+            this.isStatic = isStatic;
+            this.functionIndex = functionIndex;
+            this.function = function;
         }
 
         public Object getKey() {
@@ -181,6 +266,20 @@ public abstract class ClassLiteralDescriptor implements Serializable {
 
         public ElementKind getKind() {
             return kind;
+        }
+
+        public boolean isStatic() {
+            return isStatic;
+        }
+
+        /** The index of this member's function among the nested functions of its parent. */
+        public int getFunctionIndex() {
+            return functionIndex;
+        }
+
+        /** This member's function descriptor, or {@code null} if it must be found by index. */
+        public Object getFunction() {
+            return function;
         }
     }
 
@@ -193,15 +292,22 @@ public abstract class ClassLiteralDescriptor implements Serializable {
         private boolean hasFieldInitializer;
         private boolean hasStaticFieldInitializer;
 
-        public void addMethod(Object key, ElementKind kind) {
-            members.add(new MemberEntry(key, kind));
-            size++;
+        /**
+         * Adds a (static) method/getter/setter whose function is the parent's nested function
+         * {@code functionIndex}.
+         */
+        public void addMethod(Object key, ElementKind kind, boolean isStatic, int functionIndex) {
+            members.add(new MemberEntry(key, kind, isStatic, functionIndex, null));
         }
 
-        /** Adds a method/getter/setter whose key value occupies the next {@code values} slot. */
-        public void addComputedMethod(ElementKind kind) {
-            members.add(new MemberEntry(UniqueTag.COMPUTED_KEY, kind));
-            size += 2;
+        /**
+         * Adds a (static) method/getter/setter whose key value occupies the next {@code values}
+         * slot, and whose function is the parent's nested function {@code functionIndex}.
+         */
+        public void addComputedMethod(ElementKind kind, boolean isStatic, int functionIndex) {
+            members.add(
+                    new MemberEntry(UniqueTag.COMPUTED_KEY, kind, isStatic, functionIndex, null));
+            size++;
         }
 
         /**
@@ -300,6 +406,7 @@ public abstract class ClassLiteralDescriptor implements Serializable {
         public Scriptable createClass(
                 Context cx,
                 VarScope scope,
+                JSDescriptor<?> parent,
                 Object superClass,
                 Scriptable prototype,
                 Object[] values) {
@@ -318,26 +425,33 @@ public abstract class ClassLiteralDescriptor implements Serializable {
             return members;
         }
 
-        /** Bootstrap arguments are the key and kind of each member in turn. */
+        /**
+         * Bootstrap arguments are the key, kind, staticness, function index, and function
+         * descriptor of each member in turn.
+         */
         public static MethodClassLiteralDescriptor methodClassLiteralConstant(
-                MethodHandles.Lookup lookup, String name, Class<?> type, Object... keysAndKinds) {
-            var members = new MemberEntry[keysAndKinds.length / 2];
-            for (int i = 0; i < members.length; i++) {
-                members[i] =
-                        new MemberEntry(keysAndKinds[2 * i], (ElementKind) keysAndKinds[2 * i + 1]);
-            }
-            return new MethodClassLiteralDescriptor(members);
+                MethodHandles.Lookup lookup, String name, Class<?> type, Object... args) {
+            return new MethodClassLiteralDescriptor(
+                    readMembers(args, 0, args.length / MEMBER_ARG_COUNT));
+        }
+
+        @Override
+        public ClassLiteralDescriptor withMemberFunctions(IntFunction<Object> functions) {
+            return new MethodClassLiteralDescriptor(
+                    ClassLiteralDescriptor.withMemberFunctions(members, functions));
         }
 
         @Override
         public Scriptable createClass(
                 Context cx,
                 VarScope scope,
+                JSDescriptor<?> parent,
                 Object superClass,
                 Scriptable prototype,
                 Object[] values) {
             BaseFunction constructor = setupClass((BaseFunction) values[0], prototype, superClass);
-            installMembers((ScriptableObject) prototype, members, values);
+            installMembers(
+                    cx, scope, parent, (ScriptableObject) prototype, constructor, members, values);
             return constructor;
         }
     }
@@ -392,18 +506,16 @@ public abstract class ClassLiteralDescriptor implements Serializable {
         }
 
         /**
-         * Bootstrap arguments are the number of members, the key and kind of each member in turn,
-         * whether there is a field initializer, the number of field keys, the field keys, whether
-         * there is a static field initializer, and then the static field keys.
+         * Bootstrap arguments are the number of members, the key, kind, staticness, function index,
+         * and function descriptor of each member in turn, whether there is a field initializer, the
+         * number of field keys, the field keys, whether there is a static field initializer, and
+         * then the static field keys.
          */
         public static FieldClassLiteralDescriptor fieldClassLiteralConstant(
                 MethodHandles.Lookup lookup, String name, Class<?> type, Object... args) {
             int memberCount = (Integer) args[0];
-            var members = new MemberEntry[memberCount];
-            for (int i = 0; i < memberCount; i++) {
-                members[i] = new MemberEntry(args[1 + 2 * i], (ElementKind) args[2 + 2 * i]);
-            }
-            int base = 1 + 2 * memberCount;
+            var members = readMembers(args, 1, memberCount);
+            int base = 1 + MEMBER_ARG_COUNT * memberCount;
             boolean hasFieldInitializer = (Boolean) args[base];
             int fieldKeyCount = (Integer) args[base + 1];
             int fieldKeysEnd = base + 2 + fieldKeyCount;
@@ -419,14 +531,33 @@ public abstract class ClassLiteralDescriptor implements Serializable {
         }
 
         @Override
+        public ClassLiteralDescriptor withMemberFunctions(IntFunction<Object> functions) {
+            return new FieldClassLiteralDescriptor(
+                    ClassLiteralDescriptor.withMemberFunctions(members, functions),
+                    fieldKeys,
+                    hasFieldInitializer,
+                    staticFieldKeys,
+                    hasStaticFieldInitializer);
+        }
+
+        @Override
         public Scriptable createClass(
                 Context cx,
                 VarScope scope,
+                JSDescriptor<?> parent,
                 Object superClass,
                 Scriptable prototype,
                 Object[] values) {
             BaseFunction constructor = setupClass((BaseFunction) values[0], prototype, superClass);
-            int v = installMembers((ScriptableObject) prototype, members, values);
+            int v =
+                    installMembers(
+                            cx,
+                            scope,
+                            parent,
+                            (ScriptableObject) prototype,
+                            constructor,
+                            members,
+                            values);
             ((JSFunction) constructor)
                     .setFieldValues(Arrays.copyOfRange(values, v, v + fieldValueCount));
             v += fieldValueCount;

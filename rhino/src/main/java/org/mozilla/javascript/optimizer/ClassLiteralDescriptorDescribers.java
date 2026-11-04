@@ -6,6 +6,8 @@
 
 package org.mozilla.javascript.optimizer;
 
+import static org.mozilla.javascript.ClassLiteralDescriptor.MEMBER_ARG_COUNT;
+
 import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDesc;
 import java.lang.constant.ConstantDescs;
@@ -14,6 +16,7 @@ import java.lang.constant.DynamicConstantDesc;
 import org.mozilla.classfile.DynamicConstantDescriber;
 import org.mozilla.classfile.DynamicDescriberRegistry;
 import org.mozilla.javascript.ClassLiteralDescriptor.FieldClassLiteralDescriptor;
+import org.mozilla.javascript.ClassLiteralDescriptor.MemberEntry;
 import org.mozilla.javascript.ClassLiteralDescriptor.MethodClassLiteralDescriptor;
 import org.mozilla.javascript.ClassLiteralDescriptor.SimpleClassLiteralDescriptor;
 
@@ -31,6 +34,29 @@ public final class ClassLiteralDescriptorDescribers {
         new SimpleDescriber(registry);
         new MethodDescriber(registry);
         new FieldDescriber(registry);
+    }
+
+    /**
+     * Describes each member as its key, kind, staticness, function index, and function, starting at
+     * {@code descs[start]}.
+     */
+    private static void describeMembers(
+            DynamicDescriberRegistry registry,
+            MemberEntry[] members,
+            ConstantDesc[] descs,
+            int start) {
+        for (int i = 0; i < members.length; i++) {
+            int d = start + MEMBER_ARG_COUNT * i;
+            MemberEntry member = members[i];
+            descs[d] = registry.describe(member.getKey());
+            descs[d + 1] = member.getKind().describeConstable().orElseThrow();
+            descs[d + 2] = member.isStatic() ? ConstantDescs.TRUE : ConstantDescs.FALSE;
+            descs[d + 3] = member.getFunctionIndex();
+            descs[d + 4] =
+                    member.getFunction() == null
+                            ? ConstantDescs.NULL
+                            : registry.describe(member.getFunction());
+        }
     }
 
     public static class SimpleDescriber
@@ -60,8 +86,9 @@ public final class ClassLiteralDescriptorDescribers {
     }
 
     /**
-     * Each member is passed as two bootstrap arguments: its key, described through the registry,
-     * followed by its kind as an enum constant.
+     * Each member is passed as five bootstrap arguments: its key, described through the registry,
+     * its kind as an enum constant, whether it is static, its function index, and its function
+     * descriptor, described through the registry (or null).
      */
     public static class MethodDescriber
             extends DynamicConstantDescriber<MethodClassLiteralDescriptor> {
@@ -89,11 +116,8 @@ public final class ClassLiteralDescriptorDescribers {
         public DynamicConstantDesc<MethodClassLiteralDescriptor> describe(
                 MethodClassLiteralDescriptor value) {
             var members = value.getMembers();
-            var descs = new ConstantDesc[members.length * 2];
-            for (int i = 0; i < members.length; i++) {
-                descs[2 * i] = getRegistry().describe(members[i].getKey());
-                descs[2 * i + 1] = members[i].getKind().describeConstable().orElseThrow();
-            }
+            var descs = new ConstantDesc[members.length * MEMBER_ARG_COUNT];
+            describeMembers(getRegistry(), members, descs, 0);
             return DynamicConstantDesc.ofNamed(METHOD_CONSTANT, "classLiteral", CD_METHOD, descs);
         }
     }
@@ -134,13 +158,13 @@ public final class ClassLiteralDescriptorDescribers {
             var staticFieldKeys = value.getStaticFieldKeys();
             var descs =
                     new ConstantDesc
-                            [4 + members.length * 2 + fieldKeys.length + staticFieldKeys.length];
+                            [4
+                                    + members.length * MEMBER_ARG_COUNT
+                                    + fieldKeys.length
+                                    + staticFieldKeys.length];
             descs[0] = members.length;
-            for (int i = 0; i < members.length; i++) {
-                descs[1 + 2 * i] = getRegistry().describe(members[i].getKey());
-                descs[2 + 2 * i] = members[i].getKind().describeConstable().orElseThrow();
-            }
-            int d = 1 + 2 * members.length;
+            describeMembers(getRegistry(), members, descs, 1);
+            int d = 1 + MEMBER_ARG_COUNT * members.length;
             descs[d++] = value.hasFieldInitializer() ? ConstantDescs.TRUE : ConstantDescs.FALSE;
             descs[d++] = fieldKeys.length;
             for (Object key : fieldKeys) {

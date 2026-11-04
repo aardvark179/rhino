@@ -1413,9 +1413,8 @@ public class Parser {
                 continue;
             }
 
-            if (isStatic) {
-                // Static methods and accessors are not yet supported.
-                reportError("msg.class.member.not.supported");
+            if (isStatic && !isComputed && "prototype".equals(memberName)) {
+                reportError("msg.static.prototype");
             }
 
             FunctionNode method = function(FunctionNode.FUNCTION_EXPRESSION, true, false);
@@ -1433,9 +1432,9 @@ public class Parser {
                 method.setIsES6Generator();
             }
             if (isComputed) {
-                classNode.addComputedMethod(computedKeyExpr, method, accessorKind);
+                classNode.addComputedMethod(computedKeyExpr, method, accessorKind, isStatic);
             } else {
-                classNode.addMethod(memberName, method, accessorKind);
+                classNode.addMethod(memberName, method, accessorKind, isStatic);
             }
         }
 

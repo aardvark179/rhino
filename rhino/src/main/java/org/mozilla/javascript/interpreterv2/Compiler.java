@@ -1867,7 +1867,7 @@ public class Compiler<T extends ScriptOrFn<T>> {
 
     private void visitClassLiteral(Node node, Node superExprChild) {
         // Children: [superClassExpr (or UNDEFINED), EMPTY_OBJECT, RESULT_ACCUMULATOR,
-        // ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(method)...] - mirrors an object
+        // ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(computed key)...] - mirrors an object
         // literal's shape so method/constructor closures pick up the prototype object as their
         // home object via PeekOperand(-1), same as object-literal methods.
         var index = node.getIntProp(Node.LITERAL_INDEX_PROP, 0);
