@@ -1290,6 +1290,7 @@ public class Parser {
         inUseStrictDirective = true;
 
         FunctionNode constructor = null;
+        Map<String, Integer> declaredPrivateNames = new HashMap<>();
         while (peekToken() != Token.RC && peekToken() != Token.EOF) {
             if (peekToken() == Token.SEMI) {
                 consumeToken();
@@ -1353,6 +1354,9 @@ public class Parser {
             } else if (tt == Token.PRIVATE_NAME) {
                 consumeToken();
                 memberName = ts.getString();
+                if ("#constructor".equals(memberName)) {
+                    reportError("msg.private.constructor");
+                }
                 classNode.addPrivateName(memberName);
             } else if (tt == Token.LB) {
                 isComputed = true;
@@ -1413,6 +1417,9 @@ public class Parser {
                 } else if (peekToken() == Token.PRIVATE_NAME) {
                     consumeToken();
                     memberName = ts.getString();
+                    if ("#constructor".equals(memberName)) {
+                        reportError("msg.private.constructor");
+                    }
                     classNode.addPrivateName(memberName);
                 } else if (peekToken() == Token.NUMBER) {
                     consumeToken();
@@ -1449,6 +1456,11 @@ public class Parser {
                 if (isComputed) {
                     classNode.addComputedField(computedKeyExpr, initializer, isStatic);
                 } else {
+                    checkDuplicatePrivateName(
+                            declaredPrivateNames,
+                            memberName,
+                            ClassNode.ElementKind.METHOD,
+                            isStatic);
                     classNode.addField(memberName, initializer, isStatic);
                 }
                 continue;
@@ -1475,6 +1487,7 @@ public class Parser {
             if (isComputed) {
                 classNode.addComputedMethod(computedKeyExpr, method, accessorKind, isStatic);
             } else {
+                checkDuplicatePrivateName(declaredPrivateNames, memberName, accessorKind, isStatic);
                 classNode.addMethod(memberName, method, accessorKind, isStatic);
             }
         }
@@ -1500,6 +1513,48 @@ public class Parser {
         constructor.setRawSourceBounds(pos, end);
 
         return classNode;
+    }
+
+    private static final int PRIVATE_GETTER = 1;
+    private static final int PRIVATE_SETTER = 2;
+    private static final int PRIVATE_OTHER = 4;
+    private static final int PRIVATE_STATIC = 8;
+
+    /**
+     * Reports an error if a private name is declared more than once in a class body, other than as
+     * one getter and one setter with the same placement.
+     */
+    private void checkDuplicatePrivateName(
+            Map<String, Integer> declared,
+            String name,
+            ClassNode.ElementKind kind,
+            boolean isStatic) {
+        if (!name.startsWith("#")) {
+            return;
+        }
+        int bits =
+                kind == ClassNode.ElementKind.GETTER
+                        ? PRIVATE_GETTER
+                        : kind == ClassNode.ElementKind.SETTER ? PRIVATE_SETTER : PRIVATE_OTHER;
+        if (isStatic) {
+            bits |= PRIVATE_STATIC;
+        }
+        Integer prev = declared.get(name);
+        if (prev == null) {
+            declared.put(name, bits);
+            return;
+        }
+        int prevKind = prev & ~PRIVATE_STATIC;
+        int kindBits = bits & ~PRIVATE_STATIC;
+        boolean accessorPair =
+                (prev & PRIVATE_STATIC) == (bits & PRIVATE_STATIC)
+                        && ((prevKind == PRIVATE_GETTER && kindBits == PRIVATE_SETTER)
+                                || (prevKind == PRIVATE_SETTER && kindBits == PRIVATE_GETTER));
+        if (accessorPair) {
+            declared.put(name, prev | bits);
+        } else {
+            reportError("msg.dup.private.name", name);
+        }
     }
 
     /**
@@ -4219,6 +4274,10 @@ public class Parser {
 
             case Token.PRIVATE_NAME:
                 // handles: obj.#name
+                if (pn.getType() == Token.SUPER) {
+                    reportError("msg.super.private");
+                    return makeErrorNode();
+                }
                 ref = propertyName(-1, memberTypeFlags);
                 break;
 
