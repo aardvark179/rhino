@@ -265,4 +265,14 @@ public class ClassFieldsTest {
                         + "new C().sum()";
         Utils.assertWithAllModes_ES6(6, code);
     }
+
+    @Test
+    public void keywordsAsMemberNames() {
+        String code =
+                "var C = class { bre\\u0061k() { return 1; } if() { return 2; }"
+                        + " static get d\\u0065lete() { return 4; } };\n"
+                        + "var o = new C();\n"
+                        + "o['break']() + o['if']() + C['delete']";
+        Utils.assertWithAllModes_ES6(7, code);
+    }
 }

@@ -1312,6 +1312,7 @@ public class Parser {
                 consumeToken();
                 int next = peekTokenOrEOL();
                 if (next == Token.NAME
+                        || Token.keywordToName(next) != null
                         || next == Token.STRING
                         || next == Token.NUMBER
                         || next == Token.LB
@@ -1338,6 +1339,9 @@ public class Parser {
             } else if (tt == Token.NAME || tt == Token.STRING) {
                 consumeToken();
                 memberName = ts.getString();
+            } else if (Token.keywordToName(tt) != null) {
+                consumeToken();
+                memberName = Token.keywordToName(tt);
             } else if (tt == Token.NUMBER) {
                 consumeToken();
                 memberName = ScriptRuntime.numberToString(ts.getNumber(), 10);
@@ -1386,6 +1390,7 @@ public class Parser {
                     && !isAsync
                     && ("get".equals(memberName) || "set".equals(memberName))
                     && (peekToken() == Token.NAME
+                            || Token.keywordToName(peekToken()) != null
                             || peekToken() == Token.STRING
                             || peekToken() == Token.NUMBER
                             || peekToken() == Token.LB
@@ -1407,6 +1412,9 @@ public class Parser {
                 } else if (peekToken() == Token.NUMBER) {
                     consumeToken();
                     memberName = ScriptRuntime.numberToString(ts.getNumber(), 10);
+                } else if (Token.keywordToName(peekToken()) != null) {
+                    memberName = Token.keywordToName(peekToken());
+                    consumeToken();
                 } else {
                     consumeToken();
                     memberName = ts.getString();
