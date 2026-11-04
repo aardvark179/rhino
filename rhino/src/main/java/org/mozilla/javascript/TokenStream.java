@@ -2100,25 +2100,37 @@ class TokenStream implements Parser.CurrentPositionReporter {
 
     /**
      * Scans a private name {@code #IdentifierName} (the leading {@code #} has already been
-     * consumed). Does not support Unicode escapes within the identifier - an obscure edge case for
-     * a syntax form that's already rare.
+     * consumed), including Unicode escape sequences within the identifier.
      */
     private int scanPrivateName() throws IOException {
         stringBufferTop = 0;
-        int c = getChar();
-        if (c == EOF_CHAR || !(Character.isUnicodeIdentifierStart(c) || c == '$' || c == '_')) {
-            parser.addError("msg.syntax");
-            return Token.ERROR;
-        }
-        addToString(c);
+        boolean first = true;
+        int c;
         for (; ; ) {
             c = getChar();
-            if (c == EOF_CHAR
-                    || c == BYTE_ORDER_MARK
-                    || !(Character.isUnicodeIdentifierPart(c) || c == '$')) {
+            if (c == '\\') {
+                if (getChar() != 'u') {
+                    parser.addError("msg.illegal.character", c);
+                    return Token.ERROR;
+                }
+                c = readUnicodeEscape();
+                if (c < 0) {
+                    parser.addError("msg.invalid.escape");
+                    return Token.ERROR;
+                }
+                if (!isPrivateNameChar(c, first)) {
+                    parser.addError("msg.syntax");
+                    return Token.ERROR;
+                }
+            } else if (c == EOF_CHAR || c == BYTE_ORDER_MARK || !isPrivateNameChar(c, first)) {
+                if (first) {
+                    parser.addError("msg.syntax");
+                    return Token.ERROR;
+                }
                 break;
             }
             addToString(c);
+            first = false;
         }
         if (c != EOF_CHAR) {
             ungetChar(c);
@@ -2126,6 +2138,37 @@ class TokenStream implements Parser.CurrentPositionReporter {
         String str = getStringFromBuffer();
         this.string = internString("#" + str);
         return Token.PRIVATE_NAME;
+    }
+
+    private static boolean isPrivateNameChar(int c, boolean first) {
+        if (first) {
+            return Character.isUnicodeIdentifierStart(c) || c == '$' || c == '_';
+        }
+        return Character.isUnicodeIdentifierPart(c) || c == '$';
+    }
+
+    /** Reads the part of a Unicode escape after {@code \\u}; returns -1 if it is malformed. */
+    private int readUnicodeEscape() throws IOException {
+        int escapeVal = 0;
+        if (matchTemplateLiteralChar('{')) {
+            for (; ; ) {
+                int c = getTemplateLiteralChar();
+                if (c == '}') {
+                    return escapeVal;
+                }
+                escapeVal = Kit.xDigitToInt(c, escapeVal);
+                if (escapeVal < 0 || escapeVal > 0x10FFFF) {
+                    return -1;
+                }
+            }
+        }
+        for (int i = 0; i != 4; ++i) {
+            escapeVal = Kit.xDigitToInt(getChar(), escapeVal);
+            if (escapeVal < 0) {
+                return -1;
+            }
+        }
+        return escapeVal;
     }
 
     private String getStringFromBuffer() {

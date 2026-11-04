@@ -256,4 +256,13 @@ public class ClassFieldsTest {
                         + "Object.keys(o).join() + ',' + o[1] + ',' + o[1.5] + ',' + C[3] + ',' + o[2]()";
         Utils.assertWithAllModes_ES6("0,1,1.5,a,f,s,m", code);
     }
+
+    @Test
+    public void privateNamesWithUnicodeEscapes() {
+        String code =
+                "class C { #\\u{6F}_ = 1; #\\u0061b = 2; #c\\u{64} = 3;\n"
+                        + "  sum() { return this.#o_ + this.#ab + this.#cd; } }\n"
+                        + "new C().sum()";
+        Utils.assertWithAllModes_ES6(6, code);
+    }
 }
