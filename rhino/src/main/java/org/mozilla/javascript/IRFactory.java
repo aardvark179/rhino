@@ -678,7 +678,7 @@ public final class IRFactory {
                         ? (ClassNode) fn.getParent()
                         : null;
         classConstructorHasFields =
-                constructorClass != null && constructorClass.getFieldCount() > 0;
+                constructorClass != null && constructorClass.hasInstanceFields();
         classConstructorDescriptor =
                 classConstructorHasFields ? classDescriptors.get(constructorClass) : null;
         Parser.PerFunctionVariables savedVars = parser.createPerFunctionVariables(fn);
@@ -700,7 +700,8 @@ public final class IRFactory {
             ++parser.nestingOfFunction; // only for body, not params
             Node body =
                     isFieldInitializer(fn)
-                            ? transformFieldInitializerBody((ClassNode) fn.getParent())
+                            ? transformFieldInitializerBody(
+                                    (ClassNode) fn.getParent(), isStaticFieldInitializer(fn))
                             : transform(fn.getBody());
 
             /* Process simple default parameters */
@@ -810,21 +811,27 @@ public final class IRFactory {
 
     private static boolean isFieldInitializer(FunctionNode fn) {
         return fn.getParent() instanceof ClassNode
-                && ((ClassNode) fn.getParent()).getFieldInitializer() == fn;
+                && (((ClassNode) fn.getParent()).getFieldInitializer() == fn
+                        || isStaticFieldInitializer(fn));
+    }
+
+    private static boolean isStaticFieldInitializer(FunctionNode fn) {
+        return fn.getParent() instanceof ClassNode
+                && ((ClassNode) fn.getParent()).getStaticFieldInitializer() == fn;
     }
 
     /**
-     * Builds the body of a class's field initializer: the creation on {@code this} of each field
-     * that has an initializer, in declaration order.
+     * Builds the body of a class's (static, if {@code isStatic}) field initializer: the creation on
+     * {@code this} of each such field that has an initializer, in declaration order.
      */
-    private Node transformFieldInitializerBody(ClassNode node) {
+    private Node transformFieldInitializerBody(ClassNode node, boolean isStatic) {
         Node body = new Node(Token.BLOCK);
         List<String> fieldNames = node.getFieldNames();
         List<AstNode> fieldInits = node.getFieldInitializers();
         int computedKeyIndex = 0;
         for (int i = 0; i < fieldNames.size(); i++) {
             AstNode init = fieldInits.get(i);
-            if (init == null) {
+            if (init == null || node.isFieldStatic(i) != isStatic) {
                 continue;
             }
             String name = fieldNames.get(i);
@@ -894,19 +901,20 @@ public final class IRFactory {
      *
      * <p>Shape: {@code CLASS(superClassExprOrUndefined, EMPTY_OBJECT, RESULT_ACCUMULATOR,
      * ACCUMULATE_RESULT(constructor), ACCUMULATE_RESULT(method)..., ACCUMULATE_RESULT(field
-     * key)..., ACCUMULATE_RESULT(field initializer))}, where computed method keys precede their
-     * method, the field keys are those of the computed fields in declaration order, and the single
-     * field initializer, which defines the fields with initializers, is only present if some field
-     * has one. Private names are not accumulated: their {@link SymbolKey}s are stored directly as
-     * keys on the descriptor. This mirrors {@code transformObjectLiteral}'s shape exactly: the
-     * {@code EMPTY_OBJECT} node creates the (eventual) prototype object, and every accumulated
-     * function value (the constructor first, then each instance method/getter/setter, in source
-     * order) is built with {@code homeObject == } that prototype via the very same "peek the object
-     * under construction" convention object-literal methods already use - which is why the
-     * constructor and methods are parsed as method definitions. The class's shape (which
-     * accumulated values are the constructor vs. named members, and of what kind) is captured by a
-     * {@link ClassLiteralDescriptor} registered in the current script/function's literal pool,
-     * exactly like object/array literals register theirs.
+     * key)..., ACCUMULATE_RESULT(field initializer), ACCUMULATE_RESULT(static field key)...,
+     * ACCUMULATE_RESULT(static field initializer))}, where computed method keys precede their
+     * method, the (static) field keys are those of the computed (static) fields in declaration
+     * order, and the single (static) field initializer, which defines the (static) fields with
+     * initializers, is only present if some such field has one. Private names are not accumulated:
+     * their {@link SymbolKey}s are stored directly as keys on the descriptor. This mirrors {@code
+     * transformObjectLiteral}'s shape exactly: the {@code EMPTY_OBJECT} node creates the (eventual)
+     * prototype object, and every accumulated function value (the constructor first, then each
+     * instance method/getter/setter, in source order) is built with {@code homeObject == } that
+     * prototype via the very same "peek the object under construction" convention object-literal
+     * methods already use - which is why the constructor and methods are parsed as method
+     * definitions. The class's shape (which accumulated values are the constructor vs. named
+     * members, and of what kind) is captured by a {@link ClassLiteralDescriptor} registered in the
+     * current script/function's literal pool, exactly like object/array literals register theirs.
      */
     private Node transformClass(ClassNode node) {
         astNodePos.push(node);
@@ -953,19 +961,8 @@ public final class IRFactory {
                 classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, methodValue));
             }
 
-            for (AstNode computedKeyExpr : node.getFieldComputedKeys()) {
-                if (computedKeyExpr != null) {
-                    classNode.addChildToBack(
-                            new Node(
-                                    Token.ACCUMULATE_RESULT,
-                                    new Node(Token.TO_PROPKEY, transform(computedKeyExpr))));
-                }
-            }
-
-            if (node.getFieldInitializer() != null) {
-                classNode.addChildToBack(
-                        new Node(Token.ACCUMULATE_RESULT, transform(node.getFieldInitializer())));
-            }
+            addFieldValues(classNode, node, false, node.getFieldInitializer());
+            addFieldValues(classNode, node, true, node.getStaticFieldInitializer());
 
             accumulator.putIntProp(Node.RESULTS_SIZE_PROP, builder.getSize());
             classNode.putIntProp(
@@ -983,6 +980,27 @@ public final class IRFactory {
         } finally {
             privateNameScopes.pop();
             astNodePos.pop();
+        }
+    }
+
+    /**
+     * Accumulates, onto {@code classNode}, the computed keys of {@code node}'s (static, if {@code
+     * isStatic}) fields in declaration order, followed by their field initializer if there is one.
+     */
+    private void addFieldValues(
+            Node classNode, ClassNode node, boolean isStatic, FunctionNode initializer) {
+        List<AstNode> fieldComputedKeys = node.getFieldComputedKeys();
+        for (int i = 0; i < fieldComputedKeys.size(); i++) {
+            AstNode computedKeyExpr = fieldComputedKeys.get(i);
+            if (computedKeyExpr != null && node.isFieldStatic(i) == isStatic) {
+                classNode.addChildToBack(
+                        new Node(
+                                Token.ACCUMULATE_RESULT,
+                                new Node(Token.TO_PROPKEY, transform(computedKeyExpr))));
+            }
+        }
+        if (initializer != null) {
+            classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, transform(initializer)));
         }
     }
 
@@ -1011,6 +1029,9 @@ public final class IRFactory {
         List<String> fieldNames = node.getFieldNames();
         List<AstNode> fieldInits = node.getFieldInitializers();
         for (int i = 0; i < fieldNames.size(); i++) {
+            if (node.isFieldStatic(i)) {
+                continue;
+            }
             String name = fieldNames.get(i);
             if (name == null) {
                 if (fieldInits.get(i) != null) {
@@ -1024,6 +1045,24 @@ public final class IRFactory {
         }
         if (node.getFieldInitializer() != null) {
             builder.addFieldInitializer();
+        }
+        for (int i = 0; i < fieldNames.size(); i++) {
+            if (!node.isFieldStatic(i)) {
+                continue;
+            }
+            String name = fieldNames.get(i);
+            if (name == null) {
+                if (fieldInits.get(i) != null) {
+                    builder.addComputedInitializedStaticField();
+                } else {
+                    builder.addComputedStaticField();
+                }
+            } else if (fieldInits.get(i) == null) {
+                builder.addStaticField(isPrivateName(name) ? privateNames.get(name) : name);
+            }
+        }
+        if (node.getStaticFieldInitializer() != null) {
+            builder.addStaticFieldInitializer();
         }
     }
 

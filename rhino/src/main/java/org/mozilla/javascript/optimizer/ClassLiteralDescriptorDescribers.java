@@ -100,8 +100,9 @@ public final class ClassLiteralDescriptorDescribers {
 
     /**
      * Bootstrap arguments are the number of members, then each member's key and kind as for {@link
-     * MethodDescriber}, whether there is a field initializer, and finally the key of each field
-     * without an initializer, all keys being described through the registry.
+     * MethodDescriber}, whether there is a field initializer, the number of field keys, the field
+     * keys, whether there is a static field initializer, and finally the static field keys, all
+     * keys being described through the registry.
      */
     public static class FieldDescriber
             extends DynamicConstantDescriber<FieldClassLiteralDescriptor> {
@@ -130,16 +131,25 @@ public final class ClassLiteralDescriptorDescribers {
                 FieldClassLiteralDescriptor value) {
             var members = value.getMembers();
             var fieldKeys = value.getFieldKeys();
-            var descs = new ConstantDesc[2 + members.length * 2 + fieldKeys.length];
+            var staticFieldKeys = value.getStaticFieldKeys();
+            var descs =
+                    new ConstantDesc
+                            [4 + members.length * 2 + fieldKeys.length + staticFieldKeys.length];
             descs[0] = members.length;
             for (int i = 0; i < members.length; i++) {
                 descs[1 + 2 * i] = getRegistry().describe(members[i].getKey());
                 descs[2 + 2 * i] = members[i].getKind().describeConstable().orElseThrow();
             }
-            int base = 1 + 2 * members.length;
-            descs[base] = value.hasFieldInitializer() ? ConstantDescs.TRUE : ConstantDescs.FALSE;
-            for (int i = 0; i < fieldKeys.length; i++) {
-                descs[base + 1 + i] = getRegistry().describe(fieldKeys[i]);
+            int d = 1 + 2 * members.length;
+            descs[d++] = value.hasFieldInitializer() ? ConstantDescs.TRUE : ConstantDescs.FALSE;
+            descs[d++] = fieldKeys.length;
+            for (Object key : fieldKeys) {
+                descs[d++] = getRegistry().describe(key);
+            }
+            descs[d++] =
+                    value.hasStaticFieldInitializer() ? ConstantDescs.TRUE : ConstantDescs.FALSE;
+            for (Object key : staticFieldKeys) {
+                descs[d++] = getRegistry().describe(key);
             }
             return DynamicConstantDesc.ofNamed(FIELD_CONSTANT, "classLiteral", CD_FIELD, descs);
         }

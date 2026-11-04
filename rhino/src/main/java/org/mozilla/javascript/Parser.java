@@ -1291,17 +1291,34 @@ public class Parser {
                 continue;
             }
 
+            String memberName = null;
+            boolean isStatic = false;
+            if (peekToken() == Token.NAME && "static".equals(ts.getString())) {
+                consumeToken();
+                int next = peekToken();
+                if (next == Token.LP
+                        || next == Token.ASSIGN
+                        || next == Token.SEMI
+                        || next == Token.RC) {
+                    // A member named "static".
+                    memberName = "static";
+                } else {
+                    isStatic = true;
+                }
+            }
+
             boolean isGenerator = false;
-            if (peekToken() == Token.MUL) {
+            if (memberName == null && peekToken() == Token.MUL) {
                 consumeToken();
                 isGenerator = true;
             }
 
             int tt = peekToken();
-            String memberName = null;
             boolean isComputed = false;
             AstNode computedKeyExpr = null;
-            if (tt == Token.NAME || tt == Token.STRING) {
+            if (memberName != null) {
+                // Already consumed.
+            } else if (tt == Token.NAME || tt == Token.STRING) {
                 consumeToken();
                 memberName = ts.getString();
             } else if (tt == Token.PRIVATE_NAME) {
@@ -1325,7 +1342,10 @@ public class Parser {
                 continue;
             }
 
-            if (!isComputed && "constructor".equals(memberName) && peekToken() == Token.LP) {
+            if (!isStatic
+                    && !isComputed
+                    && "constructor".equals(memberName)
+                    && peekToken() == Token.LP) {
                 if (isGenerator) {
                     reportError("msg.generator.ctor");
                 }
@@ -1372,23 +1392,30 @@ public class Parser {
                     continue;
                 }
                 // Field declaration: name = expr; or name;
-                if (!isComputed && "constructor".equals(memberName)) {
-                    reportError("msg.unexpected.token");
+                if (!isComputed
+                        && ("constructor".equals(memberName)
+                                || (isStatic && "prototype".equals(memberName)))) {
+                    reportError("msg.bad.class.field.name", memberName);
                 }
                 AstNode initializer = null;
                 if (peekToken() == Token.ASSIGN) {
                     consumeToken();
-                    initializer = fieldInitializer(classNode, isComputed);
+                    initializer = fieldInitializer(classNode, isComputed, isStatic);
                 }
                 if (peekToken() == Token.SEMI) {
                     consumeToken();
                 }
                 if (isComputed) {
-                    classNode.addComputedField(computedKeyExpr, initializer);
+                    classNode.addComputedField(computedKeyExpr, initializer, isStatic);
                 } else {
-                    classNode.addField(memberName, initializer);
+                    classNode.addField(memberName, initializer, isStatic);
                 }
                 continue;
+            }
+
+            if (isStatic) {
+                // Static methods and accessors are not yet supported.
+                reportError("msg.class.member.not.supported");
             }
 
             FunctionNode method = function(FunctionNode.FUNCTION_EXPRESSION, true, false);
@@ -1416,7 +1443,8 @@ public class Parser {
 
         inUseStrictDirective = savedStrict;
 
-        finishFieldInitializer(classNode);
+        finishFieldInitializer(classNode, false);
+        finishFieldInitializer(classNode, true);
 
         if (constructor == null) {
             constructor = createDefaultConstructor(pos, classNode.getSuperClass() != null);
@@ -1436,20 +1464,27 @@ public class Parser {
 
     /**
      * Parses a class field's initializer expression inside the class's synthesized field
-     * initializer method (see {@link ClassNode#getFieldInitializer}), creating that method for the
-     * first initializer, so that every initializer is evaluated with the instance as {@code this}
-     * and the prototype as its home object. A field with a computed key receives that key as a new
-     * parameter of the method.
+     * initializer method (see {@link ClassNode#getFieldInitializer}), or static field initializer
+     * method (see {@link ClassNode#getStaticFieldInitializer}), creating that method for the first
+     * initializer, so that every initializer is evaluated with the instance (or, for a static
+     * field, the constructor) as {@code this} and the prototype as its home object. A field with a
+     * computed key receives that key as a new parameter of the method.
      */
-    private AstNode fieldInitializer(ClassNode classNode, boolean isComputed) throws IOException {
-        FunctionNode fn = classNode.getFieldInitializer();
+    private AstNode fieldInitializer(ClassNode classNode, boolean isComputed, boolean isStatic)
+            throws IOException {
+        FunctionNode fn =
+                isStatic ? classNode.getStaticFieldInitializer() : classNode.getFieldInitializer();
         if (fn == null) {
             fn = new FunctionNode(ts.tokenEnd);
             fn.setFunctionType(FunctionNode.FUNCTION_EXPRESSION);
             fn.setMethodDefinition(true);
             fn.setSourceName(sourceURI);
             fn.setLineColumnNumber(lineNumber(), columnNumber());
-            classNode.setFieldInitializer(fn);
+            if (isStatic) {
+                classNode.setStaticFieldInitializer(fn);
+            } else {
+                classNode.setFieldInitializer(fn);
+            }
         }
 
         PerFunctionVariables savedVars = new PerFunctionVariables(fn);
@@ -1474,18 +1509,21 @@ public class Parser {
     }
 
     /**
-     * Gives the class's field initializer method, if it has one, a body of one expression statement
-     * per field initializer, in declaration order. {@link IRFactory} turns each into the definition
-     * of its field on {@code this}.
+     * Gives the class's (static, if {@code isStatic}) field initializer method, if it has one, a
+     * body of one expression statement per field initializer, in declaration order. {@link
+     * IRFactory} turns each into the definition of its field on {@code this}.
      */
-    private void finishFieldInitializer(ClassNode classNode) {
-        FunctionNode fn = classNode.getFieldInitializer();
+    private void finishFieldInitializer(ClassNode classNode, boolean isStatic) {
+        FunctionNode fn =
+                isStatic ? classNode.getStaticFieldInitializer() : classNode.getFieldInitializer();
         if (fn == null) {
             return;
         }
         List<AstNode> inits = new ArrayList<>();
-        for (AstNode init : classNode.getFieldInitializers()) {
-            if (init != null) {
+        List<AstNode> allInits = classNode.getFieldInitializers();
+        for (int i = 0; i < allInits.size(); i++) {
+            AstNode init = allInits.get(i);
+            if (init != null && classNode.isFieldStatic(i) == isStatic) {
                 inits.add(init);
             }
         }

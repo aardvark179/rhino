@@ -17,11 +17,16 @@ import java.util.Arrays;
  * the computed key values of any instance fields with computed keys, in declaration order, and, if
  * any field has an initializer, a single field initializer function, which creates the fields with
  * initializers on its {@code this} in declaration order. The field initializer is passed the
- * computed keys of the fields with initializers as its arguments. {@code prototype} is a freshly
+ * computed keys of the fields with initializers as its arguments. The static fields' computed key
+ * values and static field initializer follow in the same way. {@code prototype} is a freshly
  * created plain object (built the same way as an object literal's {@code EMPTY_OBJECT}) that
  * becomes the constructor's {@code .prototype}; methods/the constructor are all built with {@code
  * homeObject == prototype} via the same "peek the object under construction" convention
  * object-literal methods already use.
+ *
+ * <p>Static fields are defined on the constructor by {@link #createClass}, once its members are
+ * installed: first those with initializers, by calling the static field initializer with the
+ * constructor as {@code this}, and then the rest, as {@code undefined}.
  *
  * <p>Instance fields are not installed by {@link #createClass}: the field initializer and the keys
  * of the fields without initializers are recorded on the constructor, and {@link #initializeFields}
@@ -183,8 +188,10 @@ public abstract class ClassLiteralDescriptor implements Serializable {
     public static class Builder {
         private final ArrayList<MemberEntry> members = new ArrayList<>();
         private final ArrayList<Object> fieldKeys = new ArrayList<>();
+        private final ArrayList<Object> staticFieldKeys = new ArrayList<>();
         private int size = 1; // values[0] is always the constructor
         private boolean hasFieldInitializer;
+        private boolean hasStaticFieldInitializer;
 
         public void addMethod(Object key, ElementKind kind) {
             members.add(new MemberEntry(key, kind));
@@ -222,9 +229,41 @@ public abstract class ClassLiteralDescriptor implements Serializable {
             size++;
         }
 
-        /** Adds the field initializer, which occupies the final {@code values} slot. */
+        /** Adds the field initializer, which occupies the next {@code values} slot. */
         public void addFieldInitializer() {
             hasFieldInitializer = true;
+            size++;
+        }
+
+        /**
+         * Adds a static field without an initializer. Static fields must be added after all
+         * instance fields.
+         */
+        public void addStaticField(Object key) {
+            staticFieldKeys.add(key);
+        }
+
+        /**
+         * Adds a static field without an initializer whose key value occupies the next {@code
+         * values} slot.
+         */
+        public void addComputedStaticField() {
+            staticFieldKeys.add(UniqueTag.COMPUTED_KEY);
+            size++;
+        }
+
+        /**
+         * Adds a static field with an initializer whose key value occupies the next {@code values}
+         * slot.
+         */
+        public void addComputedInitializedStaticField() {
+            staticFieldKeys.add(UniqueTag.COMPUTED_INITIALIZED_FIELD);
+            size++;
+        }
+
+        /** Adds the static field initializer, which occupies the final {@code values} slot. */
+        public void addStaticFieldInitializer() {
+            hasStaticFieldInitializer = true;
             size++;
         }
 
@@ -233,11 +272,16 @@ public abstract class ClassLiteralDescriptor implements Serializable {
         }
 
         public ClassLiteralDescriptor build() {
-            if (!fieldKeys.isEmpty() || hasFieldInitializer) {
+            if (!fieldKeys.isEmpty()
+                    || hasFieldInitializer
+                    || !staticFieldKeys.isEmpty()
+                    || hasStaticFieldInitializer) {
                 return new FieldClassLiteralDescriptor(
                         members.toArray(new MemberEntry[0]),
                         fieldKeys.toArray(),
-                        hasFieldInitializer);
+                        hasFieldInitializer,
+                        staticFieldKeys.toArray(),
+                        hasStaticFieldInitializer);
             }
             if (members.isEmpty()) {
                 return new SimpleClassLiteralDescriptor();
@@ -298,17 +342,27 @@ public abstract class ClassLiteralDescriptor implements Serializable {
         }
     }
 
-    /** A class with instance fields, and optionally methods. */
+    /** A class with instance and/or static fields, and optionally methods. */
     public static final class FieldClassLiteralDescriptor extends ClassLiteralDescriptor {
         private final MemberEntry[] members;
         private final Object[] fieldKeys;
         private final boolean hasFieldInitializer;
+        private final Object[] staticFieldKeys;
+        private final boolean hasStaticFieldInitializer;
+        private final int fieldValueCount;
 
         FieldClassLiteralDescriptor(
-                MemberEntry[] members, Object[] fieldKeys, boolean hasFieldInitializer) {
+                MemberEntry[] members,
+                Object[] fieldKeys,
+                boolean hasFieldInitializer,
+                Object[] staticFieldKeys,
+                boolean hasStaticFieldInitializer) {
             this.members = members;
             this.fieldKeys = fieldKeys;
             this.hasFieldInitializer = hasFieldInitializer;
+            this.staticFieldKeys = staticFieldKeys;
+            this.hasStaticFieldInitializer = hasStaticFieldInitializer;
+            this.fieldValueCount = valueCount(fieldKeys, hasFieldInitializer);
         }
 
         public MemberEntry[] getMembers() {
@@ -328,9 +382,19 @@ public abstract class ClassLiteralDescriptor implements Serializable {
             return hasFieldInitializer;
         }
 
+        /** The keys of the static fields, in the same form as {@link #getFieldKeys}. */
+        public Object[] getStaticFieldKeys() {
+            return staticFieldKeys;
+        }
+
+        public boolean hasStaticFieldInitializer() {
+            return hasStaticFieldInitializer;
+        }
+
         /**
          * Bootstrap arguments are the number of members, the key and kind of each member in turn,
-         * whether there is a field initializer, and then the key of each field without one.
+         * whether there is a field initializer, the number of field keys, the field keys, whether
+         * there is a static field initializer, and then the static field keys.
          */
         public static FieldClassLiteralDescriptor fieldClassLiteralConstant(
                 MethodHandles.Lookup lookup, String name, Class<?> type, Object... args) {
@@ -341,8 +405,17 @@ public abstract class ClassLiteralDescriptor implements Serializable {
             }
             int base = 1 + 2 * memberCount;
             boolean hasFieldInitializer = (Boolean) args[base];
-            Object[] fieldKeys = Arrays.copyOfRange(args, base + 1, args.length);
-            return new FieldClassLiteralDescriptor(members, fieldKeys, hasFieldInitializer);
+            int fieldKeyCount = (Integer) args[base + 1];
+            int fieldKeysEnd = base + 2 + fieldKeyCount;
+            Object[] fieldKeys = Arrays.copyOfRange(args, base + 2, fieldKeysEnd);
+            boolean hasStaticFieldInitializer = (Boolean) args[fieldKeysEnd];
+            Object[] staticFieldKeys = Arrays.copyOfRange(args, fieldKeysEnd + 1, args.length);
+            return new FieldClassLiteralDescriptor(
+                    members,
+                    fieldKeys,
+                    hasFieldInitializer,
+                    staticFieldKeys,
+                    hasStaticFieldInitializer);
         }
 
         @Override
@@ -354,7 +427,11 @@ public abstract class ClassLiteralDescriptor implements Serializable {
                 Object[] values) {
             BaseFunction constructor = setupClass((BaseFunction) values[0], prototype, superClass);
             int v = installMembers((ScriptableObject) prototype, members, values);
-            ((JSFunction) constructor).setFieldValues(Arrays.copyOfRange(values, v, values.length));
+            ((JSFunction) constructor)
+                    .setFieldValues(Arrays.copyOfRange(values, v, v + fieldValueCount));
+            v += fieldValueCount;
+            defineFields(
+                    cx, scope, constructor, staticFieldKeys, hasStaticFieldInitializer, values, v);
             return constructor;
         }
 
@@ -368,32 +445,66 @@ public abstract class ClassLiteralDescriptor implements Serializable {
             if (fieldValues == null) {
                 return thisObj;
             }
-            Scriptable self = (Scriptable) thisObj;
-            if (hasFieldInitializer) {
+            defineFields(
+                    cx,
+                    scope,
+                    (Scriptable) thisObj,
+                    fieldKeys,
+                    hasFieldInitializer,
+                    fieldValues,
+                    0);
+            return thisObj;
+        }
+
+        /** The number of {@code values} slots occupied by fields with {@code keys}. */
+        private static int valueCount(Object[] keys, boolean hasInitializer) {
+            int count = hasInitializer ? 1 : 0;
+            for (Object key : keys) {
+                if (key == UniqueTag.COMPUTED_KEY || key == UniqueTag.COMPUTED_INITIALIZED_FIELD) {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        /**
+         * Defines the fields with {@code keys} on {@code target}: first those with initializers, by
+         * calling the initializer with their computed keys, and then the rest, as {@code
+         * undefined}. The computed keys, followed by the initializer if any, start at {@code
+         * values[start]}.
+         */
+        private static void defineFields(
+                Context cx,
+                VarScope scope,
+                Scriptable target,
+                Object[] keys,
+                boolean hasInitializer,
+                Object[] values,
+                int start) {
+            if (hasInitializer) {
                 ArrayList<Object> initializerKeys = new ArrayList<>();
-                int v = 0;
-                for (Object key : fieldKeys) {
+                int v = start;
+                for (Object key : keys) {
                     if (key == UniqueTag.COMPUTED_INITIALIZED_FIELD) {
-                        initializerKeys.add(fieldValues[v++]);
+                        initializerKeys.add(values[v++]);
                     } else if (key == UniqueTag.COMPUTED_KEY) {
                         v++;
                     }
                 }
-                Callable initializer = (Callable) fieldValues[fieldValues.length - 1];
-                initializer.call(cx, scope, self, initializerKeys.toArray());
+                Callable initializer = (Callable) values[v];
+                initializer.call(cx, scope, target, initializerKeys.toArray());
             }
-            int v = 0;
-            for (Object key : fieldKeys) {
+            int v = start;
+            for (Object key : keys) {
                 if (key == UniqueTag.COMPUTED_INITIALIZED_FIELD) {
                     v++;
                     continue;
                 }
                 if (key == UniqueTag.COMPUTED_KEY) {
-                    key = fieldValues[v++];
+                    key = values[v++];
                 }
-                defineField(key, Undefined.instance, cx, self);
+                defineField(key, Undefined.instance, cx, target);
             }
-            return thisObj;
         }
     }
 }

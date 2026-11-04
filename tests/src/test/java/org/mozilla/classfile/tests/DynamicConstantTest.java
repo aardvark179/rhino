@@ -645,6 +645,34 @@ public class DynamicConstantTest {
     }
 
     @Test
+    public void staticFieldClassLiteralRoundTrips() throws Exception {
+        var builder = new ClassLiteralDescriptor.Builder();
+        builder.addField("a");
+        builder.addComputedInitializedField();
+        builder.addFieldInitializer();
+        builder.addStaticField("s");
+        builder.addComputedStaticField();
+        builder.addComputedInitializedStaticField();
+        builder.addStaticFieldInitializer();
+        var resolved =
+                (FieldClassLiteralDescriptor)
+                        loadClassLiteral("TestStaticFieldClassLiteral", builder.build());
+
+        assertEquals(0, resolved.getMembers().length);
+        assertTrue(resolved.hasFieldInitializer());
+        var fieldKeys = resolved.getFieldKeys();
+        assertEquals(2, fieldKeys.length);
+        assertEquals("a", fieldKeys[0]);
+        assertSame(UniqueTag.COMPUTED_INITIALIZED_FIELD, fieldKeys[1]);
+        assertTrue(resolved.hasStaticFieldInitializer());
+        var staticFieldKeys = resolved.getStaticFieldKeys();
+        assertEquals(3, staticFieldKeys.length);
+        assertEquals("s", staticFieldKeys[0]);
+        assertSame(UniqueTag.COMPUTED_KEY, staticFieldKeys[1]);
+        assertSame(UniqueTag.COMPUTED_INITIALIZED_FIELD, staticFieldKeys[2]);
+    }
+
+    @Test
     public void fieldOnlyClassLiteralRoundTrips() throws Exception {
         var builder = new ClassLiteralDescriptor.Builder();
         builder.addField("a");

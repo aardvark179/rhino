@@ -19,8 +19,8 @@ import org.mozilla.javascript.Token;
  * <p>Node type is {@link Token#CLASS}.
  *
  * <p>A class is a (possibly synthesized) constructor, an optional {@code extends} clause, instance
- * methods/getters/setters and instance fields with literal, computed, or private ({@code #name})
- * keys. Static members are not yet supported.
+ * methods/getters/setters and instance and static fields with literal, computed, or private ({@code
+ * #name}) keys. Static methods and accessors are not yet supported.
  *
  * <p>Private names flow through the same method/field lists as ordinary members - a name starting
  * with {@code #} is recognized specially wherever it matters (see {@link
@@ -56,7 +56,9 @@ public class ClassNode extends AstNode {
     private List<String> fieldNames;
     private List<AstNode> fieldInitializers;
     private List<AstNode> fieldComputedKeys;
+    private List<Boolean> fieldStatic;
     private FunctionNode fieldInitializer;
+    private FunctionNode staticFieldInitializer;
     private final Set<String> privateNames = new LinkedHashSet<>();
 
     {
@@ -165,22 +167,23 @@ public class ClassNode extends AstNode {
     }
 
     /**
-     * Adds an instance field declaration. {@code initializer} may be {@code null}; otherwise it is
-     * an element of the {@link #getFieldInitializer field initializer} method's result, and is
-     * parented there rather than to this node.
+     * Adds an instance or static field declaration. {@code initializer} may be {@code null};
+     * otherwise it is an element of the {@link #getFieldInitializer field initializer} (or {@link
+     * #getStaticFieldInitializer static field initializer}) method's body, and is parented there
+     * rather than to this node.
      */
-    public void addField(String name, AstNode initializer) {
-        addFieldInternal(name, null, initializer);
+    public void addField(String name, AstNode initializer, boolean isStatic) {
+        addFieldInternal(name, null, initializer, isStatic);
     }
 
     /**
-     * Adds an instance field declaration whose property key is computed at runtime (e.g. {@code
-     * [expr];} or {@code [expr] = init;}). The key is evaluated exactly once, at class-definition
-     * time; if the field has an initializer, it is passed to the field initializer method as the
-     * parameter named by {@link #fieldKeyParamName}.
+     * Adds an instance or static field declaration whose property key is computed at runtime (e.g.
+     * {@code [expr];} or {@code [expr] = init;}). The key is evaluated exactly once, at
+     * class-definition time; if the field has an initializer, it is passed to the (static) field
+     * initializer method as the parameter named by {@link #fieldKeyParamName}.
      */
-    public void addComputedField(AstNode keyExpr, AstNode initializer) {
-        addFieldInternal(null, keyExpr, initializer);
+    public void addComputedField(AstNode keyExpr, AstNode initializer, boolean isStatic) {
+        addFieldInternal(null, keyExpr, initializer, isStatic);
         keyExpr.setParent(this);
     }
 
@@ -192,15 +195,18 @@ public class ClassNode extends AstNode {
         return "%key" + index;
     }
 
-    private void addFieldInternal(String name, AstNode keyExpr, AstNode initializer) {
+    private void addFieldInternal(
+            String name, AstNode keyExpr, AstNode initializer, boolean isStatic) {
         if (fieldNames == null) {
             fieldNames = new ArrayList<>();
             fieldInitializers = new ArrayList<>();
             fieldComputedKeys = new ArrayList<>();
+            fieldStatic = new ArrayList<>();
         }
         fieldNames.add(name);
         fieldInitializers.add(initializer);
         fieldComputedKeys.add(keyExpr);
+        fieldStatic.add(isStatic);
     }
 
     /**
@@ -218,8 +224,33 @@ public class ClassNode extends AstNode {
         }
     }
 
+    /**
+     * The synthesized method that creates the static fields with initializers on its {@code this},
+     * the constructor, or {@code null} if no static field has an initializer.
+     */
+    public FunctionNode getStaticFieldInitializer() {
+        return staticFieldInitializer;
+    }
+
+    public void setStaticFieldInitializer(FunctionNode staticFieldInitializer) {
+        this.staticFieldInitializer = staticFieldInitializer;
+        if (staticFieldInitializer != null) {
+            staticFieldInitializer.setParent(this);
+        }
+    }
+
     public int getFieldCount() {
         return fieldNames == null ? 0 : fieldNames.size();
+    }
+
+    /** Whether the {@code index}th field is a static field. */
+    public boolean isFieldStatic(int index) {
+        return fieldStatic.get(index);
+    }
+
+    /** Whether this class declares any instance (non-static) fields. */
+    public boolean hasInstanceFields() {
+        return fieldStatic != null && fieldStatic.contains(Boolean.FALSE);
     }
 
     public List<String> getFieldNames() {
@@ -265,6 +296,9 @@ public class ClassNode extends AstNode {
         if (fieldNames != null) {
             for (int i = 0; i < fieldNames.size(); i++) {
                 sb.append(makeIndent(depth + 1));
+                if (fieldStatic.get(i)) {
+                    sb.append("static ");
+                }
                 String name = fieldNames.get(i);
                 if (name == null) {
                     sb.append("[");
@@ -344,6 +378,9 @@ public class ClassNode extends AstNode {
             }
             if (fieldInitializer != null) {
                 fieldInitializer.visit(v);
+            }
+            if (staticFieldInitializer != null) {
+                staticFieldInitializer.visit(v);
             }
         }
     }
