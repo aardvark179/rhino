@@ -275,4 +275,13 @@ public class ClassFieldsTest {
                         + "o['break']() + o['if']() + C['delete']";
         Utils.assertWithAllModes_ES6(7, code);
     }
+
+    @Test
+    public void privateNamesWithLiteralJoiners() {
+        String code =
+                "class C { #a_\\u200D_b = 1; #c_\\u200C_d = 2; #e\u200Df = 4;\n"
+                        + "  sum() { return this.#a_\u200D_b + this.#c_\u200C_d + this.#e\\u{200D}f; } }\n"
+                        + "new C().sum()";
+        Utils.assertWithAllModes_ES6(7, code);
+    }
 }

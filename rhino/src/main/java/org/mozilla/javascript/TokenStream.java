@@ -2107,7 +2107,10 @@ class TokenStream implements Parser.CurrentPositionReporter {
         boolean first = true;
         int c;
         for (; ; ) {
-            c = getChar();
+            c = getChar(false);
+            if (isJSFormatChar(c) && c != 0x200C && c != 0x200D) {
+                continue;
+            }
             if (c == '\\') {
                 if (getChar() != 'u') {
                     parser.addError("msg.illegal.character", c);
