@@ -119,16 +119,30 @@ public abstract class ClassLiteralDescriptor implements Serializable {
             Object[] values) {
         int v = 1;
         for (MemberEntry member : members) {
-            Object key = member.key == UniqueTag.COMPUTED_KEY ? values[v++] : member.key;
+            boolean computed = member.key == UniqueTag.COMPUTED_KEY;
+            Object key = computed ? values[v++] : member.key;
             JSDescriptor<JSFunction> desc =
                     member.function != null
                             ? (JSDescriptor<JSFunction>) member.function
                             : parent.getFunction(member.functionIndex);
             ScriptableObject target = member.isStatic ? constructor : prototype;
             JSFunction fn = new JSFunction(cx, scope, desc, null, Undefined.instance, target);
+            if (computed) {
+                fn.setFunctionName(computedMemberName(key, member.kind));
+            }
             installMember(target, key, member.kind, fn);
         }
         return v;
+    }
+
+    private static String computedMemberName(Object key, ElementKind kind) {
+        String prefix =
+                kind == ElementKind.GETTER ? "get " : kind == ElementKind.SETTER ? "set " : "";
+        if (key instanceof Symbol) {
+            String name = ((Symbol) key).getName();
+            return name.isEmpty() ? prefix : prefix + "[" + name + "]";
+        }
+        return prefix + ScriptRuntime.toString(key);
     }
 
     private static MemberEntry[] withMemberFunctions(

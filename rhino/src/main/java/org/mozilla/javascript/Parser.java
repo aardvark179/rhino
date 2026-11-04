@@ -1258,6 +1258,11 @@ public class Parser {
      * single {@code constructor(...)} member are supported. Any other class member is a parse error
      * for now.
      */
+    /** Returns whether {@code tt} is a token whose string is an IdentifierName member key. */
+    private static boolean isNameLikeMemberKey(int tt) {
+        return tt == Token.NAME || tt == Token.RESERVED || tt == Token.CLASS || tt == Token.EXTENDS;
+    }
+
     private ClassNode parseClass(boolean isStatement) throws IOException {
         int pos = ts.tokenBeg;
         int lineno = lineNumber();
@@ -1311,7 +1316,7 @@ public class Parser {
             if (memberName == null && peekToken() == Token.NAME && "async".equals(ts.getString())) {
                 consumeToken();
                 int next = peekTokenOrEOL();
-                if (next == Token.NAME
+                if (isNameLikeMemberKey(next)
                         || Token.keywordToName(next) != null
                         || next == Token.STRING
                         || next == Token.NUMBER
@@ -1336,7 +1341,7 @@ public class Parser {
             AstNode computedKeyExpr = null;
             if (memberName != null) {
                 // Already consumed.
-            } else if (tt == Token.NAME || tt == Token.STRING) {
+            } else if (isNameLikeMemberKey(tt) || tt == Token.STRING) {
                 consumeToken();
                 memberName = ts.getString();
             } else if (Token.keywordToName(tt) != null) {
@@ -1389,7 +1394,7 @@ public class Parser {
                     && !isGenerator
                     && !isAsync
                     && ("get".equals(memberName) || "set".equals(memberName))
-                    && (peekToken() == Token.NAME
+                    && (isNameLikeMemberKey(peekToken())
                             || Token.keywordToName(peekToken()) != null
                             || peekToken() == Token.STRING
                             || peekToken() == Token.NUMBER

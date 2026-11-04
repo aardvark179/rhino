@@ -284,4 +284,29 @@ public class ClassFieldsTest {
                         + "new C().sum()";
         Utils.assertWithAllModes_ES6(7, code);
     }
+
+    @Test
+    public void reservedWordsAsMemberNames() {
+        String code =
+                "var C = class { cl\\u0061ss() { return 1; } \\u0065num() { return 2; }"
+                        + " \\u0065xport() { return 4; } extends() { return 8; }"
+                        + " static \\u0065xtends() { return 16; } \\u0069mport() { return 32; }"
+                        + " static class = 64; };\n"
+                        + "var D = class { get \\u{65}xtends() { return 128; } };\n"
+                        + "var o = new C();\n"
+                        + "o['class']() + o['enum']() + o['export']() + o['extends']() + C['extends']()"
+                        + " + o['import']() + C['class'] + new D()['extends']";
+        Utils.assertWithAllModes_ES6(255, code);
+    }
+
+    @Test
+    public void computedMethodNames() {
+        String code =
+                "var s = Symbol('sym');\n"
+                        + "var C = class { static ['bob']() {} static [1]() {} [s]() {}"
+                        + " static get ['g']() { return 1; } static set ['g'](v) {} };\n"
+                        + "var d = Object.getOwnPropertyDescriptor(C, 'g');\n"
+                        + "[C['bob'].name, C[1].name, C.prototype[s].name, d.get.name, d.set.name].join()";
+        Utils.assertWithAllModes_ES6("bob,1,[sym],get g,set g", code);
+    }
 }
