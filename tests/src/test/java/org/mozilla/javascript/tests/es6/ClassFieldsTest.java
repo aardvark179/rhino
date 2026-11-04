@@ -247,4 +247,13 @@ public class ClassFieldsTest {
                         + "d.enumerable + ',' + d.writable + ',' + d.configurable";
         Utils.assertWithAllModes_ES6("true,true,true", code);
     }
+
+    @Test
+    public void numericFieldNames() {
+        String code =
+                "class C { 0; 1 = 'a'; 1.5 = 'f'; static 3 = 's'; 2() { return 'm'; } }\n"
+                        + "var o = new C();\n"
+                        + "Object.keys(o).join() + ',' + o[1] + ',' + o[1.5] + ',' + C[3] + ',' + o[2]()";
+        Utils.assertWithAllModes_ES6("0,1,1.5,a,f,s,m", code);
+    }
 }

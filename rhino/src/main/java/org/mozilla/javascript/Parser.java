@@ -1313,6 +1313,7 @@ public class Parser {
                 int next = peekTokenOrEOL();
                 if (next == Token.NAME
                         || next == Token.STRING
+                        || next == Token.NUMBER
                         || next == Token.LB
                         || next == Token.PRIVATE_NAME
                         || next == Token.MUL) {
@@ -1337,6 +1338,9 @@ public class Parser {
             } else if (tt == Token.NAME || tt == Token.STRING) {
                 consumeToken();
                 memberName = ts.getString();
+            } else if (tt == Token.NUMBER) {
+                consumeToken();
+                memberName = ScriptRuntime.numberToString(ts.getNumber(), 10);
             } else if (tt == Token.PRIVATE_NAME) {
                 consumeToken();
                 memberName = ts.getString();
@@ -1383,6 +1387,7 @@ public class Parser {
                     && ("get".equals(memberName) || "set".equals(memberName))
                     && (peekToken() == Token.NAME
                             || peekToken() == Token.STRING
+                            || peekToken() == Token.NUMBER
                             || peekToken() == Token.LB
                             || peekToken() == Token.PRIVATE_NAME)) {
                 accessorKind =
@@ -1399,6 +1404,9 @@ public class Parser {
                     consumeToken();
                     memberName = ts.getString();
                     classNode.addPrivateName(memberName);
+                } else if (peekToken() == Token.NUMBER) {
+                    consumeToken();
+                    memberName = ScriptRuntime.numberToString(ts.getNumber(), 10);
                 } else {
                     consumeToken();
                     memberName = ts.getString();

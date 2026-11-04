@@ -845,13 +845,27 @@ public final class IRFactory {
             }
             Node set =
                     new Node(
-                            name == null || isPrivateName(name) ? Token.SETELEM : Token.SETPROP,
+                            name == null || isPrivateName(name) || !isSimplePropertyName(name)
+                                    ? Token.SETELEM
+                                    : Token.SETPROP,
                             new Node(Token.THIS),
                             key,
                             transform(init));
             body.addChildToBack(new Node(Token.EXPR_VOID, set, init.getLineno(), init.getColumn()));
         }
         return body;
+    }
+
+    private static boolean isSimplePropertyName(String name) {
+        if (name.isEmpty() || !Character.isJavaIdentifierStart(name.charAt(0))) {
+            return false;
+        }
+        for (int i = 1; i < name.length(); i++) {
+            if (!Character.isJavaIdentifierPart(name.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private Node newInitFields() {
