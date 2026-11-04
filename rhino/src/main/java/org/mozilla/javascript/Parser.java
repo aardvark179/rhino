@@ -1307,6 +1307,22 @@ public class Parser {
                 }
             }
 
+            boolean isAsync = false;
+            if (memberName == null && peekToken() == Token.NAME && "async".equals(ts.getString())) {
+                consumeToken();
+                int next = peekTokenOrEOL();
+                if (next == Token.NAME
+                        || next == Token.STRING
+                        || next == Token.LB
+                        || next == Token.PRIVATE_NAME
+                        || next == Token.MUL) {
+                    isAsync = true;
+                } else {
+                    // A member named "async".
+                    memberName = "async";
+                }
+            }
+
             boolean isGenerator = false;
             if (memberName == null && peekToken() == Token.MUL) {
                 consumeToken();
@@ -1349,6 +1365,9 @@ public class Parser {
                 if (isGenerator) {
                     reportError("msg.generator.ctor");
                 }
+                if (isAsync) {
+                    reportError("msg.class.member.not.supported");
+                }
                 if (constructor != null) {
                     reportError("msg.dup.ctor");
                 }
@@ -1360,6 +1379,7 @@ public class Parser {
             ClassNode.ElementKind accessorKind = ClassNode.ElementKind.METHOD;
             if (!isComputed
                     && !isGenerator
+                    && !isAsync
                     && ("get".equals(memberName) || "set".equals(memberName))
                     && (peekToken() == Token.NAME
                             || peekToken() == Token.STRING
@@ -1386,7 +1406,7 @@ public class Parser {
             }
 
             if (peekToken() != Token.LP) {
-                if (accessorKind != ClassNode.ElementKind.METHOD || isGenerator) {
+                if (accessorKind != ClassNode.ElementKind.METHOD || isGenerator || isAsync) {
                     // A get/set accessor or generator must be a method.
                     reportError("msg.class.member.not.supported");
                     continue;
@@ -1417,7 +1437,7 @@ public class Parser {
                 reportError("msg.static.prototype");
             }
 
-            FunctionNode method = function(FunctionNode.FUNCTION_EXPRESSION, true, false);
+            FunctionNode method = function(FunctionNode.FUNCTION_EXPRESSION, true, isAsync);
             if (accessorKind == ClassNode.ElementKind.GETTER) {
                 if (method.getParamCount() != 0) {
                     reportError("msg.getter.no.parms");
