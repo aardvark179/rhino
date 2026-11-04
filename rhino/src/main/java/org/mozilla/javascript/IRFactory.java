@@ -954,10 +954,23 @@ public final class IRFactory {
             // Methods are not accumulated: the descriptor creates them from their function
             // descriptors, so only their function indices are needed.
             List<FunctionNode> methods = node.getMethods();
+            List<String> methodNames = node.getMethodNames();
+            List<ClassNode.ElementKind> methodKinds = node.getMethodKinds();
             int[] methodFunctionIndices = new int[methods.size()];
             for (int i = 0; i < methods.size(); i++) {
-                methodFunctionIndices[i] =
-                        transform(methods.get(i)).getExistingIntProp(Node.FUNCTION_PROP);
+                Node fn = transform(methods.get(i));
+                String name = methodNames.get(i);
+                if (name != null) {
+                    ClassNode.ElementKind kind = methodKinds.get(i);
+                    inferNameIfMissing(
+                            new Name(methods.get(i).getPosition(), name),
+                            fn,
+                            kind == ClassNode.ElementKind.GETTER
+                                    ? "get "
+                                    : kind == ClassNode.ElementKind.SETTER ? "set " : null,
+                            true);
+                }
+                methodFunctionIndices[i] = fn.getExistingIntProp(Node.FUNCTION_PROP);
             }
 
             ClassLiteralDescriptor.Builder builder = new ClassLiteralDescriptor.Builder();
