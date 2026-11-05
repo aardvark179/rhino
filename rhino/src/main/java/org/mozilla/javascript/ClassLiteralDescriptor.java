@@ -130,7 +130,7 @@ public abstract class ClassLiteralDescriptor implements Serializable {
             if (computed) {
                 fn.setFunctionName(computedMemberName(key, member.kind));
             }
-            installMember(target, key, member.kind, fn);
+            installMember(cx, target, key, member.kind, fn);
         }
         return v;
     }
@@ -181,7 +181,7 @@ public abstract class ClassLiteralDescriptor implements Serializable {
     }
 
     private static void installMember(
-            ScriptableObject target, Object key, ElementKind kind, Object value) {
+            Context cx, ScriptableObject target, Object key, ElementKind kind, Object value) {
         boolean isSetter = kind == ElementKind.SETTER;
         if (key instanceof Symbol) {
             // Includes private names (SymbolKey, Symbol.Kind.PRIVATE): already hidden from
@@ -202,7 +202,10 @@ public abstract class ClassLiteralDescriptor implements Serializable {
         var s = ScriptRuntime.toStringIdOrIndex(key);
         if (kind == ElementKind.METHOD) {
             if (s.stringId != null) {
-                target.defineProperty(s.stringId, value, ScriptableObject.DONTENUM);
+                target.defineOwnProperty(
+                        cx,
+                        s.stringId,
+                        new ScriptableObject.DescriptorInfo(false, true, true, value));
             } else {
                 target.put(s.index, target, value);
                 target.setAttributes(s.index, ScriptableObject.DONTENUM);
@@ -211,11 +214,16 @@ public abstract class ClassLiteralDescriptor implements Serializable {
         }
         Callable accessor = (Callable) value;
         if (s.stringId != null) {
-            target.setGetterOrSetter(s.stringId, 0, accessor, isSetter);
-            target.setAttributes(
+            target.defineOwnProperty(
+                    cx,
                     s.stringId,
-                    (target.getAttributes(s.stringId) | ScriptableObject.DONTENUM)
-                            & ~ScriptableObject.READONLY);
+                    new ScriptableObject.DescriptorInfo(
+                            false,
+                            Scriptable.NOT_FOUND,
+                            true,
+                            isSetter ? Scriptable.NOT_FOUND : accessor,
+                            isSetter ? accessor : Scriptable.NOT_FOUND,
+                            Scriptable.NOT_FOUND));
         } else {
             target.setGetterOrSetter(null, s.index, accessor, isSetter);
             target.setAttributes(

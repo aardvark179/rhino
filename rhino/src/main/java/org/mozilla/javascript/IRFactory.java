@@ -986,8 +986,11 @@ public final class IRFactory {
             ClassLiteralDescriptor descriptor = builder.build();
             classDescriptors.put(node, descriptor);
 
-            classNode.addChildToBack(
-                    new Node(Token.ACCUMULATE_RESULT, transform(node.getConstructor())));
+            Node constructor = transform(node.getConstructor());
+            if (node.getClassName() != null) {
+                inferNameIfMissing(node.getClassName(), constructor, null, true);
+            }
+            classNode.addChildToBack(new Node(Token.ACCUMULATE_RESULT, constructor));
 
             for (AstNode computedKeyExpr : node.getMethodComputedKeys()) {
                 if (computedKeyExpr != null) {
@@ -3038,11 +3041,15 @@ public final class IRFactory {
         throw Kit.codeBug();
     }
 
-    /** Infer function name is missing on rhs. In the future, should also handle class names. */
+    /** Infer function or class name if missing on rhs. */
     private void inferNameIfMissing(
             Object left, Node right, String prefix, boolean methodDeclaration) {
         if (parser.compilerEnv.getLanguageVersion() < Context.VERSION_ES6) {
             return;
+        }
+
+        if (right != null && right.type == Token.CLASS) {
+            right = classConstructor(right);
         }
 
         if (left instanceof Name && right != null && right.type == Token.FUNCTION) {
@@ -3062,6 +3069,16 @@ public final class IRFactory {
                 }
             }
         }
+    }
+
+    /** The constructor function of a transformed class, its first accumulated result. */
+    static Node classConstructor(Node classNode) {
+        for (Node child = classNode.getFirstChild(); child != null; child = child.getNext()) {
+            if (child.getType() == Token.ACCUMULATE_RESULT) {
+                return child.getFirstChild();
+            }
+        }
+        return null;
     }
 
     private Node propagateSuperFromLhs(Node result, Node left) {

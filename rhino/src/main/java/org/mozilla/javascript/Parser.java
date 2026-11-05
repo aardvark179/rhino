@@ -6405,6 +6405,9 @@ public class Parser {
         if (compilerEnv.getLanguageVersion() < Context.VERSION_ES6) {
             return;
         }
+        if (right != null && right.getType() == Token.CLASS) {
+            right = IRFactory.classConstructor(right);
+        }
         if (right == null || right.getType() != Token.FUNCTION) {
             return;
         }
