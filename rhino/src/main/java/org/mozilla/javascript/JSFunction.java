@@ -198,14 +198,17 @@ public class JSFunction extends BaseFunction implements ScriptOrFn<JSFunction> {
         // are already rejected by the getConstructor() == null check above), which still needs a
         // normally auto-created `this` like any other constructor.
         var thisObj = derived ? null : this.createObject(cx, s, nt);
-        var res = descriptor.getConstructor().execute(cx, this, nt, s, derived ? Undefined.instance : thisObj, args);
+        var res =
+                descriptor
+                        .getConstructor()
+                        .execute(cx, this, nt, s, derived ? Undefined.instance : thisObj, args);
         if (res instanceof Scriptable) {
             return (Scriptable) res;
         } else if (!derived) {
             return thisObj;
         } else if (Undefined.isUndefined(res)) {
             throw ScriptRuntime.referenceError(
-                ScriptRuntime.getMessageById("msg.derived.ctor.no.this"));
+                    ScriptRuntime.getMessageById("msg.derived.ctor.no.this"));
         } else {
             // We should never reach here. If we do we should fix the
             // compilers to ensure that derived constructors return

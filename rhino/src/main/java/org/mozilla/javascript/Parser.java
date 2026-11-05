@@ -3941,6 +3941,19 @@ public class Parser {
                 line = lineNumber();
                 column = columnNumber();
                 AstNode operand = unaryExpr();
+                {
+                    AstNode target = operand;
+                    while (target instanceof ParenthesizedExpression) {
+                        target = ((ParenthesizedExpression) target).getExpression();
+                    }
+                    if (target instanceof PropertyGet
+                            && ((PropertyGet) target)
+                                    .getProperty()
+                                    .getIdentifier()
+                                    .startsWith("#")) {
+                        reportError("msg.delete.private", target.getPosition(), target.getLength());
+                    }
+                }
                 if (inUseStrictDirective) {
                     AstNode target = operand;
                     while (target instanceof ParenthesizedExpression) {
