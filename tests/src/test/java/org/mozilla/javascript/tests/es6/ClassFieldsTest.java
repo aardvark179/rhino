@@ -191,6 +191,24 @@ public class ClassFieldsTest {
                         + "new A().m()");
     }
 
+    @Test
+    public void heritageDoesNotSeeDerivedClassPrivateNames() {
+        Utils.assertEvaluatorExceptionES6(
+                "identifier is a private name: #foo",
+                "var D = class extends class { x = this.#foo } { #foo }");
+    }
+
+    @Test
+    public void heritageSeesEnclosingClassPrivateNames() {
+        assertInterpretedModes(
+                "1",
+                "class A { #foo = 1; m() {\n"
+                        + "  var o = this;\n"
+                        + "  var D = class extends class { x = o.#foo } { #foo = 2 };\n"
+                        + "  return new D().x; } }\n"
+                        + "String(new A().m())");
+    }
+
     private static void assertInterpretedModes(String expected, String code) {
         // Private names cannot yet be compiled to class files.
         for (var mode :

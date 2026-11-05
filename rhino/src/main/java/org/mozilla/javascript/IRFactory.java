@@ -932,17 +932,25 @@ public final class IRFactory {
      */
     private Node transformClass(ClassNode node) {
         astNodePos.push(node);
+        // The heritage expression sees the enclosing class's private names, not this class's.
+        try {
+            Node superExpr =
+                    node.getSuperClass() == null
+                            ? new Node(Token.UNDEFINED)
+                            : transform(node.getSuperClass());
+            return transformClassBody(node, superExpr);
+        } finally {
+            astNodePos.pop();
+        }
+    }
+
+    private Node transformClassBody(ClassNode node, Node superExpr) {
         Map<String, SymbolKey> privateNames = new HashMap<>();
         for (String name : node.getPrivateNames()) {
             privateNames.put(name, new SymbolKey(name, org.mozilla.javascript.Symbol.Kind.PRIVATE));
         }
         privateNameScopes.push(privateNames);
         try {
-            Node superExpr =
-                    node.getSuperClass() == null
-                            ? new Node(Token.UNDEFINED)
-                            : transform(node.getSuperClass());
-
             Node classNode = new Node(Token.CLASS);
             classNode.setLineColumnNumber(node.getLineno(), node.getColumn());
             classNode.addChildToBack(superExpr);
@@ -1008,7 +1016,6 @@ public final class IRFactory {
             return classNode;
         } finally {
             privateNameScopes.pop();
-            astNodePos.pop();
         }
     }
 

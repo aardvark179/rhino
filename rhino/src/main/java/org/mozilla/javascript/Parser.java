@@ -1431,6 +1431,9 @@ public class Parser {
                     consumeToken();
                     memberName = ts.getString();
                 }
+                if (!isStatic && !isComputed && "constructor".equals(memberName)) {
+                    reportError("msg.accessor.ctor");
+                }
             }
 
             if (peekToken() != Token.LP) {
@@ -1450,8 +1453,11 @@ public class Parser {
                     consumeToken();
                     initializer = fieldInitializer(classNode, isComputed, isStatic);
                 }
-                if (peekToken() == Token.SEMI) {
+                int afterField = peekTokenOrEOL();
+                if (afterField == Token.SEMI) {
                     consumeToken();
+                } else if (afterField != Token.RC && afterField != Token.EOL) {
+                    reportError("msg.no.semi.class.field");
                 }
                 if (isComputed) {
                     classNode.addComputedField(computedKeyExpr, initializer, isStatic);
@@ -1492,7 +1498,7 @@ public class Parser {
             }
         }
 
-        mustMatchToken(Token.RC, "msg.no.brace.class", true);
+        mustMatchToken(Token.RC, "msg.no.brace.after.class", true);
 
         inUseStrictDirective = savedStrict;
 
