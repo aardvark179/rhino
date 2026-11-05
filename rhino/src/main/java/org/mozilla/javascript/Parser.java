@@ -2674,8 +2674,16 @@ public class Parser {
                     && fn.getFunctionType() == FunctionNode.FUNCTION_EXPRESSION
                     && fn.getFunctionName() != null
                     && fn.getFunctionName().length() > 0) {
-                fn.setFunctionType(FunctionNode.FUNCTION_EXPRESSION_STATEMENT);
-                defineSymbol(Token.FUNCTION, fn.getFunctionName().getIdentifier());
+                String name = fn.getFunctionName().getIdentifier();
+                if (compilerEnv.getLanguageVersion() >= Context.VERSION_ES6
+                        && currentScope != currentScriptOrFn) {
+                    // Async declarations in blocks are lexical and not subject to Annex B.
+                    fn.setFunctionType(FunctionNode.FUNCTION_BLOCK_SCOPED);
+                    defineSymbol(Symbol.Type.LET, name);
+                } else {
+                    fn.setFunctionType(FunctionNode.FUNCTION_EXPRESSION_STATEMENT);
+                    defineSymbol(Token.FUNCTION, name);
+                }
                 return fn;
             }
         }

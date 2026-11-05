@@ -64,4 +64,58 @@ public class AsyncFunctionTest {
         Utils.assertWithAllModes_ES6(
                 1, "function f() { await: { var x = 1; break await; } return x; } f()");
     }
+
+    @Test
+    public void asyncFunctionRedeclaredByAsyncFunctionInBlockError() {
+        Utils.assertEvaluatorExceptionES6(
+                "redeclaration of variable \"f\"",
+                "{ async function f() {} async function f() {} }");
+    }
+
+    @Test
+    public void asyncFunctionRedeclaredByFunctionInBlockError() {
+        Utils.assertEvaluatorExceptionES6(
+                "redeclaration of variable \"f\"", "{ async function f() {} function f() {} }");
+    }
+
+    @Test
+    public void functionRedeclaredByAsyncFunctionInBlockError() {
+        Utils.assertEvaluatorExceptionES6(
+                "redeclaration of function \"f\"", "{ function f() {} async function f() {} }");
+    }
+
+    @Test
+    public void asyncFunctionRedeclaredByVarInBlockError() {
+        Utils.assertEvaluatorExceptionES6(
+                "redeclaration of variable \"f\"", "{ async function f() {} var f; }");
+    }
+
+    @Test
+    public void varRedeclaredByAsyncFunctionInBlockError() {
+        Utils.assertEvaluatorExceptionES6(
+                "redeclaration of var \"f\"", "{ var f; async function f() {} }");
+    }
+
+    @Test
+    public void asyncFunctionRedeclaredInSwitchCasesError() {
+        Utils.assertEvaluatorExceptionES6(
+                "redeclaration of variable \"f\"",
+                "switch (0) { case 1: async function f() {} default: async function f() {} }");
+    }
+
+    @Test
+    public void asyncFunctionRedeclaredAtTopLevelOk() {
+        Utils.assertWithAllModes_ES6(
+                "function",
+                "function g() { async function f() {} async function f() {} var f; return typeof"
+                        + " f; } g()");
+    }
+
+    @Test
+    public void asyncFunctionInBlockIsBlockScoped() {
+        Utils.assertWithAllModes_ES6(
+                "function,undefined",
+                "var r = []; { r.push(typeof f); async function f() {} } r.push(typeof f);"
+                        + " r.join()");
+    }
 }
