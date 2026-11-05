@@ -3486,7 +3486,18 @@ public class Parser {
                 consumeToken();
                 line = lineNumber();
                 column = columnNumber();
-                node = new UnaryExpression(tt, ts.tokenBeg, unaryExpr());
+                AstNode operand = unaryExpr();
+                if (inUseStrictDirective) {
+                    AstNode target = operand;
+                    while (target instanceof ParenthesizedExpression) {
+                        target = ((ParenthesizedExpression) target).getExpression();
+                    }
+                    if (target instanceof Name) {
+                        reportError(
+                                "msg.delete.id.strict", target.getPosition(), target.getLength());
+                    }
+                }
+                node = new UnaryExpression(tt, ts.tokenBeg, operand);
                 node.setLineColumnNumber(line, column);
                 return node;
 
