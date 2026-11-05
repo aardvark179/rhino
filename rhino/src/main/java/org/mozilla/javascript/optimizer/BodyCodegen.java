@@ -3210,34 +3210,27 @@ class BodyCodegen {
     private void visitSuperConstructorCall(Node node, Node child) {
         Node firstArgChild = child.getNext();
         generateCallArgArray(node, firstArgChild, false);
-        cfw.addAStore(argsLocal);
+        short argArrayLocal = getNewWordLocal();
+        cfw.addAStore(argArrayLocal);
 
-        cfw.addALoad(funObjLocal);
-        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/Scriptable");
-        cfw.addInvoke(
-                ByteCode.INVOKEINTERFACE,
-                "org/mozilla/javascript/Scriptable",
-                "getPrototype",
-                "()Lorg/mozilla/javascript/Scriptable;");
-        cfw.add(ByteCode.CHECKCAST, "org/mozilla/javascript/Callable");
-        cfw.addALoad(thisObjLocal);
-        // stack: ... functionObj thisObj
         cfw.addALoad(contextLocal);
-        cfw.add(ByteCode.SWAP);
-        // stack: ... functionObj cx thisObj
         cfw.addALoad(variableObjectLocal);
-        cfw.add(ByteCode.SWAP);
-        // stack: ... functionObj cx scope thisObj
-        cfw.addALoad(argsLocal);
-        cfw.addInvoke(
-                ByteCode.INVOKEINTERFACE,
-                "org/mozilla/javascript/Callable",
-                "call",
+        cfw.addALoad(funObjLocal);
+        cfw.addALoad(thisObjLocal);
+        cfw.addALoad(newTargetLocal);
+        cfw.addALoad(argArrayLocal);
+        releaseWordLocal(argArrayLocal);
+        addScriptRuntimeInvoke(
+                "superConstruct",
                 "(Lorg/mozilla/javascript/Context;"
                         + "Lorg/mozilla/javascript/VarScope;"
                         + "Ljava/lang/Object;"
+                        + "Ljava/lang/Object;"
+                        + "Ljava/lang/Object;"
                         + "[Ljava/lang/Object;"
-                        + ")Ljava/lang/Object;");
+                        + ")Lorg/mozilla/javascript/Scriptable;");
+        cfw.add(ByteCode.DUP);
+        cfw.addAStore(thisObjLocal);
     }
 
     private void visitStandardCall(Node node, Node child) {

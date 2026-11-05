@@ -2956,7 +2956,8 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
 
             Object lhs = frame.stack[frame.stackTop];
             if (lhs instanceof JSFunction
-                    && ((JSFunction) lhs).getConstructor() instanceof InterpreterData) {
+                    && ((JSFunction) lhs).getConstructor() instanceof InterpreterData
+                    && !((JSFunction) lhs).getDescriptor().isDerivedConstructor()) {
                 JSFunction f = (JSFunction) lhs;
 
                 JSDescriptor<JSFunction> desc = f.getDescriptor();
@@ -3620,15 +3621,24 @@ public final class Interpreter extends AInterpreter<CallFrame, InterpreterData<?
     private static class DoPushSuperConstructor extends InstructionClass {
         @Override
         NewState execute(Context cx, CallFrame frame, InterpreterState state, int op) {
-            // super(...) resolves via GetSuperConstructor: the currently executing (class
-            // constructor) function's own [[Prototype]] - see ClassLiteralDescriptor.setupClass,
-            // which sets that up to be the superclass. Calls go through the same
-            // lookup-result-based CALL bytecode as any other call, invoked with the current
-            // `this` per the "same-this" model of super().
-            Object superConstructor = ((Scriptable) frame.fnOrScript).getPrototype();
+            // super(...) goes through the same lookup-result-based CALL bytecode as any other
+            // call, but the callee constructs the superclass with the current new.target and
+            // binds the result as this frame's `this`.
+            Callable superCall =
+                    (lcx, lscope, lthis, largs) -> {
+                        Scriptable result =
+                                ScriptRuntime.superConstruct(
+                                        lcx,
+                                        lscope,
+                                        frame.fnOrScript,
+                                        frame.thisObj,
+                                        frame.newTarget,
+                                        largs);
+                        frame.thisObj = result;
+                        return result;
+                    };
             frame.stack[++frame.stackTop] =
-                    new ScriptRuntime.LookupResult(
-                            superConstructor, (Scriptable) frame.thisObj, "super");
+                    new ScriptRuntime.LookupResult(superCall, null, "super");
             return null;
         }
     }

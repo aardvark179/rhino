@@ -1508,6 +1508,7 @@ public class Parser {
         if (constructor == null) {
             constructor = createDefaultConstructor(pos, classNode.getSuperClass() != null);
         }
+        constructor.setIsDerivedClassConstructor(classNode.getSuperClass() != null);
         classNode.setConstructor(constructor);
 
         if (isStatement && className != null) {

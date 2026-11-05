@@ -74,6 +74,7 @@ public class JSDescriptorBuilderDescriber extends DynamicConstantDescriber<JSDes
     private static final int REQUIRES_ARGUMENT_OBJECT_FLAG = 1 << 11;
     private static final int DECLARED_AS_FUNCTION_EXPRESSION_FLAG = 1 << 12;
     private static final int IS_ASYNC_FLAG = 1 << 13;
+    private static final int DERIVED_CONSTRUCTOR_FLAG = 1 << 14;
 
     public JSDescriptorBuilderDescriber(DynamicDescriberRegistry registry) {
         super(registry);
@@ -143,6 +144,7 @@ public class JSDescriptorBuilderDescriber extends DynamicConstantDescriber<JSDes
         flags |= value.requiresArgumentObject ? REQUIRES_ARGUMENT_OBJECT_FLAG : 0;
         flags |= value.declaredAsFunctionExpression ? DECLARED_AS_FUNCTION_EXPRESSION_FLAG : 0;
         flags |= value.isAsync ? IS_ASYNC_FLAG : 0;
+        flags |= value.derivedConstructor ? DERIVED_CONSTRUCTOR_FLAG : 0;
         return flags;
     }
 
@@ -209,7 +211,7 @@ public class JSDescriptorBuilderDescriber extends DynamicConstantDescriber<JSDes
                 (flags & REQUIRES_ACTIVATION_FRAME_FLAG) != 0,
                 (flags & REQUIRES_ARGUMENT_OBJECT_FLAG) != 0,
                 (flags & DECLARED_AS_FUNCTION_EXPRESSION_FLAG) != 0,
-                false,
+                (flags & DERIVED_CONSTRUCTOR_FLAG) != 0,
                 (flags & IS_ASYNC_FLAG) != 0,
                 null,
                 null,

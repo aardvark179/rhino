@@ -106,6 +106,7 @@ public final class IRFactory {
     private AstNodePosition astNodePos;
     private boolean outerScopeIsStrict;
     private boolean insideClassConstructor;
+    private boolean insideDerivedConstructor;
     // Whether the class constructor being transformed belongs to a class with instance fields.
     private boolean classConstructorHasFields;
     // The descriptor of the class whose constructor is being transformed, if it has fields.
@@ -670,9 +671,11 @@ public final class IRFactory {
         var savedStrict = outerScopeIsStrict;
         outerScopeIsStrict |= fn.isInStrictMode();
         boolean savedInsideClassConstructor = insideClassConstructor;
+        boolean savedInsideDerivedConstructor = insideDerivedConstructor;
         boolean savedClassConstructorHasFields = classConstructorHasFields;
         ClassLiteralDescriptor savedClassConstructorDescriptor = classConstructorDescriptor;
         insideClassConstructor = fn.isClassConstructor();
+        insideDerivedConstructor = fn.isDerivedClassConstructor();
         ClassNode constructorClass =
                 insideClassConstructor && fn.getParent() instanceof ClassNode
                         ? (ClassNode) fn.getParent()
@@ -784,6 +787,16 @@ public final class IRFactory {
                 body.addChildToFront(new Node(Token.EXPR_VOID, newInitFields(), lineno, column));
             }
 
+            if (insideDerivedConstructor) {
+                // `this` is bound by super(...), so a derived constructor returns it explicitly.
+                body.addChildToBack(
+                        new Node(
+                                Token.RETURN,
+                                new Node(Token.THIS),
+                                fn.getEndLineno(),
+                                fn.getColumn()));
+            }
+
             int syntheticType = fn.getFunctionType();
             Node pn = initFunction(fn, index, body, syntheticType);
             if (mexpr != null) {
@@ -804,6 +817,7 @@ public final class IRFactory {
             savedVars.restore();
             outerScopeIsStrict = savedStrict;
             insideClassConstructor = savedInsideClassConstructor;
+            insideDerivedConstructor = savedInsideDerivedConstructor;
             classConstructorHasFields = savedClassConstructorHasFields;
             classConstructorDescriptor = savedClassConstructorDescriptor;
         }
@@ -1582,6 +1596,9 @@ public final class IRFactory {
     private Node transformReturn(ReturnStatement node) {
         AstNode rv = node.getReturnValue();
         Node value = rv == null ? null : transform(rv);
+        if (rv == null && insideDerivedConstructor) {
+            return new Node(Token.RETURN, new Node(Token.THIS), node.getLineno(), node.getColumn());
+        }
         return rv == null
                 ? new Node(Token.RETURN, node.getLineno(), node.getColumn())
                 : new Node(Token.RETURN, value, node.getLineno(), node.getColumn());

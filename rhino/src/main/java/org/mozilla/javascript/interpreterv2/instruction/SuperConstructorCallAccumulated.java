@@ -1,9 +1,9 @@
 package org.mozilla.javascript.interpreterv2.instruction;
 
 import org.mozilla.javascript.CallFrameV2;
-import org.mozilla.javascript.Callable;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.ResultAccumulator;
+import org.mozilla.javascript.ScriptRuntime;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.interpreterv2.InstructionFormatter;
 import org.mozilla.javascript.interpreterv2.operand.Operand;
@@ -24,8 +24,11 @@ public final class SuperConstructorCallAccumulated extends Instruction {
     public void interpret(Context cx, CallFrameV2 frame) {
         frame.pc += 1;
         Object[] args = ((ResultAccumulator) accumulator.retrieve(cx, frame)).getCallArgs();
-        Callable superConstructor = (Callable) ((Scriptable) frame.fnOrScript).getPrototype();
-        frame.push(superConstructor.call(cx, frame.scope, frame.thisObj, args));
+        Scriptable result =
+                ScriptRuntime.superConstruct(
+                        cx, frame.scope, frame.fnOrScript, frame.thisObj, frame.newTarget, args);
+        frame.thisObj = result;
+        frame.push(result);
     }
 
     @Override

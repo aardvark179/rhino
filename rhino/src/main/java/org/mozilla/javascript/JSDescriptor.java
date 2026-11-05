@@ -296,6 +296,10 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
         return (flags & DECLARED_AS_FUNCTION_EXPRESSION_FLAG) != 0;
     }
 
+    public boolean isDerivedConstructor() {
+        return (flags & DERIVED_CONSTRUCTOR_FLAG) != 0;
+    }
+
     public SecurityController getSecurityController() {
         return securityController;
     }
@@ -348,6 +352,7 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
         public boolean requiresActivationFrame;
         public boolean requiresArgumentObject;
         public boolean declaredAsFunctionExpression;
+        public boolean derivedConstructor;
         public SecurityController securityController;
         public Object securityDomain;
         public int functionType;
@@ -418,7 +423,7 @@ public final class JSDescriptor<T extends ScriptOrFn<T>> implements Serializable
                             requiresActivationFrame,
                             requiresArgumentObject,
                             declaredAsFunctionExpression,
-                            false,
+                            derivedConstructor,
                             isAsync,
                             securityController,
                             securityDomain,

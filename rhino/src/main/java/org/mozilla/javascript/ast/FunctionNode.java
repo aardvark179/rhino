@@ -84,6 +84,7 @@ public class FunctionNode extends ScriptNode {
     private boolean hasRestParameter;
     private boolean isShorthand;
     private boolean isClassConstructor;
+    private boolean isDerivedClassConstructor;
 
     @Override
     public List<Object> getDefaultParams() {
@@ -389,6 +390,14 @@ public class FunctionNode extends ScriptNode {
 
     public void setIsClassConstructor(boolean isClassConstructor) {
         this.isClassConstructor = isClassConstructor;
+    }
+
+    public boolean isDerivedClassConstructor() {
+        return isDerivedClassConstructor;
+    }
+
+    public void setIsDerivedClassConstructor(boolean isDerivedClassConstructor) {
+        this.isDerivedClassConstructor = isDerivedClassConstructor;
     }
 
     public void addResumptionPoint(Node target) {

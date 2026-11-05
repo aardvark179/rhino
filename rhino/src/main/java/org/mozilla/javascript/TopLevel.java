@@ -73,6 +73,7 @@ public class TopLevel extends ScopeObject {
         Map,
         Set,
         WeakMap,
+        WeakRef,
         WeakSet,
         Proxy,
         ArrayBuffer,

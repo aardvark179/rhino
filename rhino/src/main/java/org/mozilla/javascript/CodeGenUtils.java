@@ -55,6 +55,7 @@ public class CodeGenUtils {
             FunctionNode fn,
             CompilerEnvirons compilerEnv) {
         builder.functionType = fn.getFunctionType();
+        builder.derivedConstructor = fn.isDerivedClassConstructor();
         builder.requiresActivationFrame = fn.requiresActivation();
         builder.requiresArgumentObject = fn.requiresArgumentObject();
         if (fn.getFunctionName() != null) {

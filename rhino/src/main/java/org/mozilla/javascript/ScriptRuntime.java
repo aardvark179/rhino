@@ -6233,6 +6233,30 @@ public class ScriptRuntime {
         return constructError("ReferenceError", message);
     }
 
+    /**
+     * Implements {@code super(...)} in a derived class constructor: constructs the superclass (the
+     * constructor's own {@code [[Prototype]]}) with the current {@code new.target}, returning the
+     * object the caller must then bind as {@code this}.
+     */
+    public static Scriptable superConstruct(
+            Context cx,
+            VarScope scope,
+            Object constructor,
+            Object thisObj,
+            Object newTarget,
+            Object[] args) {
+        Scriptable superConstructor = ((Scriptable) constructor).getPrototype();
+        if (!(superConstructor instanceof Constructable)) {
+            throw typeErrorById("msg.not.ctor", toString(superConstructor));
+        }
+        Scriptable result =
+                ((Constructable) superConstructor).construct(cx, newTarget, scope, args);
+        if (thisObj != Undefined.instance) {
+            throw referenceError(getMessageById("msg.super.already.called"));
+        }
+        return result;
+    }
+
     private static void warnAboutNonJSObject(Object nonJSObject) {
         final String omitParam = ScriptRuntime.getMessageById("params.omit.non.js.object.warning");
         if (!"true".equals(omitParam)) {
