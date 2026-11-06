@@ -141,8 +141,12 @@ class BodyCodegen {
         cfw.addPush(
                 !(scriptOrFn instanceof FunctionNode)
                         || ((FunctionNode) scriptOrFn).requiresArgumentObject());
+        boolean isArrow =
+                (scriptOrFn instanceof FunctionNode)
+                        && ((FunctionNode) scriptOrFn).getFunctionType()
+                                == FunctionNode.ARROW_FUNCTION;
         addScriptRuntimeInvoke(
-                "createFunctionActivation",
+                isArrow ? "createArrowFunctionActivation" : "createFunctionActivation",
                 "(Lorg/mozilla/javascript/JSFunction;"
                         + "Lorg/mozilla/javascript/Context;"
                         + "Lorg/mozilla/javascript/VarScope;"
