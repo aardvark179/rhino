@@ -19,6 +19,9 @@ gradle wrapper (`./gradlew`). There are no external dependencies, except for JUn
 - New test classes should be written using JUnit 5. Migrating existing tests from JUnit 4 to JUnit 5 is not a goal
   though, unless explicitly requested.
 - Code style is enforced via spotless. After every change, reformat the code.
+- Try to be be precise when specify tests to run. Prefer `--tessts MyTest` over `--tests "*MyTest"`.
+- If you add test new tests files make sure you add them to the repo using `git add`
+- Never update the `test262.properties` file manually, tell the user to run the update task themselves.
 
 ## Code organization
 
