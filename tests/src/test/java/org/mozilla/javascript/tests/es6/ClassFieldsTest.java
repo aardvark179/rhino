@@ -327,4 +327,35 @@ public class ClassFieldsTest {
                         + "[C['bob'].name, C[1].name, C.prototype[s].name, d.get.name, d.set.name].join()";
         Utils.assertWithAllModes_ES6("bob,1,[sym],get g,set g", code);
     }
+
+    @Test
+    public void argumentsNotAllowedInFieldInitializer() {
+        String msg = "\"arguments\" is not allowed in class field initializer";
+        Utils.assertEvaluatorExceptionES6(msg, "class C { x = arguments; }");
+        Utils.assertEvaluatorExceptionES6(msg, "class C { static x = arguments; }");
+        Utils.assertEvaluatorExceptionES6(msg, "class C { x = () => arguments; }");
+        Utils.assertEvaluatorExceptionES6(msg, "class C { x = { arguments }; }");
+        Utils.assertEvaluatorExceptionES6(
+                msg, "function f() { class C { x = typeof arguments; } }");
+    }
+
+    @Test
+    public void argumentsAllowedInFunctionsInFieldInitializer() {
+        String code =
+                "class C { a = function() { return arguments.length; };"
+                        + " b = { m() { return arguments.length; } };"
+                        + " c = this.arguments; d = { arguments: 1 }; }\n"
+                        + "var o = new C();\n"
+                        + "o.a(1, 2) + o.b.m(1) + o.d.arguments";
+        Utils.assertWithAllModes_ES6(4, code);
+    }
+
+    @Test
+    public void argumentsAllowedInMethodsAndComputedKeys() {
+        String code =
+                "function f() { class C { [arguments[0]] = 1; m() { return arguments[0]; } }"
+                        + " return new C().k + new C().m(2); }\n"
+                        + "f('k')";
+        Utils.assertWithAllModes_ES6(3, code);
+    }
 }

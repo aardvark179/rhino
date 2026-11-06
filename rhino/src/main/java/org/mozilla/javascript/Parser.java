@@ -150,6 +150,9 @@ public class Parser {
     ScriptNode currentScriptOrFn;
     private boolean insideMethod;
     private boolean insideClassConstructor;
+    // true inside a class field initializer, where `arguments` may not be referenced. Arrow
+    // functions inherit this; other functions reset it.
+    private boolean argumentsDisallowed;
     Scope currentScope;
     private int endFlags;
     private boolean inForInit; // bound temporarily during forStatement()
@@ -598,6 +601,9 @@ public class Parser {
             reportError("msg.bad.id.strict", id);
         }
         checkContextuallyReservedWord(id);
+        if (argumentsDisallowed && "arguments".equals(id)) {
+            reportError("msg.arguments.in.class.field");
+        }
     }
 
     /**
@@ -1182,6 +1188,8 @@ public class Parser {
         insideMethod = isMethodDefiniton;
         boolean wasInsideClassConstructor = insideClassConstructor;
         insideClassConstructor = isClassConstructor;
+        boolean wasArgumentsDisallowed = argumentsDisallowed;
+        argumentsDisallowed = false;
         try {
             parseFunctionParams(fnNode);
             AstNode body = parseFunctionBody(type, fnNode);
@@ -1201,6 +1209,7 @@ public class Parser {
             savedVars.restore();
             insideMethod = wasInsideMethod;
             insideClassConstructor = wasInsideClassConstructor;
+            argumentsDisallowed = wasArgumentsDisallowed;
         }
 
         if (memberExprNode != null) {
@@ -1594,6 +1603,8 @@ public class Parser {
         insideMethod = true;
         boolean wasInsideClassConstructor = insideClassConstructor;
         insideClassConstructor = false;
+        boolean wasArgumentsDisallowed = argumentsDisallowed;
+        argumentsDisallowed = true;
         ++nestingOfFunction;
         try {
             if (isComputed) {
@@ -1607,6 +1618,7 @@ public class Parser {
             savedVars.restore();
             insideMethod = wasInsideMethod;
             insideClassConstructor = wasInsideClassConstructor;
+            argumentsDisallowed = wasArgumentsDisallowed;
         }
     }
 
