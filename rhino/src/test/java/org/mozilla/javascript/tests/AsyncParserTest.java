@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.mozilla.javascript.CompilerEnvirons;
 import org.mozilla.javascript.Context;
+import org.mozilla.javascript.EvaluatorException;
 import org.mozilla.javascript.Parser;
 import org.mozilla.javascript.ast.AstNode;
 import org.mozilla.javascript.ast.AwaitExpression;
@@ -299,6 +300,55 @@ public class AsyncParserTest {
         assertNotNull(ref.get());
         assertTrue(ref.get().isAsync(), "Expected async arrow");
         assertEquals(2, ref.get().getParams().size());
+    }
+
+    @Test
+    public void asyncFunctionExpression() {
+        FunctionNode fn = parseAndExtractFirstFn("void async function f(){}");
+        assertTrue(fn.isAsync(), "Expected async function expression");
+    }
+
+    private static void assertSyntaxError(String src) {
+        CompilerEnvirons env = new CompilerEnvirons();
+        env.setLanguageVersion(Context.VERSION_ES6);
+        Parser p = new Parser(env);
+        assertThrows(EvaluatorException.class, () -> p.parse(src, "eval", 1));
+    }
+
+    private static void assertParses(String src) {
+        CompilerEnvirons env = new CompilerEnvirons();
+        env.setLanguageVersion(Context.VERSION_ES6);
+        new Parser(env).parse(src, "eval", 1);
+    }
+
+    @Test
+    public void escapedAsyncFunctionExpressionIsSyntaxError() {
+        assertSyntaxError("void \\u0061sync function f(){}");
+    }
+
+    @Test
+    public void escapedAsyncArrowIsSyntaxError() {
+        assertSyntaxError("\\u0061sync () => {}");
+        assertSyntaxError("\\u0061sync (a, b) => a + b");
+    }
+
+    @Test
+    public void escapedAsyncMethodIsSyntaxError() {
+        assertSyntaxError("({ \\u0061sync m(){} })");
+        assertSyntaxError("({ \\u0061sync *m(){} })");
+    }
+
+    @Test
+    public void escapedAsyncAsIdentifierOrPropertyName() {
+        assertParses("var \\u0061sync = function() {}; \\u0061sync(1, 2);");
+        assertParses("({ \\u0061sync: 1 })");
+        assertParses("({ \\u0061sync(){} })");
+    }
+
+    @Test
+    public void asyncArrowAndMethod() {
+        assertParses("async (a, b) => a + b");
+        assertParses("({ async m(){}, async *g(){} })");
     }
 
     interface NodeVisitorHelper extends NodeVisitor {

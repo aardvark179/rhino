@@ -73,7 +73,8 @@ public class Node implements Iterable<Node> {
             CONST_IDS_PROP = 34, // boolean[] flagging which OBJECT_IDS_PROP names are consts
             LITERAL_INDEX_PROP = 35, // int index into the shared literals table
             RESULTS_SIZE_PROP = 36, // int index into the shared literals table
-            LAST_PROP = RESULTS_SIZE_PROP,
+            ESCAPED_IDENTIFIER_PROP = 37, // marks a Name whose source contained a unicode escape
+            LAST_PROP = ESCAPED_IDENTIFIER_PROP,
             FIRST_PROP = FUNCTION_PROP;
 
     // values of ISNUMBER_PROP to specify
@@ -468,6 +469,8 @@ public class Node implements Iterable<Node> {
                 return "literal_index_prop";
             case RESULTS_SIZE_PROP:
                 return "results_size_prop:";
+            case ESCAPED_IDENTIFIER_PROP:
+                return "escaped_identifier_prop";
 
             default:
                 Kit.codeBug();

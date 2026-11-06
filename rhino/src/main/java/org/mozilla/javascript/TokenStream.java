@@ -586,6 +586,10 @@ class TokenStream implements Parser.CurrentPositionReporter {
         return string;
     }
 
+    final boolean identifierContainsEscape() {
+        return identifierContainsEscape;
+    }
+
     final char getQuoteChar() {
         return (char) quoteChar;
     }
@@ -620,6 +624,7 @@ class TokenStream implements Parser.CurrentPositionReporter {
 
     final int getToken() throws IOException {
         int c;
+        identifierContainsEscape = false;
 
         for (; ; ) {
             // Eat whitespace, possibly sensitive to newlines.
@@ -794,6 +799,7 @@ class TokenStream implements Parser.CurrentPositionReporter {
                 }
 
                 this.string = internString(str);
+                identifierContainsEscape = containsEscape;
                 return Token.NAME;
             }
 
@@ -2460,6 +2466,7 @@ class TokenStream implements Parser.CurrentPositionReporter {
     // string is found.  Fosters one class of error, but saves lots of
     // code.
     private String string = "";
+    private boolean identifierContainsEscape;
     private double number;
     private BigInteger bigInt;
     private boolean isBinary;

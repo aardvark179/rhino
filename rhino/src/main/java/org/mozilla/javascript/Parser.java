@@ -3204,7 +3204,9 @@ public class Parser {
             if (pn instanceof FunctionCall) {
                 FunctionCall call = (FunctionCall) pn;
                 AstNode target = call.getTarget();
-                if (target instanceof Name && "async".equals(((Name) target).getIdentifier())) {
+                if (target instanceof Name
+                        && "async".equals(((Name) target).getIdentifier())
+                        && target.getIntProp(Node.ESCAPED_IDENTIFIER_PROP, 0) == 0) {
                     isAsyncArrow = true;
                     arrowParams = callArgsToArrowParams(call);
                 }
@@ -4109,14 +4111,19 @@ public class Parser {
 
             case Token.NAME:
                 consumeToken();
-                if ("async".equals(ts.getString())) {
+                boolean escaped = ts.identifierContainsEscape();
+                if ("async".equals(ts.getString()) && !escaped) {
                     int nextTT = peekTokenOrEOL();
                     if (nextTT == Token.FUNCTION) {
                         consumeToken();
                         return function(FunctionNode.FUNCTION_EXPRESSION, false, true);
                     }
                 }
-                return name(ttFlagged, tt);
+                AstNode nameNode = name(ttFlagged, tt);
+                if (escaped) {
+                    nameNode.putIntProp(Node.ESCAPED_IDENTIFIER_PROP, 1);
+                }
+                return nameNode;
 
             case Token.NUMBER:
             case Token.BIGINT:
@@ -4606,6 +4613,7 @@ public class Parser {
                 elems.add(spreadObjectProperty);
             } else {
                 propertyName = ts.getString();
+                boolean propertyNameEscaped = ts.identifierContainsEscape();
                 int ppos = ts.tokenBeg;
                 consumeToken();
                 if (pname instanceof Name || pname instanceof StringLiteral) {
@@ -4648,13 +4656,14 @@ public class Parser {
                             entryKind = GET_ENTRY;
                         } else if ("set".equals(propertyName)) {
                             entryKind = SET_ENTRY;
-                        } else if ("async".equals(propertyName)) {
+                        } else if ("async".equals(propertyName) && !propertyNameEscaped) {
                             entryKind = METHOD_ENTRY;
                         }
                     }
                     boolean isAsyncMethod =
                             pname.getType() == Token.NAME
                                     && "async".equals(propertyName)
+                                    && !propertyNameEscaped
                                     && peeked != Token.LP;
                     if (entryKind == GET_ENTRY || entryKind == SET_ENTRY || isAsyncMethod) {
                         pname = objliteralProperty();
