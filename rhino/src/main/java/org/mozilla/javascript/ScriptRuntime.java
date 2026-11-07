@@ -1886,6 +1886,9 @@ public class ScriptRuntime {
             result = ((XMLObject) obj).get(cx, elem);
         } else if (isSymbol(elem)) {
             result = ScriptableObject.getProperty(obj, (Symbol) elem);
+            if (result == Scriptable.NOT_FOUND && isPrivateName(elem)) {
+                throw typeErrorById("msg.private.field.missing", elem.toString());
+            }
         } else {
             StringIdOrIndex s = toStringIdOrIndex(elem);
             if (s.stringId == null) {
@@ -6405,6 +6408,10 @@ public class ScriptRuntime {
      * Not all "NativeSymbol" instances are actually symbols. So account for that here rather than
      * just by using an "instanceof" check.
      */
+    private static boolean isPrivateName(Object obj) {
+        return obj instanceof SymbolKey && ((SymbolKey) obj).getKind() == Symbol.Kind.PRIVATE;
+    }
+
     public static boolean isSymbol(Object obj) {
         return ((obj instanceof NativeSymbol) && ((NativeSymbol) obj).isSymbol())
                 || (obj instanceof SymbolKey);
