@@ -88,4 +88,41 @@ public abstract class JSCode<T extends ScriptOrFn<T>> implements JSCodeExec<T>, 
             throw new InvalidObjectException("Missing serialized Rhino object data");
         }
     }
+
+    Scriptable construct(JSFunction fn, Context cx, Object nt, VarScope s, Object[] args) {
+        if (!ScriptRuntime.hasTopCall(cx)) {
+            return (Scriptable) ScriptRuntime.doTopCall(
+                    (lcx, lscope, lthisObj, largs) -> fn.construct(lcx, lscope, largs),
+                    cx,
+                    s,
+                    null,
+                    args,
+                    fn.isStrict());
+        }
+        var descriptor = fn.getDescriptor();
+        if (nt == null || Undefined.isUndefined(nt)) {
+            nt = this;
+        }
+        var derived = descriptor.isDerivedConstructor();
+        // A non-null homeObject here can only mean this is a class constructor (methods/arrows
+        // are already rejected by the getConstructor() == null check above), which still needs a
+        // normally auto-created `this` like any other constructor.
+        var thisObj = derived ? null : fn.createObject(cx, s, nt);
+        var res = descriptor
+                .getConstructor()
+                .execute(cx, fn, nt, s, derived ? Undefined.instance : thisObj, args);
+        if (res instanceof Scriptable) {
+            return (Scriptable) res;
+        } else if (!derived) {
+            return thisObj;
+        } else if (Undefined.isUndefined(res)) {
+            throw ScriptRuntime.referenceError(
+                    ScriptRuntime.getMessageById("msg.derived.ctor.no.this"));
+        } else {
+            // We should never reach here. If we do we should fix the
+            // compilers to ensure that derived constructors return
+            // `this` if they were going to return undefined.
+            throw ScriptRuntime.typeErrorById("msg.derived.ctor.bad.return");
+        }
+    }
 }

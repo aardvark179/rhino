@@ -177,44 +177,10 @@ public class JSFunction extends BaseFunction implements ScriptOrFn<JSFunction> {
 
     @Override
     public Scriptable construct(Context cx, Object nt, VarScope s, Object[] args) {
-        if (!ScriptRuntime.hasTopCall(cx)) {
-            return (Scriptable)
-                    ScriptRuntime.doTopCall(
-                            (lcx, lscope, lthisObj, largs) -> construct(lcx, lscope, largs),
-                            cx,
-                            s,
-                            null,
-                            args,
-                            isStrict());
-        }
         if (descriptor.getConstructor() == null) {
             throw ScriptRuntime.typeErrorById("msg.not.ctor", getFunctionName());
         }
-        if (nt == null || Undefined.isUndefined(nt)) {
-            nt = this;
-        }
-        var derived = descriptor.isDerivedConstructor();
-        // A non-null homeObject here can only mean this is a class constructor (methods/arrows
-        // are already rejected by the getConstructor() == null check above), which still needs a
-        // normally auto-created `this` like any other constructor.
-        var thisObj = derived ? null : this.createObject(cx, s, nt);
-        var res =
-                descriptor
-                        .getConstructor()
-                        .execute(cx, this, nt, s, derived ? Undefined.instance : thisObj, args);
-        if (res instanceof Scriptable) {
-            return (Scriptable) res;
-        } else if (!derived) {
-            return thisObj;
-        } else if (Undefined.isUndefined(res)) {
-            throw ScriptRuntime.referenceError(
-                    ScriptRuntime.getMessageById("msg.derived.ctor.no.this"));
-        } else {
-            // We should never reach here. If we do we should fix the
-            // compilers to ensure that derived constructors return
-            // `this` if they were going to return undefined.
-            throw ScriptRuntime.typeErrorById("msg.derived.ctor.bad.return");
-        }
+        return descriptor.getConstructor().construct(this, cx, nt, s, args);
     }
 
     public boolean isScript() {

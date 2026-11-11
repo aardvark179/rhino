@@ -816,6 +816,16 @@ public class ClassDescriptor {
         private void readObjectNoData() throws InvalidObjectException {
             throw new InvalidObjectException("Missing serialized Rhino object data");
         }
+
+        @Override
+        Scriptable construct(JSFunction fn, Context cx, Object nt, VarScope s, Object[] args) {
+            var res = execute(cx, fn, nt, s, null, args);
+            if (res instanceof Scriptable sres) {
+                return sres;
+            } else {
+                throw Kit.codeBug();
+            }
+        };
     }
 
     public static BuiltInJSCodeExec<JSFunction> typeError() {
